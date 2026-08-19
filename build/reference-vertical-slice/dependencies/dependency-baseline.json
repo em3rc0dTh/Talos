@@ -9,19 +9,19 @@
     {"name":"@types/node","version":"22.20.1","kind":"dev","firstAllowedStage":"B1"},
     {"name":"zod","version":"4.4.3","kind":"runtime","firstAllowedStage":"B1"},
     {"name":"better-sqlite3","version":"13.0.3","kind":"runtime","firstAllowedStage":"B1"},
-    {"name":"@temporalio/common","version":"1.21.1","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"},
-    {"name":"@temporalio/client","version":"1.21.1","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"},
-    {"name":"@temporalio/worker","version":"1.21.1","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"},
-    {"name":"@temporalio/workflow","version":"1.21.1","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"},
-    {"name":"@temporalio/activity","version":"1.21.1","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"},
-    {"name":"@temporalio/testing","version":"1.21.1","kind":"dev","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.21.1"}
+    {"name":"@temporalio/common","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"},
+    {"name":"@temporalio/client","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"},
+    {"name":"@temporalio/worker","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"},
+    {"name":"@temporalio/workflow","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"},
+    {"name":"@temporalio/activity","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"},
+    {"name":"@temporalio/testing","version":"1.22.0","kind":"dev","firstAllowedStage":"B7","verificationRef":"temporalio/sdk-typescript@v1.22.0"}
   ],
   "forbiddenPackages": ["temporalio"],
   "referenceWebDecision": "STANDARDS_ONLY_UNTIL_B8_REVIEW",
   "notes": [
     "B0 itself uses only Node built-ins so its package-lock remains dependency-free and reproducible offline.",
-    "B7 verification on 2026-08-19 found Temporal TypeScript SDK v1.21.1 as the current official release; the previous planned 1.22.0 pins were not promoted.",
-    "Temporal's official repository requires all @temporalio/* packages in one project to use the same version; the B7 family is therefore pinned uniformly to 1.21.1.",
+    "B7 freshness correction on 2026-08-19 verified official npm distribution pages and the temporalio/sdk-typescript v1.22.0 tag. The intermediate 1.21.1 baseline was based on stale GitHub release indexing and was never promoted into package.json/source imports.",
+    "Temporal's official repository requires all @temporalio/* packages in one project to use the same version; the B7 family is pinned uniformly to 1.22.0.",
     "@temporalio/common is included because the official SDK installation guidance includes it in client/worker package sets.",
     "The B7 source-import gate remains closed until package.json and a trustworthy transitive npm package-lock are generated for these exact pins.",
     "No caret, tilde, wildcard, latest or next specifiers are allowed."
