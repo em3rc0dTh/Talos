@@ -1,5 +1,6 @@
 import {
   condition,
+  defineQuery,
   defineUpdate,
   proxyActivities,
   setHandler,
@@ -27,6 +28,10 @@ export const submitReferenceReviewDecision = defineUpdate<
   [ReferenceReviewSubmission]
 >('submitReferenceReviewDecision');
 
+export const getReferenceApprovalState = defineQuery<ReferenceApprovalState>(
+  'getReferenceApprovalState',
+);
+
 export async function TalosReferenceApprovalWorkflow(
   input: ReferenceWorkflowInput,
 ): Promise<ReferenceWorkflowResult> {
@@ -34,6 +39,7 @@ export async function TalosReferenceApprovalWorkflow(
 
   let state = initialReferenceApprovalState();
 
+  setHandler(getReferenceApprovalState, () => state);
   setHandler(
     submitReferenceReviewDecision,
     (submission) => {
