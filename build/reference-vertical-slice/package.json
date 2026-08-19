@@ -33,5 +33,15 @@
     "b5:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test && npm run b4:test && npm run b5:test",
     "b6:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test && npm run b4:test && npm run b5:test && npm run b6:test",
     "test": "npm run b6:verify"
+  },
+  "dependencies": {
+    "@temporalio/activity": "1.22.0",
+    "@temporalio/client": "1.22.0",
+    "@temporalio/common": "1.22.0",
+    "@temporalio/worker": "1.22.0",
+    "@temporalio/workflow": "1.22.0"
+  },
+  "devDependencies": {
+    "@temporalio/testing": "1.22.0"
   }
 }
