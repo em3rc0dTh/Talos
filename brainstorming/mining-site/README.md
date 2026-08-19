@@ -29,12 +29,13 @@ TEMPORAL MODEL
 ```text
 brainstorming/mining-site/
 └── quarry-NN-<short-name>/
-    ├── source-NN.md
-    ├── transform-NN.md
-    └── foundry-source-NN.md
+    ├── source-NN.<native-source-format>   # when binary/source ingestion is available
+    ├── source-NN.md                       # source record + provenance + limitations
+    ├── transform-NN.md                    # agent interpretation + comparison
+    └── foundry-source-NN.md               # standardized semantic handoff
 ```
 
-The original source artifact should be retained whenever repository ingestion supports its native format. The source record must still capture origin metadata and a stable digest so the transformation remains traceable.
+The original source artifact should be retained whenever repository ingestion supports its native format. The source record must always capture origin metadata and a stable digest so the transformation remains traceable even when the native binary has not yet been attached.
 
 ## Truth discipline
 
@@ -53,13 +54,16 @@ Confidence never replaces truth state.
 A transform may extract and normalize:
 
 - process trigger and terminal outcomes;
-- actors / lanes / ownership;
+- participants, actors, lanes and ownership;
 - steps and activities;
 - decisions and branch outcomes;
+- branch convergence / merge semantics;
 - parallelism and joins;
 - waits, deadlines and external events;
-- human interactions;
+- human interactions and physical work;
 - subprocesses;
+- boundary events and exception paths;
+- business objects and state evidence;
 - data and rules;
 - integrations explicitly present in the source;
 - uncertainties, conflicts and missing semantics;
@@ -73,8 +77,31 @@ The Foundry receives this artifact and asks a different question:
 
 > How should this validated business-process meaning become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters and worker topology.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology and technical failure behavior.
 
 ## Experimental rule
 
 Do not standardize from one example. Each quarry must be compared against prior quarries. Repeated semantics may become TALOS primitives; one-off details remain source-specific until evidence supports generalization.
+
+A critical rule exposed by Mining Site work is:
+
+```text
+BUSINESS PROCESS NODE            ≠ automatically a Temporal Activity
+BUSINESS EXCEPTION               ≠ automatically a technical failure
+SOURCE NOTATION                  ≠ automatically execution semantics
+```
+
+## Current evidence set
+
+```text
+QUARRY-01  Order Process
+           sequence + actors + decisions + terminal failure/success
+
+QUARRY-02  Water Order & Delivery
+           participant boundary + message + wait + business objects + subprocess + physical work
+
+QUARRY-03  Availability / Procurement / Settlement
+           message start + subprocess boundary events + domain exception/escalation + multiple business outcomes
+```
+
+The standard language remains provisional. Each new quarry should either reinforce existing concepts, expose missing semantics, or challenge an assumption already present in the model.
