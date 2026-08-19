@@ -262,18 +262,24 @@ and never to Talos semantic/design storage.
 
 ## Temporal SDK / Worker lane
 
-Official verification on 2026-08-19 corrected the planned Temporal TypeScript SDK family to exact version:
+A freshness correction on 2026-08-19 verified the current Temporal TypeScript SDK family through npm distribution pages and the official `temporalio/sdk-typescript` `v1.22.0` tag:
 
 ```text
-@temporalio/common    1.21.1
-@temporalio/client    1.21.1
-@temporalio/worker    1.21.1
-@temporalio/workflow  1.21.1
-@temporalio/activity  1.21.1
-@temporalio/testing   1.21.1
+@temporalio/common    1.22.0
+@temporalio/client    1.22.0
+@temporalio/worker    1.22.0
+@temporalio/workflow  1.22.0
+@temporalio/activity  1.22.0
+@temporalio/testing   1.22.0
 ```
 
-The previous planned `1.22.0` values were never promoted into implementation code.
+The intermediate `1.21.1` conclusion in `test/96` came from a stale GitHub Releases search index and is superseded by:
+
+```text
+test/97-B7-TEMPORAL-SDK-BASELINE-CORRECTION-v0.1.md
+```
+
+No SDK package/import had been promoted, so no runtime code was affected by that temporary dependency conclusion.
 
 Current hard gate:
 
@@ -284,12 +290,18 @@ trustworthy transitive npm lock          ⛔ REQUIRED
 Workflow / Activity wrapper / Worker     ⛔ NOT STARTED
 ```
 
-Talos will not commit a fabricated/incomplete lock merely to bypass this boundary.
+The current local execution environment cannot resolve `registry.npmjs.org`; Talos will not commit a fabricated/incomplete lock merely to bypass this boundary.
 
-Evidence:
+Provider evidence:
 
 ```text
 test/96-B7-TEMPORAL-SDK-REFERENCE-PROVIDER-PARTIAL-RESULT-v0.1.md
+```
+
+Dependency correction evidence:
+
+```text
+test/97-B7-TEMPORAL-SDK-BASELINE-CORRECTION-v0.1.md
 ```
 
 # Persistence isolation
@@ -319,7 +331,7 @@ broad provider/source expansion
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.27.md
+plan/00-TALOS-ROADMAP-v0.28.md
 plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.3.md
 plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md
 ```
@@ -327,7 +339,8 @@ plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md
 ## Immediate next move
 
 ```text
-resolve trustworthy npm lock for exact Temporal 1.21.1 family
+finish B7 pre-SDK Worker/failure contracts
++ resolve trustworthy npm lock for exact Temporal 1.22.0 family
 → promote locked dependencies
 → implement TalosReferenceApprovalWorkflow
 → implement sendReferenceConfirmation Activity wrapper
