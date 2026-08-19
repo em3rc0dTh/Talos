@@ -8,7 +8,6 @@ export interface ReferenceEmailSendRequest {
   referenceRequestId: string;
   capabilityUseOccurrenceId: string;
   to: string;
-  effectCreatedAt: string;
 }
 
 export interface ReferenceEmailSendResult {
@@ -46,9 +45,11 @@ export function deriveReferenceEmailIdempotencyKey(referenceRequestId: string, c
 export class ReferenceEmailSinkService {
   readonly #attempts = new Map<string, number>();
   readonly store: ReferenceEmailSinkStore;
+  readonly #now: () => string;
 
-  constructor(store: ReferenceEmailSinkStore) {
+  constructor(store: ReferenceEmailSinkStore, now: () => string = () => new Date().toISOString()) {
     this.store = store;
+    this.#now = now;
   }
 
   send(request: ReferenceEmailSendRequest, plan: ReferenceEmailFailurePlan = { transientFailuresBeforeSuccess: 0 }): ReferenceEmailSendResult {
@@ -60,8 +61,8 @@ export class ReferenceEmailSinkService {
     const attempt = (this.#attempts.get(key) ?? 0) + 1;
     this.#attempts.set(key, attempt);
 
-    if (!request.to.includes('@') || !request.effectCreatedAt.trim()) {
-      throw new ReferenceEmailInvalidRequestError('valid to and effectCreatedAt are required');
+    if (!request.to.includes('@')) {
+      throw new ReferenceEmailInvalidRequestError('valid to is required');
     }
 
     if (attempt <= plan.transientFailuresBeforeSuccess) {
@@ -75,7 +76,7 @@ export class ReferenceEmailSinkService {
         subject: REFERENCE_CONFIRMATION_SUBJECT,
         body: REFERENCE_CONFIRMATION_BODY,
       },
-      createdAt: request.effectCreatedAt,
+      createdAt: this.#now(),
     });
 
     return {
