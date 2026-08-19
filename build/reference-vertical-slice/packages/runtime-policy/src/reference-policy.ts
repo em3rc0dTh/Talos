@@ -1,0 +1,34 @@
+import { createOpaqueId } from '../../foundation/src/ids.ts';
+import { digestDeterministicJson } from '../../foundation/src/digest.ts';
+import type { ReferenceExecutionBundle } from '../../execution/src/types.ts';
+import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
+import type { ReferenceRuntimePolicyBundle,RetryPolicyDesign,TimeoutPolicyDesign,IdempotencyPolicyDesign,FailureClassificationPolicy,RuntimePolicyFacet } from './types.ts';
+
+const rpl=(seed:string)=>createOpaqueId('runtimePolicy',seed);
+export function designReferenceRuntimePolicy(execution:ReferenceExecutionBundle,mapping:ReferenceTemporalMappingBundle,createdAt:string):ReferenceRuntimePolicyBundle{
+  if(mapping.assessment.readiness!=='READY_FOR_RUNTIME_POLICY_DESIGN')throw new TypeError('RuntimePolicy requires READY_FOR_RUNTIME_POLICY_DESIGN');
+  if(mapping.revision.executionPlanRevisionRef!==execution.revision.id)throw new TypeError('mapping/execution revision mismatch');
+  const revisionId=rpl(`runtime-policy:${mapping.revision.id}`);
+  const activityUnit=mapping.units.find(u=>u.constructKind==='ACTIVITY');if(!activityUnit)throw new TypeError('reference Activity mapping missing');
+  const capabilityUse=execution.capabilityUses[0];
+  const activityRetry:RetryPolicyDesign={id:rpl(`retry:${revisionId}:email-activity`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,retryMode:'EXPLICIT_CUSTOM',initialIntervalMs:250,backoffCoefficient:2,maximumIntervalMs:1000,maximumAttempts:3,nonRetryableFailureTypes:['INVALID_REFERENCE_REQUEST'],policyBasis:'REFERENCE_TEST_DESIGN'};
+  const workflowRetry:RetryPolicyDesign={id:rpl(`retry:${revisionId}:workflow`),runtimePolicyRevisionId:revisionId,policySubjectRef:mapping.workflowBoundaries[0].id,retryMode:'EXPLICIT_CUSTOM',maximumAttempts:1,nonRetryableFailureTypes:[],policyBasis:'REFERENCE_TEST_DESIGN'};
+  const timeout:TimeoutPolicyDesign={id:rpl(`timeout:${revisionId}:email-activity`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,startToCloseMs:5000,scheduleToCloseMs:10000,policyBasis:'REFERENCE_TEST_DESIGN'};
+  const idem:IdempotencyPolicyDesign={id:rpl(`idempotency:${revisionId}:email-activity`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,requirement:'REQUIRED',strategyKind:'IDEMPOTENCY_KEY',keyContract:'sha256(referenceRequestId + ":" + capabilityUseOccurrenceId)',enforcementRef:'REFERENCE_EMAIL_SINK_UNIQUE_EFFECT_STORE',policyBasis:'CAPABILITY_SAFETY'};
+  const failure:FailureClassificationPolicy={id:rpl(`failure:${revisionId}:email-activity`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,classifications:[{failureType:'TRANSIENT_REFERENCE_FAILURE',retryable:true,businessFailure:false,notes:'Injected bounded reference failure; retryable by runtime policy.'},{failureType:'INVALID_REFERENCE_REQUEST',retryable:false,businessFailure:false,notes:'Invalid provider request must surface without repeated side effect attempts.'}]};
+  const defaultProfileId=rpl(`default-profile:${mapping.featureProfile.id}`);const defaultEntries=[
+    {id:rpl(`default:${defaultProfileId}:activity-retry`),temporalDefaultBehaviorProfileRef:defaultProfileId,subjectKind:'ACTIVITY_EXECUTION' as const,propertyPath:'retryPolicy',defaultValueRef:'TEMPORAL_ACTIVITY_RETRY_DEFAULT_REFERENCE',applicabilityConditionRefs:[],referenceRefs:['temporal-official-docs:retry-policies:verified-2026-08-19'],notes:'Reference fact only; B6 does not accept this default for the material email Activity policy.'},
+    {id:rpl(`default:${defaultProfileId}:workflow-retry`),temporalDefaultBehaviorProfileRef:defaultProfileId,subjectKind:'WORKFLOW_EXECUTION' as const,propertyPath:'retryPolicy',defaultValueRef:'TEMPORAL_WORKFLOW_NO_RETRY_DEFAULT_REFERENCE',applicabilityConditionRefs:[],referenceRefs:['temporal-official-docs:retry-policies:verified-2026-08-19'],notes:'Reference fact only; B6 sets workflow maximumAttempts=1 explicitly.'}
+  ];
+  const defaultProfile={id:defaultProfileId,profileVersion:'reference-defaults-2026-08-19',temporalFeatureProfileRef:mapping.featureProfile.id,platformReferenceRef:'TEMPORAL_PLATFORM_GENERIC',sdkFamily:'typescript',documentationReferenceRef:'temporal-official-docs-verified-2026-08-19',defaultBehaviorEntryRefs:defaultEntries.map(e=>e.id),createdAt};
+  const facets:RuntimePolicyFacet[]=[
+    {id:rpl(`facet:${revisionId}:activity-retry`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,propertyPath:'retry',value:{initialIntervalMs:250,backoffCoefficient:2,maximumIntervalMs:1000,maximumAttempts:3},policyBasis:'REFERENCE_TEST_DESIGN',materiality:'MATERIAL',evidenceRefs:[activityRetry.id]},
+    {id:rpl(`facet:${revisionId}:timeouts`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,propertyPath:'timeouts',value:{startToCloseMs:5000,scheduleToCloseMs:10000},policyBasis:'REFERENCE_TEST_DESIGN',materiality:'MATERIAL',evidenceRefs:[timeout.id]},
+    {id:rpl(`facet:${revisionId}:idempotency`),runtimePolicyRevisionId:revisionId,policySubjectRef:activityUnit.id,propertyPath:'idempotency',value:'REQUIRED',policyBasis:'CAPABILITY_SAFETY',materiality:'MATERIAL',evidenceRefs:[idem.id,capabilityUse.id]}
+  ];
+  const digest=digestDeterministicJson({execution:execution.revision.id,mapping:mapping.revision.id,activityRetry,workflowRetry,timeout,idem,failure,defaultProfile,defaultEntries,defaultAcceptances:[]});
+  const revision={id:revisionId,revision:1,executionPlanRevisionRef:execution.revision.id,temporalMappingRevisionRef:mapping.revision.id,temporalFeatureProfileRef:mapping.featureProfile.id,temporalDefaultBehaviorProfileRef:defaultProfile.id,activityExecutionPolicyRefs:[rpl(`activity-policy:${revisionId}:email`)],workflowRetryPolicyRef:workflowRetry.id,retryPolicyRefs:[activityRetry.id,workflowRetry.id],timeoutPolicyRefs:[timeout.id],idempotencyPolicyRefs:[idem.id],failureClassificationPolicyRefs:[failure.id],temporalDefaultAcceptanceRefs:[],facetRefs:facets.map(f=>f.id),policyDigest:digest,createdAt,parentRevisionRefs:[]};
+  const activityPolicy={id:revision.activityExecutionPolicyRefs[0],runtimePolicyRevisionId:revision.id,temporalMappingUnitRef:activityUnit.id,capabilityUseOccurrenceRef:capabilityUse.id,retryPolicyRef:activityRetry.id,timeoutPolicyRef:timeout.id,idempotencyPolicyRef:idem.id,failureClassificationPolicyRef:failure.id};
+  const assessment={id:rpl(`policy-assessment:${revisionId}`),runtimePolicyRevisionId:revisionId,findingRefs:[],readiness:'READY_FOR_DEPLOYMENT_DESIGN' as const,assessedAt:createdAt};
+  return{revision,activityPolicies:[activityPolicy],retryPolicies:[activityRetry,workflowRetry],timeoutPolicies:[timeout],idempotencyPolicies:[idem],failurePolicies:[failure],defaultProfile,defaultEntries,defaultAcceptances:[],facets,assessment};
+}
