@@ -52,17 +52,43 @@ Define and test the minimal canonical vocabulary:
 - wait;
 - human interaction;
 - subprocess;
+- state;
 - completion;
 - actors;
 - variables/data;
 - rules;
-- source-specific annotations.
+- claims/conflicts;
+- source-specific annotations;
+- semantic vs execution readiness.
 
 ### Gate
 
 The model must represent all initial semantic fixtures without source loss.
 
-Status: **NEXT**
+### Gate evidence
+
+```text
+test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
+```
+
+Pressure-tested fixtures:
+
+```text
+01 Simple sequence                         PASS
+02 Exclusive decision                      PASS
+03 Parallel split + join                   PASS
+04 Durable wait                            PASS
+05 Human approval                          PASS
+06 Subprocess                              PASS
+07 Source conflict                         PASS
+08 SIPOC incomplete process                PASS
+09 Petri Net concurrency                   PASS
+10 BPMN source-ID preservation             PASS
+11 Native TALOS Canvas                     PASS
+12 Existing automation evidence            PASS
+```
+
+Status: **CLOSED / FROZEN v0.1 — 2026-08-18**
 
 ## T1-02 — Provenance Model
 
@@ -70,6 +96,8 @@ Formalize:
 
 - SourceArtifact;
 - ProvenanceLink;
+- SemanticClaim;
+- evidence perspective;
 - truth class;
 - confidence;
 - conflicts;
@@ -80,9 +108,9 @@ Formalize:
 
 For every canonical element TALOS can answer:
 
-> Where did this come from, how was it interpreted, and who/what confirmed it?
+> Where did this come from, what kind of evidence is it, how was it interpreted, where did sources disagree, and who/what confirmed the current meaning?
 
-Status: **PENDING**
+Status: **NEXT**
 
 ## T1-03 — Semantic Validation
 
@@ -117,6 +145,8 @@ The Canvas should create canonical process revisions directly while still using 
 
 A user can create a sequential process, condition, parallel branch, wait and human task and obtain a valid canonical revision.
 
+Status: **PENDING**
+
 ## T2-02 — BPMN Adapter
 
 Use `bpmn-moddle`/equivalent parsing and map BPMN elements to canonical semantics while preserving original IDs and BPMN-specific annotations.
@@ -127,6 +157,8 @@ Do not compile directly to Temporal.
 
 Representative BPMN fixtures survive round-trip interpretation into the canonical model without flattening gateways/events.
 
+Status: **PENDING**
+
 ## T2-03 — Image / Graphic Candidate Adapter
 
 Use perception to produce a candidate graph with confidence/provenance.
@@ -134,6 +166,8 @@ Use perception to produce a candidate graph with confidence/provenance.
 ### Gate
 
 No inferred image element is treated as source-confirmed execution truth without an explicit interpretation/confirmation path.
+
+Status: **PENDING**
 
 ---
 
@@ -216,9 +250,9 @@ Initial support:
 - action → Activity;
 - decision → deterministic branch;
 - parallel → concurrent branches;
-- wait → durable Timer;
+- wait → durable Timer / event wait strategy;
 - human task → persistent state + Signal/Update;
-- subprocess → Child Workflow.
+- subprocess → Child Workflow / selected execution boundary.
 
 ## T5-04 — DeploymentRevision
 
@@ -312,10 +346,10 @@ This phase must not contaminate the initial execution model with premature compl
 FOUNDATION                         ✅
 SYSTEM TRUTH                       ✅ v0.1
 PRODUCT CONTRACT                   ✅ draft
-ORIGIN / PROVENANCE CONTRACT       ✅ draft
+ORIGIN / PROVENANCE CONTRACT       🟡 draft — NEXT FREEZE
 SYSTEM ARCHITECTURE                ✅ draft
-CANONICAL MODEL                    🟡 draft — NEXT FREEZE
-SEMANTIC VALIDATION                ⚪
+CANONICAL MODEL                    ✅ FROZEN v0.1
+SEMANTIC VALIDATION                ⚪ pending
 CAPABILITY CONTRACT                🟡 draft
 TEMPORAL EXECUTION CONTRACT        🟡 draft
 BUILD                              ⛔ CLOSED
@@ -324,4 +358,6 @@ TEST IMPLEMENTATION                ⛔ CLOSED
 
 ## Immediate next move
 
-Close **T1-01 — Canonical Process Model v0.1** against representative fixtures before implementing runtime code.
+Close **T1-02 — Provenance Model v0.1**.
+
+T1-01 proved that provenance is not merely metadata. The next contract must formalize source artifacts, claims, evidence perspectives, conflicts, confirmations and transformation lineage strongly enough that any canonical or future execution element can be traced back to the origin TALOS is protecting.
