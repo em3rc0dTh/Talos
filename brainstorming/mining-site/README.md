@@ -55,6 +55,7 @@ A transform may extract and normalize:
 
 - process trigger and terminal outcomes;
 - participants, actors, lanes and ownership;
+- participant-local control flow versus cross-participant communication;
 - steps and activities;
 - decisions and branch outcomes;
 - branch convergence / merge semantics;
@@ -66,6 +67,10 @@ A transform may extract and normalize:
 - business objects and state evidence;
 - identity/access gates and preconditions;
 - business communication intent and explicit channel evidence;
+- message/correlation requirements across participant boundaries;
+- source-node identity independently from display labels;
+- local milestones/ends versus collaboration-level completion;
+- missing continuation or re-entry paths;
 - data and rules;
 - integrations explicitly present in the source;
 - uncertainties, conflicts and missing semantics;
@@ -79,7 +84,7 @@ The Foundry receives this artifact and asks a different question:
 
 > How should this validated business-process meaning become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology and technical failure behavior.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy and technical failure behavior.
 
 ## Experimental rule
 
@@ -92,9 +97,15 @@ BUSINESS PROCESS NODE            ≠ automatically a Temporal Activity
 BUSINESS EXCEPTION               ≠ automatically a technical failure
 BUSINESS REJECTION               ≠ automatically a technical failure
 BUSINESS MESSAGE                 ≠ automatically a known integration
+MESSAGE FLOW                     ≠ sequence flow
 SOURCE NOTATION                  ≠ automatically execution semantics
 IDENTITY / ACCESS GATE           ≠ automatically a known auth implementation
 DATA RETENTION INTENT            ≠ automatically proven consent/compliance semantics
+PARTICIPANT BOUNDARY             ≠ automatically a Temporal Workflow boundary
+PARTICIPANT-LOCAL END            ≠ global collaboration completion
+SAME DISPLAY LABEL               ≠ same source node
+SAME BUSINESS QUESTION           ≠ same authority / data context
+MISSING CONTINUATION             ≠ implicit success
 ```
 
 ## Current evidence set
@@ -112,6 +123,35 @@ QUARRY-03  Availability / Procurement / Settlement
 QUARRY-04  Candidate Application Lifecycle
            identity/access gateway + optional pre-processing + shared rejection handling
            + three-way domain decision + explicit SMS channel + retention intent
+
+QUARRY-05  Ward / Pharmacy Drug Fulfillment Collaboration
+           participant-local control flows + cross-participant message flows + correlation gap
+           + duplicate labels/source identity + local-end-vs-global-completion + missing procurement re-entry
 ```
+
+## Emerging evidence after five quarries
+
+The Mining Site now has repeated evidence for a small set of durable semantic families, but they are still provisional:
+
+```text
+PROCESS / PROCESS SCOPE
+PARTICIPANT
+ROLE / LANE
+NODE / STEP / STAGE
+DECISION + BRANCH
+MERGE / CONVERGENCE
+MESSAGE / COMMUNICATION BOUNDARY
+WAIT / EVENT
+SUBPROCESS
+BUSINESS OBJECT / STATE EVIDENCE
+BUSINESS OUTCOME
+EXCEPTION / ESCALATION
+IDENTITY / ACCESS CONDITION
+SOURCE NODE IDENTITY
+CORRELATION REQUIREMENT
+LOCAL MILESTONE VS COLLABORATION COMPLETION
+```
+
+These are evidence-backed hypotheses, not yet a frozen TALOS standard language.
 
 The standard language remains provisional. Each new quarry should either reinforce existing concepts, expose missing semantics, or challenge an assumption already present in the model.
