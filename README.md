@@ -40,6 +40,8 @@ The canonical model must preserve, at minimum:
 - semantic meaning extracted from the source;
 - confidence and provenance for interpreted elements;
 - distinction between source truth, inference, suggestion, confirmation, and executable truth;
+- evidence perspective, including business intent vs implemented behavior;
+- source conflicts and their resolution history;
 - transformation/compiler version;
 - immutable process and deployment revisions.
 
@@ -61,6 +63,8 @@ build/
 test/
 ```
 
+`test/` is also used before BUILD for semantic fixtures, pressure tests and gate evidence. Runtime/integration test implementation opens only when the corresponding build gates open.
+
 No stage silently overwrites the truth established by an earlier stage. Superseded artifacts should be versioned and retained rather than deleted.
 
 ## Repository map
@@ -70,7 +74,7 @@ No stage silently overwrites the truth established by an earlier stage. Supersed
 - `arch/` — system boundaries, canonical model, compiler/runtime architecture, capability registry and Temporal mapping.
 - `plan/` — gated implementation roadmap and acceptance criteria.
 - `build/` — implementation artifacts only after the relevant design/architecture gates are closed.
-- `test/` — semantic, compiler, runtime, integration, determinism, provenance and end-to-end verification.
+- `test/` — semantic fixtures, gate evidence, compiler/runtime/integration/determinism/provenance/end-to-end verification.
 - `deprecated/` — superseded material retained for history when future revisions replace prior contracts.
 
 ## Current state
@@ -78,17 +82,34 @@ No stage silently overwrites the truth established by an earlier stage. Supersed
 ```text
 SYSTEM TRUTH                         🟢 v0.1 ESTABLISHED
 PROCESS INPUT / ORIGIN PRINCIPLE     🟢 v0.1 ESTABLISHED
-PRODUCT CONCEPT                      🟡 DOCUMENTING
-CANONICAL PROCESS MODEL              🟡 DESIGN NEXT
-PROVENANCE MODEL                     🟡 DESIGN NEXT
-SEMANTIC VALIDATION                  🟡 DESIGN NEXT
-CAPABILITY REGISTRY                  ⚪ NOT FROZEN
-TEMPORAL EXECUTION MODEL             ⚪ NOT FROZEN
-TALOS CANVAS                         ⚪ NOT FROZEN
-BUILD                                ⛔ NOT OPEN
-TEST                                 ⛔ WAITS FOR IMPLEMENTATION
+PRODUCT CONTRACT                     🟡 DRAFT
+CANONICAL PROCESS MODEL              🟢 v0.1 FROZEN — T1-01 CLOSED
+PROVENANCE MODEL                     🟡 T1-02 NEXT FREEZE
+SEMANTIC VALIDATION                  ⚪ T1-03 PENDING
+CAPABILITY REGISTRY                  🟡 DRAFT / NOT FROZEN
+TEMPORAL EXECUTION MODEL             🟡 DRAFT / NOT FROZEN
+TALOS CANVAS                         🟡 DESIGN DRAFT / NOT FROZEN
+BUILD                                ⛔ CLOSED
+TEST DESIGN / GATE EVIDENCE          🟢 ACTIVE
+TEST IMPLEMENTATION                  ⛔ CLOSED
+```
+
+## Current gate evidence
+
+`CANONICAL PROCESS MODEL v0.1` was pressure-tested against twelve semantic fixtures covering sequence, decisions, parallel synchronization, waits, human approval, subprocesses, source conflicts, incomplete SIPOC, Petri-Net concurrency, BPMN source IDs, TALOS Canvas origin and imported automation evidence.
+
+The gate evidence lives in:
+
+```text
+test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
+```
+
+The next gate is:
+
+```text
+T1-02 — Provenance Model
 ```
 
 ## Working definition
 
-> **TALOS is the semantic guard between business-process intent and durable machine execution.** It accepts heterogeneous process representations, preserves where each process came from, normalizes them into a common semantic model, makes ambiguity visible, designs an integrated execution plan, and only then maps validated process truth into Temporal and connected capabilities.
+> **TALOS is the semantic guard between business-process intent and durable machine execution.** It accepts heterogeneous process representations, preserves where each process came from, normalizes them into a common semantic model, makes ambiguity and conflicting evidence visible, designs an integrated execution plan, and only then maps validated process truth into Temporal and connected capabilities.
