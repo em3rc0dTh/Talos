@@ -19,17 +19,6 @@ class ReferenceBootstrapConflictError extends Error {
   }
 }
 
-/**
- * Isolated deterministic staging store for the fixed reference vertical slice.
- *
- * The reference bootstrap is deliberately rebuilt from its immutable fixture on
- * every app start. Only after the entire cross-phase slice succeeds are the
- * generated immutable documents flushed to the durable Talos repository.
- *
- * This means a second launch does not reinterpret an already-persisted review
- * command as a new command. The rebuilt documents are appended idempotently and
- * resolve to EXISTS_IDENTICAL in SQLite.
- */
 export class ReferenceBootstrapStore implements ImmutableDocumentRepository {
   readonly #documents = new Map<string, ImmutableDocument>();
 
@@ -67,9 +56,7 @@ export class ReferenceBootstrapStore implements ImmutableDocumentRepository {
     return [...this.#documents.values()];
   }
 
-  close(): void {
-    // No external resources.
-  }
+  close(): void {}
 }
 
 export function buildRestartSafeReferenceVerticalSlice(
@@ -80,6 +67,31 @@ export function buildRestartSafeReferenceVerticalSlice(
   const slice = buildReferenceVerticalSlice(staged as never, options);
 
   for (const document of staged.allDocuments()) {
+    const existing = durableRepo.get(String(document.id)) as ImmutableDocument | undefined;
+    if (existing) {
+      const existingMaterial = deterministicJson({
+        aggregateKind: existing.aggregateKind,
+        schemaVersion: existing.schemaVersion,
+        payload: existing.payload,
+        parentId: existing.parentId,
+        createdAt: existing.createdAt,
+      });
+      const nextMaterial = deterministicJson({
+        aggregateKind: document.aggregateKind,
+        schemaVersion: document.schemaVersion,
+        payload: document.payload,
+        parentId: document.parentId,
+        createdAt: document.createdAt,
+      });
+      if (existingMaterial !== nextMaterial) {
+        throw new TypeError([
+          `Reference staged/durable mismatch id=${document.id}`,
+          `kind=${document.aggregateKind}`,
+          `existing=${existingMaterial}`,
+          `next=${nextMaterial}`,
+        ].join('\n'));
+      }
+    }
     durableRepo.append(document);
   }
 
