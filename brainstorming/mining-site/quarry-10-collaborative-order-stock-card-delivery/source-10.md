@@ -11,9 +11,9 @@
 - Original file size: `53,188 bytes`
 - Original image SHA-256: `45b86b98445fb18059f286a549f39deb47d7adae7ca067c6d6da74db0842b396`
 - Observed byte format: WebP (`RIFF ... WEBP` signature)
-- Native binary source: exact user-supplied WebP is retained in this quarry as `quarry-10.webp`
+- Native binary source: exact user-supplied WebP is available in the working session; repository binary attachment pending
 
-> Quarry 10 is valuable because the process is embedded inside an active collaborative-authoring interface. TALOS must separate the business graph from Miro chrome, collaborator presence and cursor overlays before process normalization.
+> Quarry 10 is valuable because the process is embedded inside an active collaborative-authoring interface. TALOS must separate the business graph from Miro chrome, collaborator presence and cursor overlays before process normalization. The repository must not substitute a partial/re-encoded image and claim byte identity with the source digest above.
 
 ## Visible authoring-environment layer
 
