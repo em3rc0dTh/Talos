@@ -13,6 +13,9 @@
   ],
   "scripts": {
     "b0:verify": "node ./scripts/verify-b0.mjs",
-    "test": "npm run b0:verify"
+    "architecture:verify": "node ./scripts/verify-architecture.mjs",
+    "b1:test": "node --experimental-strip-types --test ./tests/b1-*.test.ts",
+    "b1:verify": "npm run architecture:verify && npm run b1:test",
+    "test": "npm run b1:verify"
   }
 }
