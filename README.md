@@ -4,16 +4,18 @@
 
 TALOS is a process-intelligence and durable-execution system whose central responsibility is to **normalize and standardize business processes while preserving the truth, semantics, notation, provenance, and evidence of the source from which each process originated**.
 
-TALOS is not a BPMN converter, not a Temporal UI, and not a diagramming product. BPMN, UPN, UML Activity Diagrams, EPC, Petri Nets, SIPOC, Value Stream Mapping, Bizagi exports, Mermaid, draw.io, images, screenshots, natural language, existing workflow definitions, and the TALOS Canvas are all possible **process-expression sources**.
+TALOS is not a BPMN converter, not a Temporal UI, and not merely a diagramming product. BPMN, UPN, UML Activity Diagrams, EPC, Petri Nets, SIPOC, Value Stream Mapping, Bizagi exports, Mermaid, draw.io, images, screenshots, physical drawings, digital canvases, natural language, existing workflow definitions, runtime observations, and the TALOS Canvas are all possible **process-expression sources**.
 
-The system interprets those sources into a canonical TALOS Process Model, identifies missing execution semantics, designs the required human/system/AI/integration interactions, explains the proposed automation to the user, and uses Temporal as the durable execution engine after the process has been reviewed and validated.
+The system interprets those sources into a canonical TALOS Process Model, preserves exactly why each meaning is believed, validates what is complete or still missing, asks for clarification only when it matters, and only later designs capabilities and Temporal execution.
 
 ```text
 ANY PROCESS REPRESENTATION
           ↓
-  PROCESS UNDERSTANDING
+  SOURCE-AWARE UNDERSTANDING
           ↓
  TALOS CANONICAL MODEL
+          ↓
+ PROVENANCE / SOURCE LINEAGE
           ↓
  SEMANTIC VALIDATION
           ↓
@@ -21,7 +23,9 @@ ANY PROCESS REPRESENTATION
           ↓
  HUMAN-READABLE DRAFT + CANVAS
           ↓
- REVIEW / CORRECTION / VALIDATION
+ REVIEW / CORRECTION / CONFIRMATION
+          ↓
+ CAPABILITY BINDING
           ↓
  TEMPORAL EXECUTION PLAN
           ↓
@@ -32,42 +36,50 @@ ANY PROCESS REPRESENTATION
 
 > TALOS normalizes and standardizes the business process **without destroying or replacing its origin**.
 
-Normalization means creating a common semantic representation. It does **not** mean pretending BPMN, UPN, UML, EPC, Petri Nets, SIPOC, images, functional models, physical drawings, canvases, or free-form business descriptions mean the same thing or carry the same amount of evidence.
+Normalization creates common semantics. It does **not** pretend that BPMN, architecture diagrams, functional models, hand drawings, screenshots, native canvases, runtime observations or prose carry the same evidence or execution meaning.
 
-TALOS provenance now explicitly distinguishes:
+The frozen Phase-1 contracts now establish this chain:
 
 ```text
 SOURCE ORIGIN
-      ≠
-CAPTURE EVENT
-      ≠
-SOURCE REPRESENTATION
-      ≠
-SEMANTIC INTERPRETATION
+      ↓
+CAPTURE
+      ↓
+REPRESENTATION
+      ↓
+SOURCE OCCURRENCES / EVIDENCE
+      ↓
+SEMANTIC CLAIMS
+      ↓
+CANONICAL PROCESS REVISION
+      ↓
+SEMANTIC VALIDATION
+      ↓
+AUTOMATION-DESIGN READINESS
 ```
 
-A photograph is not the paper drawing. A screenshot is not the native canvas graph. A derivative is not the captured/native representation. A hash identifies representation bytes, not a non-byte physical origin.
+And the following distinctions are mandatory:
 
-The canonical/provenance model preserves, at minimum:
-
-- source origin and source medium;
-- capture method/context;
-- concrete source representation and byte identity;
-- source/native representation availability;
-- source notation / artifact classification;
-- source semantic planes;
-- local evidence fragments and source occurrences;
-- semantic meaning extracted from the source;
-- property-scoped confidence and provenance;
-- distinction between source truth, inference, suggestion, confirmation, and executable truth;
-- evidence perspective, including business intent vs implemented behavior;
-- source conflicts and their resolution history;
-- transformation/compiler version;
-- immutable process and deployment revisions.
+```text
+SOURCE ORIGIN                    ≠ capture event
+CAPTURE EVENT                    ≠ source representation
+PHYSICAL DRAWING                 ≠ photograph bytes
+NATIVE DIGITAL CANVAS            ≠ screenshot
+DERIVATIVE                       ≠ exact source representation
+SOURCE OCCURRENCE                ≠ conceptual identity
+SAME LABEL                       ≠ same source node
+TRUTH CLASS                      ≠ confidence
+SEMANTIC VALIDITY                ≠ automation readiness
+VALIDATION                       ≠ repair
+QUESTION                         ≠ assumed answer
+BUSINESS MODEL                   ≠ automatically one executable workflow
+FUNCTIONAL DEPENDENCY            ≠ runtime sequence
+BUSINESS SIDE EFFECT GAP         ≠ implementation detail to ignore
+```
 
 ## Lifecycle
 
-TALOS follows a gated lifecycle:
+TALOS follows a gated repository lifecycle:
 
 ```text
 brainstorming/
@@ -85,101 +97,111 @@ test/
 
 `test/` is also used before BUILD for semantic fixtures, pressure tests and gate evidence. Runtime/integration test implementation opens only when the corresponding build gates open.
 
-No stage silently overwrites the truth established by an earlier stage. Superseded artifacts are versioned and retained rather than deleted.
+No stage silently overwrites earlier truth. Superseded versions remain preserved.
 
 ## Repository map
 
-- `brainstorming/` — system truth, problem framing, research quarries, hypotheses, discovered constraints.
-- `design/` — product behavior, user experience, provenance/canvas contracts and frozen design decisions.
-- `arch/` — system boundaries, canonical model, compiler/runtime architecture, capability registry and Temporal mapping.
-- `plan/` — gated implementation roadmap and acceptance criteria.
-- `build/` — implementation artifacts only after the relevant design/architecture gates are closed.
-- `test/` — semantic fixtures, pressure-test results, gate closure evidence and later compiler/runtime/integration verification.
-- `deprecated/` — superseded material retained for history when future revisions replace prior contracts.
+- `brainstorming/` — system truth, source research, Mining Site quarries, hypotheses and discovered constraints.
+- `design/` — product contracts, provenance, semantic validation, Canvas contracts and frozen design decisions.
+- `arch/` — canonical model, system boundaries, capability/Temporal architecture and future compiler/runtime contracts.
+- `plan/` — gated roadmap and acceptance criteria.
+- `build/` — implementation only after the corresponding gate opens.
+- `test/` — fixtures, semantic pressure tests, regression results and gate closure evidence.
+- `deprecated/` — superseded material preserved when later versions replace earlier contracts.
 
 ## Current state
 
 ```text
 SYSTEM TRUTH                         🟢 v0.1 ESTABLISHED
-PROCESS INPUT / ORIGIN PRINCIPLE     🟢 ESTABLISHED
-PRODUCT CONTRACT                     🟡 DRAFT
 CANONICAL PROCESS MODEL              🟢 v0.1 FROZEN — T1-01 CLOSED
 MINING SITE                          🟢 Q01–Q12 FIRST BATCH COMPLETE
 PROVENANCE MODEL                     🟢 v0.3 FROZEN — T1-02 CLOSED
-SEMANTIC VALIDATION                  🟢 T1-03 NEXT
-CAPABILITY REGISTRY                  🟡 DRAFT / NOT FROZEN
-TEMPORAL EXECUTION MODEL             🟡 DRAFT / NOT FROZEN
-TALOS CANVAS                         🟡 DESIGN DRAFT / NOT FROZEN
+SEMANTIC VALIDATION                  🟢 v0.2 FROZEN — T1-03 CLOSED
+PHASE 1 — CANONICAL SEMANTICS        🟢 CLOSED
+
+TALOS CANVAS ADAPTER                 🟢 T2-01 NEXT — DESIGN FIRST
+BPMN ADAPTER                         ⚪ T2-02 PENDING
+IMAGE / GRAPHIC ADAPTER              ⚪ T2-03 PENDING
+
+CAPABILITY REGISTRY                  🟡 DRAFT / LATER GATE
+TEMPORAL EXECUTION MODEL             🟡 DRAFT / LATER GATE
+TALOS CANVAS PRODUCT CONTRACT        🟡 EXISTING DRAFT / TO RECONCILE WITH T2-01
 BUILD                                ⛔ CLOSED
 TEST DESIGN / GATE EVIDENCE          🟢 ACTIVE
 TEST IMPLEMENTATION                  ⛔ CLOSED
 ```
 
-## Gate evidence
+# Phase 1 gate evidence
 
-### T1-01 — Canonical Process Model
+## T1-01 — Canonical Process Model
 
-`CANONICAL PROCESS MODEL v0.1` was pressure-tested against twelve semantic fixtures covering sequence, decisions, parallel synchronization, waits, human approval, subprocesses, source conflicts, incomplete SIPOC, Petri-Net concurrency, BPMN source IDs, TALOS Canvas origin and imported automation evidence.
+Frozen:
+
+```text
+arch/01-CANONICAL-PROCESS-MODEL-v0.1.md
+```
+
+Evidence:
 
 ```text
 test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
 12 / 12 PASS
 ```
 
-### Mining Site first batch
+T1-01 answers:
 
-The first ten real Mining Site quarries were cross-synthesized in:
+> What does the source mean in a common TALOS semantic model?
+
+---
+
+## Mining Site — first evidence batch
+
+Real-source research:
+
+```text
+Q01–Q12
+```
+
+The first ten were cross-synthesized in:
 
 ```text
 brainstorming/mining-site/CROSS-QUARRY-SYNTHESIS-v0.1.md
 ```
 
-Two deliberately different final quarries extended the evidence:
+Q11 added physical-source capture evidence:
 
 ```text
-Q11 — physical hand-drawn process captured digitally
 brainstorming/mining-site/CROSS-QUARRY-Q11-ADDENDUM-v0.1.md
+```
 
-test/03-PHYSICAL-SOURCE-CAPTURE-FIXTURE-Q11-v0.1.md
+Q12 added functional-model / ICOM-like relationship evidence:
 
-Q12 — digital-canvas functional model with ICOM-like relationship roles
+```text
 brainstorming/mining-site/CROSS-QUARRY-Q12-ADDENDUM-v0.1.md
-
-test/04-FUNCTIONAL-MODEL-CANVAS-FIXTURE-Q12-v0.1.md
 ```
 
-Together Q01–Q12 expose provenance requirements around exact bytes vs derivatives, physical origin vs captured representation, declared-vs-observed format, source presentation/annotation planes, occurrence identity, property-scoped evidence, relationship uncertainty, causality preservation, handwritten ambiguity, functional relationship roles, notation-scoped geometry, and abstraction/decomposition semantics.
+The Mining Site established that TALOS must understand source class, semantic planes, relationship roles, source occurrence identity, uncertainty, functional decomposition, collaboration, concurrency, physical capture and non-process architecture before considering execution.
 
-### T1-02 — Provenance Model
+---
 
-Base pressure-test definition:
+## T1-02 — Provenance Model
 
-```text
-test/02-PROVENANCE-PRESSURE-TEST-SPEC-v0.1.md
-```
-
-Initial execution against v0.2:
+Initial v0.2 pressure test:
 
 ```text
-test/05-PROVENANCE-PRESSURE-TEST-RESULT-v0.1.md
+P01–P28
 26 PASS / 2 FAIL
 ```
 
-The two failures were Q11/Q12 origin-boundary defects:
+The Q11/Q12 failures forced explicit distinction between source origin, capture and representation.
+
+Frozen:
 
 ```text
-P17 physical origin vs digital capture
-P28 native canvas vs screenshot representation
-```
+design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.3.md
 
-That evidence forced v0.3 to add:
-
-```text
-SourceOrigin
-explicit origin → capture → representation lineage
-SourceAvailabilityRecord
-native/captured representation distinction
-representation-scoped byte identity
+blob:
+2e20a98aba744e9d719765c15429422f0e03c779
 ```
 
 Full regression:
@@ -189,49 +211,163 @@ test/06-PROVENANCE-REGRESSION-RESULT-v0.1.md
 28 / 28 PASS
 ```
 
-Frozen contract:
-
-```text
-design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.3.md
-blob: 2e20a98aba744e9d719765c15429422f0e03c779
-```
-
-Freeze declaration:
-
-```text
-design/02-PROVENANCE-v0.3-FREEZE-DECLARATION.md
-```
-
 Gate closure:
 
 ```text
 test/07-T1-02-PROVENANCE-GATE-CLOSURE-v0.1.md
 ```
 
-## Current gate
+T1-02 answers:
+
+> Why does TALOS believe this meaning, exactly what evidence supports it, and how can every later revision trace back to its origin?
+
+---
+
+## T1-03 — Semantic Validation
+
+Candidate v0.1 was pressure-tested against Q01–Q12 plus conflict, non-material inference, technical-deferral and clarification-history fixtures.
+
+Initial result:
 
 ```text
-T1-03 — Semantic Validation
+V01–V16
+15 PASS / 1 FAIL
 ```
 
-The provenance question is now closed for the first contract:
+The failure exposed a historical-state defect: findings/questions could appear mutable even though validation assessments are snapshots.
 
-> Where did this meaning come from and what evidence/authority supports it?
-
-The active question becomes:
-
-> Given everything TALOS knows, what is structurally/semantically valid, what remains uncertain, what requires confirmation, and what specifically blocks safe execution design?
-
-The active plan is:
+v0.2 added:
 
 ```text
-plan/00-TALOS-ROADMAP-v0.2.md
+immutable ValidationFinding
+FindingDisposition
+immutable ClarificationQuestion
+ClarificationResponse
+one primary scope per ValidationAssessment
+deterministic ReadinessDecision precedence
+```
+
+Frozen:
+
+```text
+design/03-SEMANTIC-VALIDATION-CONTRACT-v0.2.md
+
+commit:
+171b1f52cda4ca8fa61c2c8c78b1edc58b901ead
+
+blob:
+2b1463a6286fd3c3edcfd0417d29a9ffef45704f
+```
+
+Full regression:
+
+```text
+test/10-SEMANTIC-VALIDATION-REGRESSION-RESULT-v0.1.md
+16 / 16 PASS
+```
+
+Freeze declaration:
+
+```text
+design/04-SEMANTIC-VALIDATION-v0.2-FREEZE-DECLARATION.md
+```
+
+Gate closure:
+
+```text
+test/11-T1-03-SEMANTIC-VALIDATION-GATE-CLOSURE-v0.1.md
+```
+
+T1-03 answers separately:
+
+```text
+IS THIS MODEL COHERENT / USEFUL?
+WHAT IS INCOMPLETE?
+WHAT IS CONFLICTED?
+WHAT NEEDS CONFIRMATION?
+WHAT BLOCKS AUTOMATION DESIGN?
+WHAT CAN BE DEFERRED TO T4/T5?
+WHAT QUESTION HAS THE HIGHEST VALUE NEXT?
+```
+
+Readiness precedence for automation design is now frozen:
+
+```text
+material conflict
+  → BLOCKED_BY_CONFLICT
+
+else required semantics absent
+  → INSUFFICIENT_DETAIL
+
+else material candidate interpretation needs authority
+  → NEEDS_CONFIRMATION
+
+else
+  → READY_FOR_AUTOMATION_DESIGN
+```
+
+This does **not** mean ready to deploy. It means Phase-1 semantic gates no longer block moving into automation design for that validated scope.
+
+# Phase 1 closure
+
+TALOS now has frozen answers for three foundational questions:
+
+```text
+1. WHAT DOES IT MEAN?
+   Canonical Process Model v0.1
+
+2. WHY DO WE BELIEVE IT?
+   Provenance Model v0.3
+
+3. IS IT SUFFICIENT, AND WHAT IS MISSING?
+   Semantic Validation v0.2
+```
+
+Therefore:
+
+```text
+PHASE 1 — CANONICAL SEMANTICS
+✅ CLOSED
+```
+
+# Current gate — T2-01 TALOS Canvas Adapter
+
+Phase 2 begins with the source TALOS controls completely.
+
+The next contract must answer:
+
+> If a user draws directly inside TALOS, what exact native structured source and revision model should the Canvas emit so that Canonical v0.1, Provenance v0.3 and Semantic Validation v0.2 work without any special exception for TALOS' own UI?
+
+Expected path:
+
+```text
+TALOS Canvas native source
+        ↓
+SourceOrigin / native representation
+        ↓
+SourceOccurrence identities
+        ↓
+Canonical ProcessRevision
+        ↓
+Provenance links / claims
+        ↓
+ValidationAssessment / findings
+        ↓
+user correction
+        ↓
+new Canvas revision
+        ↓
+new ProcessRevision + reassessment
+```
+
+BUILD remains closed. T2-01 opens with **DESIGN → ARCH → PLAN** first.
+
+Active roadmap:
+
+```text
+plan/00-TALOS-ROADMAP-v0.3.md
 ```
 
 ## Working definition
 
-> **TALOS is the semantic guard between business-process intent and durable machine execution.** It accepts heterogeneous process representations, preserves their source origin and evidence lineage, normalizes them into a common semantic model, makes ambiguity and conflicting evidence visible, validates semantic readiness, designs an integrated execution plan, and only then maps validated process truth into Temporal and connected capabilities.
-
-The Mining Site adds an operational refinement:
-
-> Before TALOS can normalize a source, it must determine **what kind of evidence is present, where it originated, how it was captured, which semantic plane it belongs to, which relationship roles the source actually expresses, and which parts are candidates for business-process execution**.
+> **TALOS is the semantic guard between business-process expression and durable machine execution.** It accepts heterogeneous process representations, preserves their origin and evidence, normalizes their meaning, validates what is complete or still unknown, helps the user resolve only material ambiguities, and only then designs capabilities and durable Temporal execution without rewriting the business truth that came before it.
