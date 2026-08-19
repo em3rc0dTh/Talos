@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "talos.b1-runtime-selection.v1",
+  "nodeRuntime": "22.16.0",
+  "sqliteAdapter": {
+    "selection": "node:sqlite",
+    "api": "DatabaseSync",
+    "externalPackagePromoted": false,
+    "reason": "The bounded reference slice can prove real file-backed SQLite durability without adding a native addon dependency."
+  },
+  "typescriptExecution": {
+    "selection": "node --experimental-strip-types",
+    "scope": "B1 erasable TypeScript syntax only",
+    "externalCompilerPromoted": false,
+    "reason": "B1 foundational code uses only erasable type syntax; full compiler/toolchain remains available in the B0 baseline for later promotion before required."
+  },
+  "externalDependenciesPromoted": [],
+  "betterSqlite3BaselineStatus": "UNPROMOTED_CANDIDATE",
+  "fullTypeScriptToolchainStatus": "UNPROMOTED_CANDIDATE"
+}
