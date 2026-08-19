@@ -7,9 +7,16 @@ import { digestDeterministicJson } from '../packages/foundation/src/digest.ts';
 test('cross-layer deterministic IDs remain distinct by kind', () => {
   const source = createOpaqueId('source', 'same-seed');
   const canonical = createOpaqueId('canonical', 'same-seed');
+  const provenance = createOpaqueId('provenance', 'same-seed');
+  const validation = createOpaqueId('validation', 'same-seed');
   assert.notEqual(source, canonical);
+  assert.notEqual(canonical, provenance);
+  assert.notEqual(canonical, validation);
+  assert.notEqual(provenance, validation);
   assert.equal(getIdKind(source), 'source');
   assert.equal(getIdKind(canonical), 'canonical');
+  assert.equal(getIdKind(provenance), 'provenance');
+  assert.equal(getIdKind(validation), 'validation');
   assertIdKind(source, 'source');
   assert.throws(() => assertIdKind(source, 'canonical'), /id kind mismatch/);
 });
