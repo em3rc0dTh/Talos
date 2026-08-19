@@ -4,46 +4,53 @@
 
 TALOS is a source-aware process-intelligence and durable-execution system. Its central responsibility is to **normalize and standardize business processes while preserving truth, semantics, provenance, evidence and source-specific meaning**.
 
-TALOS is not a BPMN converter, not generic OCR/document summarization, not an n8n clone, not a Temporal UI, and not merely a diagramming product.
+TALOS is not a BPMN converter, generic OCR/document summarizer, n8n clone, Temporal UI or simple diagramming product.
 
 ## Governing source-agnostic principle
 
 > **Talos provides a source-agnostic intake architecture that can support heterogeneous process-expression sources through versioned adapters. Each source family becomes supported only after its adapter passes canonical, provenance, and semantic-validation conformance tests.**
 
-## Architectural path
+## Full architecture path
 
 ```text
 PROCESS EXPRESSION
         ↓
-PRESERVED SOURCE + VERSIONED ADAPTER
+PRESERVE SOURCE + VERSIONED ADAPTER
         ↓
-CANONICAL + PROVENANCE + SEMANTIC VALIDATION
+CANONICAL MODEL + PROVENANCE + SEMANTIC VALIDATION
         ↓
-HUMAN EXPLANATION / VISUAL REVIEW
+HUMAN EXPLANATION + VISUAL REVIEW
         ↓
 CORRECTION / CONFIRMATION / SEMANTIC FREEZE
         ↓
-CAPABILITY REQUIREMENTS
-        ↓
-HUMAN / FORM DESIGN WHERE REQUIRED
+CAPABILITY REQUIREMENTS / HUMAN-FORM DESIGN
         ↓
 EXPLICIT CAPABILITY OFFERING BINDINGS
         ↓
-NEXT: EXECUTION PLAN / TEMPORAL DESIGN
+EXECUTION PLAN
+        ↓
+TEMPORAL MAPPING
+        ↓
+RUNTIME SAFETY POLICY
+        ↓
+DEPLOYMENT REVISION / ENVIRONMENT REALIZATION
+        ↓
+DEPLOYMENT / RUNTIME OBSERVATION
 ```
 
-No adapter or capability binding may bypass semantic/provenance history or become Temporal execution truth directly.
+Every bridge is explicit and versioned. No downstream runtime object may silently become upstream business truth.
 
-# Closed foundations
+# Closed design / architecture phases
 
 ```text
 PHASE 1 — CANONICAL SEMANTICS       ✅ CLOSED
 PHASE 2 — INPUT UNDERSTANDING       ✅ CLOSED
 PHASE 3 — EXPLANATION & REVIEW      ✅ CLOSED
 PHASE 4 — CAPABILITY MODEL          ✅ CLOSED
+PHASE 5 — TEMPORAL EXECUTION MODEL  ✅ CLOSED
 ```
 
-# Phase 1 — Canonical Semantics
+## Phase 1 — Canonical Semantics
 
 ```text
 T1-01 Canonical Process Model       ✅ FROZEN v0.1
@@ -51,13 +58,13 @@ T1-02 Provenance Model              ✅ FROZEN v0.3
 T1-03 Semantic Validation           ✅ FROZEN v0.2
 ```
 
-Key rule:
+Core law:
 
 ```text
 SOURCE TRUTH != confidence != readiness != execution
 ```
 
-# Phase 2 — Input Understanding
+## Phase 2 — Input Understanding
 
 ```text
 P2-00 Common Source Intake          ✅ FROZEN v0.2
@@ -70,28 +77,9 @@ P2-05 Existing Automation Adapter   ✅ 32/32
 P2-06 Cross-Adapter Conformance     ✅ 24/24
 ```
 
-Core source laws include:
+Design/architecture proof does not mean those external adapters are implemented. The first BUILD is still restricted to native TALOS Canvas intake.
 
-```text
-source identity != canonical identity
-pixels != perceived structure != interpreted semantics
-text span != semantic claim != process node
-implemented behavior != business intent
-definition config != deployment observation != runtime observation
-```
-
-# Build-opening review
-
-The Phase-2 build-opening review formally closed:
-
-```text
-DECISION                            ❌ NO-GO
-BUILD                               ⛔ CLOSED
-```
-
-because the architecture-first sequence still required human review, capability design and Temporal execution design before implementation.
-
-# Phase 3 — Explanation & Review
+## Phase 3 — Explanation & Review
 
 ```text
 T3-01 Human-readable Workflow Draft      ✅ FROZEN v0.2 — 30/30
@@ -99,162 +87,193 @@ T3-02 Visual Review Workspace            ✅ FROZEN v0.2 — 32/32
 T3-03 Correction/Confirmation/Freeze     ✅ FROZEN v0.2 — 36/36
 ```
 
-Phase 3 proves:
+Critical laws:
 
 ```text
-explanation may preserve property-level evidence facets
+rendered explanation != semantic truth
 text / Canvas / evidence / findings share one pinned baseline
 one review workspace may contain multiple semantic scopes
 review action != source rewrite
 stale command != safe write
 semantic change → new ProcessRevision + ValidationAssessment
 business semantic freeze != automation readiness
-AUTOMATION_DESIGN_HANDOFF requires READY_FOR_AUTOMATION_DESIGN
+```
+
+## Phase 4 — Capability Model
+
+```text
+T4-01 Capability Contract                 ✅ FROZEN v0.2 — 32/32
+T4-02 Forms / Human Interaction           ✅ FROZEN v0.2 — 36/36
+T4-03 Integration / Capability Binding    ✅ FROZEN v0.2 — 36/36
+```
+
+Critical separation:
+
+```text
+BUSINESS MEANING
+!= CapabilityRequirement
+!= CapabilityOffering
+!= MatchAssessment
+!= SelectionDecision
+!= CapabilityBindingRevision
+!= EnvironmentBindingRealization
+```
+
+Reusable forms own form-local fields/actions; `FormUseBinding` owns process-context mappings. Reusable capability bindings own symbolic configuration/credential contracts, not environment values or secret handles.
+
+## Phase 5 — Temporal Execution Model
+
+```text
+T5-01 ExecutionPlan Contract        ✅ FROZEN v0.2 — 40/40
+T5-02 Temporal Mapping Strategy     ✅ FROZEN v0.2 — 46/46
+T5-03 Runtime Safety / Policy       ✅ FROZEN v0.2 — 44/44
+T5-04 DeploymentRevision            ✅ FROZEN v0.2 — 48/48
 ```
 
 Consolidation:
 
 ```text
-arch/13-PHASE-3-EXPLANATION-REVIEW-CONSOLIDATION-v0.1.md
+arch/22-PHASE-5-TEMPORAL-EXECUTION-MODEL-CONSOLIDATION-v0.1.md
 ```
 
-# Phase 4 — Capability Model
-
-## T4-01 Capability Contract
+Critical execution laws:
 
 ```text
-✅ FROZEN v0.2 — 32/32
+semantic subject != ExecutionElement
+ExecutionElement != Temporal primitive automatically
+CapabilityBindingRevision != CapabilityUseOccurrence
+ExecutionRegion != Workflow automatically
+human interaction != Signal/Update automatically
+wait != Timer automatically
+Timer != Schedule != Start Delay
+subprocess != Child Workflow automatically
+business loop != retry / Continue-As-New
+Temporal retry != idempotency guarantee
+cancellation != compensation
+Temporal default acceptance = explicit versioned design decision
+DeploymentRevision != DeploymentAttempt != DeploymentObservation != WorkflowExecution
+current/ramping/draining Worker state != immutable deployment-design truth
+secure reference handle != secret value
 ```
 
-Core boundary:
+Phase 5 was checked against current official Temporal concepts using versioned `TemporalFeatureProfile` and `TemporalDefaultBehaviorProfile` reference contexts so Temporal evolution does not rewrite historical Talos meaning.
+
+# Phase 6 — Reference Vertical Slice
+
+A post-Phase-5 BUILD-opening review re-audited the historical Canvas-only implementation plan against frozen Phases 1–5.
+
+The old plan was preserved but found insufficient for end-to-end BUILD.
+
+A new active plan was created and pressure-tested:
 
 ```text
-CapabilityRequirement
-!= CapabilityOfferingRevision
-!= CapabilityMatchAssessment
-!= CapabilityBinding
-!= Temporal execution mapping
+plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.2.md
+
+v0.1 plan pressure test    36 / 40
+v0.2 full regression       40 / 40
 ```
 
-`CapabilityRequirementFacet` preserves property-level design basis/state, so current providers/suggestions cannot become hard requirements accidentally.
-
-## T4-02 Forms / Human Interaction
+Final review decision:
 
 ```text
-✅ FROZEN v0.2 — 36/36
+REFERENCE VERTICAL-SLICE BUILD      🟢 BOUNDED GO
+BROAD PRODUCT BUILD                 ⛔ CLOSED
 ```
 
-Core boundary:
+Evidence:
 
 ```text
-human interaction != form
-logical form != renderer
-role != runtime assignee
-identity assurance != identity provider
-business deadline != Temporal timer
-form submit != business completion
+test/86-POST-PHASE-5-BUILD-OPENING-REVIEW-FINAL-RESULT-v0.1.md
 ```
 
-Reusable form law:
+Authorization:
 
 ```text
-FormRevision owns form-local fields/actions/rules
-FormUseBinding owns process-context information/outcome mappings
+plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.1.md
 ```
 
-## T4-03 Integration / Capability Binding
+Authorized implementation path only:
 
 ```text
-✅ FROZEN v0.2 — 36/36
+build/reference-vertical-slice/
 ```
 
-Core boundary:
+## Reference process
+
+Initial native Canvas truth:
 
 ```text
-MatchAssessment
-!= SelectionDecision
-!= CapabilityBindingRevision
-!= EnvironmentBindingRealization
-!= Temporal execution mapping
+Request submitted
+        ↓
+Review request [actor = UNKNOWN]
+        ↓
+Approved?
+   ├── YES → Send confirmation email → Completed
+   └── NO  → Rejected
 ```
 
-Reusable binding design now contains:
+Reference Talos loop:
 
 ```text
-logical/provider I/O mappings
-business outcome mappings
-ConfigurationResolutionSlot(s)
-CredentialResolutionContract(s)
+actor UNKNOWN
+→ validation finding
+→ explanation / visual review
+→ explicit correction actor=Manager
+→ new ProcessRevision / ValidationAssessment
+→ automation-design freeze
+→ capability requirement / explicit test offering binding
+→ ExecutionPlan
+→ TemporalMapping
+→ RuntimePolicy
+→ DeploymentRevision
+→ actual local/test Temporal execution
+→ runtime evidence / backward lineage
 ```
 
-but not concrete environment values or secret handles.
-
-Therefore:
+## Authorized BUILD stages
 
 ```text
-secret rotation != binding design mutation
-environment value rotation != binding design mutation
-provider/mapping design change → new binding revision
-business semantic change → upstream review/capability redesign
+B0 contract manifest / workspace / dependency boundaries    🟢 NEXT
+B1 IDs / deterministic JSON / SQLite repositories            ⚪
+B2 Canvas/source/intake + C01–C20                            ⚪
+B3 canonical/provenance/validation                           ⚪
+B4 explanation/review/correction/freeze                      ⚪
+B5 capability/human/form/binding                             ⚪
+B6 ExecutionPlan/mapping/policy/deployment domains           ⚪
+B7 Temporal worker/reference provider                        ⚪
+B8 minimal reference API/web                                 ⚪
+B9 actual Temporal E2E runtime + evidence                     ⚪
+B10 failure/retry/restart/lineage closure                    ⚪
 ```
 
-## Phase-4 consolidation
+## Still not authorized
 
 ```text
-arch/17-PHASE-4-CAPABILITY-MODEL-CONSOLIDATION-v0.1.md
-plan/06-PHASE-4-CAPABILITY-MODEL-GATE-v0.1.md
+BPMN/image/language/n8n adapter implementation
+real Gmail/Drive/SaaS connectors
+production IAM/secrets
+production Temporal deployment
+multi-user collaboration
+full product visual polish
+broad provider/source expansion
 ```
 
-```text
-PHASE 4 — CAPABILITY MODEL          ✅ CLOSED
-```
+Any frozen-contract defect found in BUILD closes the affected stage until versioned DESIGN/ARCH evolution and regression restore compatibility.
 
-# Phase 5 — Temporal Execution Model
+# Active planning
 
 ```text
-T5-01 ExecutionPlan Contract        🟢 NEXT
-T5-02 Temporal Mapping Strategy     ⚪ PENDING
-T5-03 Runtime Safety / Policy       ⚪ PENDING
-T5-04 DeploymentRevision            ⚪ PENDING
-PHASE 5                             🟡 NEXT / OPEN
-```
-
-Phase-5 governing boundary:
-
-```text
-ProcessRevision
-!= CapabilityDesignRevision
-!= CapabilityBindingRevision
-!= ExecutionPlan
-!= TemporalMapping
-!= DeploymentRevision
-!= WorkflowExecution
-```
-
-The next question is:
-
-> **How does TALOS convert one pinned semantic + capability + binding design into a separate immutable execution plan, choosing durable orchestration structures only where semantics/design justify them, without making every process node a Temporal Activity?**
-
-# BUILD policy
-
-```text
-BUILD = CLOSED
-```
-
-Before implementation, frozen Phases 1–5 must be re-audited and an explicit end-to-end BUILD authorization must close successfully.
-
-# Active plan
-
-```text
-plan/00-TALOS-ROADMAP-v0.16.md
+plan/00-TALOS-ROADMAP-v0.19.md
+plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.2.md
+plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.1.md
 ```
 
 ## Immediate next move
 
 ```text
-T5-01 — EXECUTION PLAN CONTRACT
+B0 — CONTRACT MANIFEST / WORKSPACE / DEPENDENCY BOUNDARIES
 ```
 
 ## Working definition
 
-> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves source truth, normalizes without erasing origin, validates uncertainty/conflict, makes interpretation reviewable, freezes accepted semantics, designs capabilities independently from providers, binds implementations explicitly and only then designs durable execution.
+> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves source truth, normalizes without erasing origin, validates uncertainty/conflict, makes interpretation explainable and reviewable, freezes accepted semantics, separates capability requirements from implementations, derives explicit execution/Temporal/runtime/deployment design, and preserves lineage through observed runtime evidence.
