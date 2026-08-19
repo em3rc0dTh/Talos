@@ -7,6 +7,7 @@ import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-d
 import { buildRestartSafeReferenceVerticalSlice } from '../packages/application/src/reference-bootstrap.ts';
 import { startReferenceDemo } from '../apps/reference-api/src/server.ts';
 
+// Hands-on regression: the same durable runtime directory must survive a full stop/start cycle.
 function documentCount(dbPath: string): number {
   const store = new SqliteDocumentStore(dbPath);
   try {
