@@ -2,7 +2,7 @@
 
 ## Normalize and standardize business processes without erasing their origin
 
-TALOS is a source-aware process-intelligence and durable-execution system. Its central responsibility is to **normalize and standardize business processes while preserving truth, semantics, provenance, evidence, uncertainty, conflict and source-specific meaning**.
+TALOS is a source-aware process-intelligence and durable-execution system. Its responsibility is to **normalize and standardize business processes while preserving truth, semantics, provenance, evidence, uncertainty, conflict and source-specific meaning**.
 
 TALOS is not a BPMN converter, generic OCR/document summarizer, n8n clone, Temporal UI, or low-code diagrammer.
 
@@ -117,7 +117,7 @@ B3 Canonical / Provenance / Validation            ✅ CLOSED — 27/27
 B4 Explanation / Review / Correction / Freeze     ✅ CLOSED — 13/13
 B5 Capability / Human / Form / Binding             ✅ CLOSED — 12/12
 B6 Execution / Mapping / Policy / Deployment      ✅ CLOSED — 14/14 B6
-B7 Temporal Worker / Reference Provider            🟡 OPEN / PARTIAL
+B7 Temporal Worker / Reference Provider            🟡 OPEN — PRE-SDK 20/20 / LOCK GATE
 B8 Minimal reference API / web                     ⛔ CLOSED
 B9 Actual Temporal E2E + server evidence           ⛔ CLOSED
 B10 Failure / retry / restart / lineage closure    ⛔ CLOSED
@@ -129,7 +129,9 @@ Prior B2→B5 executable evidence remains:
 77 / 77 PASS
 ```
 
-## B5 handoff
+# B5/B6 handoff
+
+Frozen capability handoff:
 
 ```text
 PR2 / accepted automation-design freeze
@@ -142,16 +144,12 @@ HumanInteractionDesign + reusable FormRevision/FormUseBinding
         ↓
 REFERENCE_EMAIL_SINK test offering
         ↓
-CapabilityMatchAssessment
-        ↓
-explicit CapabilitySelectionDecision
-        ↓
-CapabilityBindingRevision
+explicit CapabilityBindingRevision
         ↓
 CapabilityBindingAssessment = READY_FOR_EXECUTION_DESIGN
 ```
 
-Logical notification input:
+Logical email input:
 
 ```text
 recipientEmail
@@ -160,8 +158,6 @@ basis = SEMANTIC_DERIVED
 ```
 
 No recipient identity/address is business-semantic or binding truth.
-
-## B6 handoff
 
 Execution design:
 
@@ -173,7 +169,7 @@ Send confirmation email     → CAPABILITY_INVOCATION
 Completed / Rejected        → COMPLETION_COORDINATION
 ```
 
-Execution input:
+Runtime data handoff:
 
 ```text
 notificationRecipientEmail
@@ -191,9 +187,9 @@ email capability occurrence  → ACTIVITY
 branch/completion             → WORKFLOW_LOGIC
 ```
 
-This is a reference runtime-design decision, not a universal mapping rule.
+This is reference runtime design, not a universal semantic mapping rule.
 
-Reference policy:
+Material runtime policy:
 
 ```text
 Activity retry:
@@ -215,13 +211,13 @@ TRANSIENT_REFERENCE_FAILURE = retryable
 INVALID_REFERENCE_REQUEST = non-retryable
 ```
 
-B6 deployment design deliberately remains:
+B6 deployment design remains intentionally:
 
 ```text
 INCOMPLETE_ENVIRONMENT_REALIZATION
 ```
 
-because B6 does not fake an actual Namespace, Worker artifact, Task Queue/type registration, deployment attempt, runtime observation, or Workflow execution.
+because B6 does not fake an actual Namespace, Worker artifact, Task Queue/type registration, deployment attempt, runtime observation or Workflow execution.
 
 Evidence:
 
@@ -229,40 +225,11 @@ Evidence:
 test/95-B6-EXECUTION-TEMPORAL-POLICY-DEPLOYMENT-IMPLEMENTATION-RESULT-v0.1.md
 ```
 
-# B7 — current partial state
+# B7 — current state
 
-## Reference provider lane
+## Exact Temporal dependency baseline
 
-Implemented:
-
-```text
-ReferenceEmailSinkService
-```
-
-Provider proof:
-
-```text
-exact B6 idempotency-key derivation     ✅
-transient failure injection             ✅
-permanent invalid-request failure       ✅
-logical effect uniqueness               ✅
-duplicate-identical handling            ✅
-provider SQLite restart durability      ✅
-provider executable tests               ✅ 6/6
-architecture boundary                   ✅ 16 modules / 0 errors
-```
-
-The provider writes only to:
-
-```text
-.runtime/reference-email-sink.sqlite
-```
-
-and never to Talos semantic/design storage.
-
-## Temporal SDK / Worker lane
-
-A freshness correction on 2026-08-19 verified the current Temporal TypeScript SDK family through npm distribution pages and the official `temporalio/sdk-typescript` `v1.22.0` tag:
+Current verified family:
 
 ```text
 @temporalio/common    1.22.0
@@ -273,49 +240,239 @@ A freshness correction on 2026-08-19 verified the current Temporal TypeScript SD
 @temporalio/testing   1.22.0
 ```
 
-The intermediate `1.21.1` conclusion in `test/96` came from a stale GitHub Releases search index and is superseded by:
+All Temporal packages must remain on the same exact version.
+
+Active baseline:
+
+```text
+build/reference-vertical-slice/dependencies/dependency-baseline.json
+```
+
+Dependency freshness evidence:
 
 ```text
 test/97-B7-TEMPORAL-SDK-BASELINE-CORRECTION-v0.1.md
 ```
 
-No SDK package/import had been promoted, so no runtime code was affected by that temporary dependency conclusion.
+## Reference provider
 
-Current hard gate:
-
-```text
-trustworthy transitive npm lock          ⛔ REQUIRED
-@temporalio/* package.json promotion     ⛔ PENDING LOCK
-@temporalio/* source imports             ⛔ CLOSED
-Workflow / Activity wrapper / Worker     ⛔ NOT STARTED
-```
-
-The current local execution environment cannot resolve `registry.npmjs.org`; Talos will not commit a fabricated/incomplete lock merely to bypass this boundary.
-
-Provider evidence:
+Active provider request:
 
 ```text
-test/96-B7-TEMPORAL-SDK-REFERENCE-PROVIDER-PARTIAL-RESULT-v0.1.md
+referenceRequestId
+capabilityUseOccurrenceId
+to
 ```
 
-Dependency correction evidence:
+Only `to` is a mapped provider business input. The IDs are runtime/idempotency context.
+
+The TEST_ONLY provider owns its fixed confirmation copy and first-effect timestamp.
+
+Duplicate identity is:
 
 ```text
-test/97-B7-TEMPORAL-SDK-BASELINE-CORRECTION-v0.1.md
+same idempotency key
++ same logical provider request
 ```
+
+not wall-clock equality. A later identical retry therefore remains `DUPLICATE_IDENTICAL` and keeps one effect row.
+
+Provider result:
+
+```text
+7 / 7 PASS
+```
+
+Evidence:
+
+```text
+test/99-B7-REFERENCE-PROVIDER-RETRY-IDEMPOTENCY-HARDENING-v0.1.md
+```
+
+## Pre-SDK Worker runtime program
+
+Package:
+
+```text
+workers/reference-temporal-worker/
+```
+
+Current source has **zero `@temporalio/*` imports**.
+
+`CompiledReferenceRuntimeProgram` pins exact B6 lineage and material policy instead of letting the future Worker load `latest` Talos state or redefine constants.
+
+Runtime input remains separate:
+
+```text
+ReferenceWorkflowInput
+  referenceRequestId
+  notificationRecipientEmail
+  immutable compiled program
+```
+
+Human state machine:
+
+```text
+PENDING
+  ├─ APPROVED → SEND_CONFIRMATION
+  └─ REJECTED → COMPLETE_REJECTED
+
+post-finalization submission
+→ REVIEW_ALREADY_FINALIZED
+```
+
+Worker/state result:
+
+```text
+10 / 10 PASS
+```
+
+Evidence:
+
+```text
+test/100-B7-PRE-SDK-WORKER-CONTRACT-RESULT-v0.1.md
+```
+
+## Neutral Activity adapter
+
+Without importing Temporal, Talos already proves the future SDK boundary:
+
+```text
+startToCloseTimeout = 5000
+scheduleToCloseTimeout = 10000
+retry.initialInterval = 250
+retry.backoffCoefficient = 2
+retry.maximumInterval = 1000
+retry.maximumAttempts = 3
+retry.nonRetryableErrorTypes = [INVALID_REFERENCE_REQUEST]
+```
+
+Provider request derivation remains exactly:
+
+```text
+{ referenceRequestId, capabilityUseOccurrenceId, to }
+```
+
+Concrete provider exceptions are classified into the frozen B6 failure vocabulary before the future SDK wrapper creates Temporal application failures.
+
+Adapter result:
+
+```text
+3 / 3 PASS
+```
+
+Evidence:
+
+```text
+test/101-B7-PRE-SDK-ACTIVITY-ADAPTER-CONTRACT-v0.1.md
+```
+
+## Current B7 executable total
+
+```text
+reference provider                  7 / 7
+pre-SDK Worker/state contract      10 / 10
+pre-SDK Activity adapter            3 / 3
+────────────────────────────────────────
+TOTAL                              20 / 20
+FAIL                                0
+
+architecture DAG                   PASS — 16 modules / 0 errors
+@temporalio source imports          0
+```
+
+Partial verifier:
+
+```text
+npm run b7:partial:verify
+```
+
+Root `npm test` intentionally remains pinned to B6 because B7 is not closed.
+
+# Mechanical B7 lock gate
+
+Verifier:
+
+```text
+scripts/verify-b7-temporal-lock.mjs
+```
+
+Commands:
+
+```text
+npm run b7:lock:status
+npm run b7:lock:verify
+```
+
+Current state:
+
+```text
+PENDING_SAFE
+```
+
+Meaning:
+
+```text
+exact Temporal baseline          ✅ 1.22.0
+Temporal package promotions      0
+Temporal source imports          0
+lockReady                        false
+errors                           0
+```
+
+The gate returns `READY` only after all six exact packages are promoted and the real package lock carries matching version/resolved/integrity entries.
+
+Partial promotion, mixed versions, or an SDK import before a trustworthy lock is `FAIL`.
+
+Evidence:
+
+```text
+test/102-B7-TEMPORAL-LOCK-GATE-RESULT-v0.1.md
+```
+
+# Current hard blocker
+
+The present execution environment cannot reliably resolve `registry.npmjs.org`, so it cannot generate the trustworthy full transitive npm lock required by Talos BUILD governance.
+
+Talos will not fabricate that lock.
+
+Before first real SDK source import:
+
+```text
+npm run b7:lock:verify
+→ READY
+```
+
+Only then may B7 implement the actual official Temporal SDK layer:
+
+```text
+defineUpdate + setHandler validator
+Workflow condition
+proxyActivities with compiled options
+ApplicationFailure realization
+Worker.create
+```
+
+Workflow code remains forbidden from direct access to:
+
+```text
+Talos SQLite
+reference provider SQLite
+filesystem
+HTTP/provider calls
+latest mutable Talos design
+```
+
+B9 remains the first stage allowed to claim Temporal-server-backed Workflow execution evidence.
 
 # Persistence isolation
-
-Reference local runtime uses two physically separate databases:
 
 ```text
 .runtime/talos-state.sqlite
 .runtime/reference-email-sink.sqlite
 ```
 
-Talos immutable repositories use only the first. The reference provider uses only the second.
-
-Workflow code is forbidden from directly accessing either database, filesystem, HTTP/provider calls, or mutable/latest Talos design.
+Talos immutable repositories use only the first. The reference provider uses only the second. The future Workflow accesses neither directly.
 
 # Still not authorized
 
@@ -331,7 +488,7 @@ broad provider/source expansion
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.28.md
+plan/00-TALOS-ROADMAP-v0.30.md
 plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.3.md
 plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md
 ```
@@ -339,10 +496,11 @@ plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md
 ## Immediate next move
 
 ```text
-finish B7 pre-SDK Worker/failure contracts
-+ resolve trustworthy npm lock for exact Temporal 1.22.0 family
-→ promote locked dependencies
-→ implement TalosReferenceApprovalWorkflow
-→ implement sendReferenceConfirmation Activity wrapper
+run B7 in a network-capable dependency environment
+→ generate trustworthy npm lock for exact Temporal 1.22.0 family
+→ b7:lock:verify = READY
+→ promote/commit locked SDK dependencies
+→ implement actual TalosReferenceApprovalWorkflow
+→ implement sendReferenceConfirmation Temporal Activity wrapper
 → build real reference Worker artifact
 ```
