@@ -69,6 +69,19 @@ export class ReferenceEmailSinkStore {
     return Number(row.count);
   }
 
+  list(): ReferenceEmailEffect[] {
+    const rows = this.#db.prepare(`
+      SELECT idempotency_key, request_json, created_at
+      FROM reference_email_effects
+      ORDER BY created_at, idempotency_key
+    `).all() as Array<{idempotency_key: string; request_json: string; created_at: string}>;
+    return rows.map((row) => ({
+      idempotencyKey: row.idempotency_key,
+      request: JSON.parse(row.request_json) as ReferenceEmailEffect['request'],
+      createdAt: row.created_at,
+    }));
+  }
+
   tableNames(): string[] {
     const rows = this.#db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`).all() as Array<{name: string}>;
     return rows.map((row) => row.name);
