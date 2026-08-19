@@ -2,26 +2,26 @@
 
 ## Purpose
 
-The Mining Site is TALOS's controlled experimentation area for learning how heterogeneous business-process sources can be interpreted, normalized, and handed to the Foundry without erasing their origin.
+The Mining Site is TALOS's controlled experimentation area for learning how heterogeneous business-process and architecture sources can be interpreted, normalized, and handed to the Foundry without erasing their origin.
 
-A quarry is one concrete process source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, or another process representation.
+A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, or another process/system representation.
 
-The Mining Site does not produce executable code. Its job is to preserve source truth, perform an auditable transformation, surface uncertainty, and emit a clean Foundry Source.
+The Mining Site does not produce executable code. Its job is to preserve source truth, perform an auditable transformation, surface uncertainty, classify the source artifact, discover executable slices when they exist, and emit a clean Foundry Source.
 
 ```text
 QUARRY-NN
-raw process source
+raw source artifact
         ↓
 TRANSFORM-NN
-agent interpretation + normalization
+artifact classification + agent interpretation + normalization
         ↓
 FOUNDRY-SOURCE-NN
-canonical process handoff
+canonical semantic handoff
         ↓
 FOUNDRY
 execution design
         ↓
-TEMPORAL MODEL
+TEMPORAL MODEL(S)
 ```
 
 ## Standard quarry structure
@@ -36,6 +36,8 @@ brainstorming/mining-site/
 ```
 
 The original source artifact should be retained whenever repository ingestion supports its native format. The source record must always capture origin metadata and a stable digest so the transformation remains traceable even when the native binary has not yet been attached.
+
+File-name/extension metadata is not sufficient to identify byte format. If the observed file signature differs from the supplied extension, preserve both facts rather than silently correcting the source.
 
 ## Truth discipline
 
@@ -53,26 +55,31 @@ Confidence never replaces truth state.
 
 A transform may extract and normalize:
 
+- artifact/source class before assuming workflow semantics;
 - process trigger and terminal outcomes;
+- process scope and candidate executable slices;
+- architecture layers/domain containers;
 - participants, actors, lanes and ownership;
 - participant-local control flow versus cross-participant communication;
-- steps and activities;
+- source-node identity independently from display labels;
+- provisional node semantic type: step/stage, capability, service, resource, repository, catalog/state, infrastructure, governance work, model/artifact;
+- edge semantic type where supported: sequence, message/communication, dependency, handoff, feedback, association;
 - decisions and branch outcomes;
 - branch convergence / merge semantics;
 - parallelism and joins;
 - waits, deadlines and external events;
 - human interactions and physical work;
-- subprocesses;
+- subprocesses and nested work;
 - boundary events and exception paths;
 - business objects and state evidence;
 - identity/access gates and preconditions;
 - business communication intent and explicit channel evidence;
 - message/correlation requirements across participant boundaries;
-- source-node identity independently from display labels;
 - local milestones/ends versus collaboration-level completion;
 - missing continuation or re-entry paths;
-- data and rules;
-- integrations explicitly present in the source;
+- data, rules and explicit integrations;
+- architecture/resource/infrastructure nodes that may not belong to executable control flow;
+- source analytics, simulation or performance overlays separately from semantic process state;
 - uncertainties, conflicts and missing semantics;
 - candidate Temporal concepts, without pretending an implementation choice is source truth.
 
@@ -82,9 +89,9 @@ A Foundry Source is not Temporal code and is not yet a deployment plan. It is th
 
 The Foundry receives this artifact and asks a different question:
 
-> How should this validated business-process meaning become a durable executable system?
+> Which validated semantics are executable lifecycles, what durable boundaries should exist, and how should those lifecycles become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy and technical failure behavior.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, and decomposition across multiple durable workflows.
 
 ## Experimental rule
 
@@ -106,6 +113,15 @@ PARTICIPANT-LOCAL END            ≠ global collaboration completion
 SAME DISPLAY LABEL               ≠ same source node
 SAME BUSINESS QUESTION           ≠ same authority / data context
 MISSING CONTINUATION             ≠ implicit success
+REFERENCE ARCHITECTURE           ≠ one executable Workflow
+ARCHITECTURE LAYER               ≠ participant / role / Task Queue
+SERVICE / CAPABILITY BOX         ≠ Temporal Activity
+RESOURCE / REPOSITORY / CATALOG  ≠ process step
+MESSAGE QUEUE COMPONENT          ≠ Temporal Task Queue or business message flow
+ARCHITECTURE EDGE                ≠ sequence flow until proven
+FEEDBACK TOPOLOGY                ≠ single process loop until instance semantics are proven
+METRIC / SIMULATION OVERLAY      ≠ business state or execution policy
+FILE EXTENSION                   ≠ authoritative byte-format truth
 ```
 
 ## Current evidence set
@@ -127,31 +143,86 @@ QUARRY-04  Candidate Application Lifecycle
 QUARRY-05  Ward / Pharmacy Drug Fulfillment Collaboration
            participant-local control flows + cross-participant message flows + correlation gap
            + duplicate labels/source identity + local-end-vs-global-completion + missing procurement re-entry
+
+QUARRY-06  Reference Architecture for AI (REFAI)
+           artifact-class detection + architecture layers + capability/resource/infrastructure typing
+           + executable-slice discovery + feedback topology + simulation/metric overlay separation
 ```
 
-## Emerging evidence after five quarries
+## Emerging evidence after six quarries
 
-The Mining Site now has repeated evidence for a small set of durable semantic families, but they are still provisional:
+The Mining Site now has evidence for a broader semantic model. It remains provisional:
 
 ```text
+SOURCE ARTIFACT CLASS
+SOURCE PROVENANCE / BYTE IDENTITY
+
 PROCESS / PROCESS SCOPE
+EXECUTABLE SLICE
+
+ARCHITECTURE LAYER / DOMAIN CONTAINER
 PARTICIPANT
 ROLE / LANE
-NODE / STEP / STAGE
+
+SOURCE NODE IDENTITY
+NODE SEMANTIC TYPE
+  ├── STEP / STAGE
+  ├── CAPABILITY / SERVICE
+  ├── RESOURCE / REPOSITORY / CATALOG / STATE
+  ├── INFRASTRUCTURE
+  ├── GOVERNANCE WORK
+  └── MODEL / BUSINESS ARTIFACT
+
+EDGE SEMANTIC TYPE
+  ├── SEQUENCE
+  ├── MESSAGE / COMMUNICATION
+  ├── HANDOFF / DEPENDENCY
+  ├── FEEDBACK
+  └── UNRESOLVED ASSOCIATION
+
 DECISION + BRANCH
 MERGE / CONVERGENCE
-MESSAGE / COMMUNICATION BOUNDARY
 WAIT / EVENT
-SUBPROCESS
+SUBPROCESS / NESTED WORK
 BUSINESS OBJECT / STATE EVIDENCE
 BUSINESS OUTCOME
 EXCEPTION / ESCALATION
 IDENTITY / ACCESS CONDITION
-SOURCE NODE IDENTITY
+HUMAN / PHYSICAL WORK BOUNDARY
 CORRELATION REQUIREMENT
 LOCAL MILESTONE VS COLLABORATION COMPLETION
+MISSING CONTINUATION / RE-ENTRY
+SOURCE ANALYTICS / SIMULATION OVERLAY
 ```
 
 These are evidence-backed hypotheses, not yet a frozen TALOS standard language.
+
+## Current transformation lesson
+
+After Quarry 06, the Mining Site cannot assume:
+
+```text
+INPUT DIAGRAM
+    ↓
+ONE CANONICAL WORKFLOW
+```
+
+The safer general model is:
+
+```text
+INPUT SOURCE
+    ↓
+ARTIFACT CLASSIFICATION
+    ↓
+SOURCE GRAPH + PROVENANCE
+    ↓
+SEMANTIC TYPING
+    ↓
+EXECUTABLE-SLICE DISCOVERY
+    ↓
+FOUNDRY SOURCE
+    ↓
+ONE OR MORE TEMPORAL EXECUTION DESIGNS
+```
 
 The standard language remains provisional. Each new quarry should either reinforce existing concepts, expose missing semantics, or challenge an assumption already present in the model.
