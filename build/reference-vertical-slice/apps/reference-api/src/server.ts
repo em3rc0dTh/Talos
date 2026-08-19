@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
-import { buildReferenceVerticalSlice } from '../../../packages/application/src/reference-vertical-slice.ts';
+import { buildRestartSafeReferenceVerticalSlice } from '../../../packages/application/src/reference-bootstrap.ts';
 import { compileReferenceRuntimeProgram } from '../../../workers/reference-temporal-worker/src/compile-runtime-program.ts';
 import { createReferenceTemporalWorker } from '../../../workers/reference-temporal-worker/src/worker-runtime.ts';
 import {
@@ -97,7 +97,7 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
   };
 
   try {
-    const slice = buildReferenceVerticalSlice(talosStore);
+    const slice = buildRestartSafeReferenceVerticalSlice(talosStore);
     const program = compileReferenceRuntimeProgram(
       slice.execution,
       slice.mapping,
