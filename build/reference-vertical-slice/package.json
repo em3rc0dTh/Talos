@@ -18,6 +18,8 @@
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:test": "node --experimental-strip-types --test ./tests/b2-*.test.ts",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
-    "test": "npm run b2:verify"
+    "b3:test": "node --experimental-strip-types --test ./tests/b3-*.test.ts",
+    "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
+    "test": "npm run b3:verify"
   }
 }
