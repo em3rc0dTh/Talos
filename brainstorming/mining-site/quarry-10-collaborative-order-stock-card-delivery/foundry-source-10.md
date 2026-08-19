@@ -400,7 +400,7 @@ Before executable Temporal design, resolve:
 
 ```text
 SOURCE PROVENANCE                    ✅
-NATIVE SOURCE BINARY                 ✅ RETAINED
+NATIVE SOURCE BINARY                 🟡 REPOSITORY ATTACHMENT PENDING
 ARTIFACT CLASS                       ✅
 EDITOR / UI PLANE                    ✅ SEPARATED
 COLLABORATOR OVERLAY                 ✅ SEPARATED
