@@ -18,11 +18,18 @@ function request() {
     referenceRequestId: 'ref-001',
     capabilityUseOccurrenceId: 'exe_cap_use_001',
     to: 'receiver@example.test',
-    subject: 'Approved',
-    body: 'Your request was approved.',
     effectCreatedAt: '2026-08-19T19:30:00Z',
   };
 }
+
+test('provider request surface matches the B5/B6 mapped input boundary', () => {
+  assert.deepEqual(Object.keys(request()).sort(), [
+    'capabilityUseOccurrenceId',
+    'effectCreatedAt',
+    'referenceRequestId',
+    'to',
+  ]);
+});
 
 test('provider key matches frozen B6 sha256 contract', () => {
   assert.equal(
@@ -54,12 +61,12 @@ test('repeated identical request is deduplicated by provider store', () => {
   store.close();
 });
 
-test('same idempotency key with changed payload is rejected', () => {
+test('same idempotency key with changed mapped destination is rejected', () => {
   const store = new ReferenceEmailSinkStore(':memory:');
   const provider = new ReferenceEmailSinkService(store);
   provider.send(request());
   assert.throws(
-    () => provider.send({ ...request(), body: 'changed' }),
+    () => provider.send({ ...request(), to: 'other@example.test' }),
     ReferenceEmailIdempotencyConflictError,
   );
   assert.equal(store.count(), 1);
