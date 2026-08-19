@@ -4,7 +4,7 @@
 
 TALOS is a source-aware process-intelligence and durable-execution system. Its central responsibility is to **normalize and standardize business processes while preserving the truth, semantics, provenance, evidence and source-specific meaning of the expression from which each process originated**.
 
-TALOS is not a BPMN converter, not a Temporal UI, and not merely a diagramming product.
+TALOS is not a BPMN converter, not a Temporal UI, not generic OCR, and not merely a diagramming product.
 
 Its source model is intentionally heterogeneous: native TALOS Canvas, BPMN/Bizagi, images, screenshots, physical drawings, whiteboards, natural language, SOP/process documents, existing automations such as n8n, runtime observations, and later additional structured notations may all become process-expression sources.
 
@@ -57,15 +57,19 @@ ONE ARTIFACT                     may produce 0..N semantic scopes
 CANVAS SOURCE                    ≠ canonical process model
 CANVAS REVIEW PROJECTION         ≠ original source
 DISPLAY OF IMPORTED MEANING      ≠ provenance ownership transfer
-PRESENTATION EDIT                ≠ semantic edit
 USER CORRECTION                  ≠ source rewrite
 ADAPTER REINTERPRETATION         ≠ automatic review rebase
 BPMN SOURCE MODEL                ≠ TALOS CANONICAL MODEL
 BPMN TASK                        ≠ Temporal Activity
-BPMN PARTICIPANT                 ≠ lane
 SEQUENCE FLOW                    ≠ message flow
 BPMN DI                          ≠ process semantics
-BPMN isExecutable                ≠ TALOS readiness
+PIXELS / CAPTURED BYTES          ≠ perceived structure
+PERCEIVED STRUCTURE              ≠ interpreted semantics
+INTERPRETED SEMANTICS            ≠ confirmed business truth
+MODEL PREFERENCE                 ≠ human confirmation
+VISIBLE ARROW                    ≠ sequence flow
+NO DETECTED CONTINUATION         ≠ proven termination
+GEOMETRY                         ≠ universal semantics
 DANGLING RELATIONSHIP            ≠ invalid source
 ADAPTER FAILURE                  ≠ source loss
 UNKNOWN                          ≠ default
@@ -100,9 +104,9 @@ CANVAS REVIEW/PROJECTION        ✅ PROVEN
         ↓
 BPMN STRUCTURED ADAPTER         ✅ DESIGN/ARCH PROVEN
         ↓
-IMAGE/PERCEPTION ADAPTER        🟡 NEXT
+IMAGE/PERCEPTION ADAPTER        ✅ DESIGN/ARCH PROVEN
         ↓
-LANGUAGE/DOCUMENT ADAPTER       ⚪ PENDING
+LANGUAGE/DOCUMENT ADAPTER       🟡 NEXT
         ↓
 EXISTING AUTOMATION ADAPTER     ⚪ PENDING
         ↓
@@ -123,8 +127,8 @@ COMMON SOURCE INTAKE            ✅ FROZEN
 CANVAS AUTHORING CONTRACT       ✅ PROVEN
 CANVAS REVIEW/PROJECTION        ✅ PROVEN
 BPMN ADAPTER CONTRACT           ✅ DESIGN/ARCH PROVEN
-IMAGE ADAPTER CONTRACT          🟡 NEXT / NOT YET PROVEN
-LANGUAGE ADAPTER CONTRACT       ⚪ NOT YET PROVEN
+IMAGE ADAPTER CONTRACT          ✅ DESIGN/ARCH PROVEN
+LANGUAGE ADAPTER CONTRACT       🟡 NEXT / NOT YET PROVEN
 AUTOMATION ADAPTER CONTRACT     ⚪ NOT YET PROVEN
 CROSS-ADAPTER CONFORMANCE       ⚪ PENDING
 PHASE 2 INPUT ARCHITECTURE      🟡 OPEN
@@ -162,100 +166,121 @@ test/20-CANVAS-REVIEW-PROJECTION-REGRESSION-RESULT-v0.1.md
 14 / 14 PASS
 ```
 
-Core review lineage:
-
-```text
-EXTERNAL SOURCE
-      ↓
-PROCESS REVISION / PROVENANCE / VALIDATION
-      ↓
-REVIEW WORKSPACE REVISION
-      ↓
-CANVAS PROJECTION
-      ↓
-REVIEW-AUTHORED EVIDENCE
-      ↓
-NEW PROCESS REVISION
-      ↓
-EXPLICIT BASELINE TRANSITION
-      ↓
-NEW REVIEW WORKSPACE REVISION
-```
-
 # BPMN structured-source proof
 
-P2-02 is now design/architecture proven:
+P2-02:
 
 ```text
 design/10-BPMN-STRUCTURED-ADAPTER-CONTRACT-v0.1.md
 arch/05-BPMN-STRUCTURED-ADAPTER-ARCHITECTURE-v0.1.md
-```
 
-Pressure test:
-
-```text
 test/23-BPMN-STRUCTURED-ADAPTER-PRESSURE-TEST-RESULT-v0.1.md
 20 / 20 PASS
 ```
 
-Freeze / closure:
+This is design/architecture proof, not parser implementation or production support.
+
+# Image / Perception proof
+
+P2-03 is now design/architecture proven.
+
+Initial candidate:
 
 ```text
-design/11-BPMN-STRUCTURED-ADAPTER-v0.1-FREEZE-DECLARATION.md
-test/24-P2-02-BPMN-STRUCTURED-ADAPTER-GATE-CLOSURE-v0.1.md
+I01–I28
+27 PASS / 1 FAIL
 ```
 
-This proves the architecture can preserve:
+The failure exposed a historical-state defect:
 
 ```text
-native BPMN IDs
-multiple process/collaboration scopes
-participants vs lanes
-sequence vs message flow
-gateway role context
-event/boundary semantics
-subprocess/call distinctions
-data associations
-conditions/default flows
-BPMN DI separation
-vendor extensions
-unsupported constructs
-unresolved references
-partial/failed parse evidence
-Canvas review provenance
+PerceptionAlternativeSet
 ```
 
-It does **not** claim parser implementation or production BPMN support yet.
+could appear to change from model preference to human confirmation in place.
 
-# Current gate — Image / Perception
-
-P2-03 asks:
-
-> Can TALOS receive a visual source where structure itself must be perceived, preserve local uncertainty and source-only evidence, and prevent perception/AI output from being laundered into source truth?
-
-Use Mining Site evidence heavily:
+v0.2 now separates:
 
 ```text
-Q06 — non-process reference architecture
-Q08 — ambiguous long connectors / event topology
-Q10 — collaborative editor overlays
-Q11 — physical paper + handwriting
-Q12 — digital-canvas screenshot + functional/ICOM-like semantics
+PerceptionAlternativeSet
+  = immutable record of what one model/attempt observed/preferred
+
+PerceptionAlternativeDecision
+  = immutable later human/authority resolution
 ```
 
-The critical image law is:
+Full regression:
 
 ```text
-PIXELS / CAPTURED BYTES
+test/27-IMAGE-PERCEPTION-ADAPTER-REGRESSION-RESULT-v0.1.md
+28 / 28 PASS
+```
+
+Frozen:
+
+```text
+design/12-IMAGE-PERCEPTION-ADAPTER-CONTRACT-v0.2.md
+arch/06-IMAGE-PERCEPTION-ADAPTER-ARCHITECTURE-v0.2.md
+design/13-IMAGE-PERCEPTION-ADAPTER-v0.2-FREEZE-DECLARATION.md
+```
+
+Gate closure:
+
+```text
+test/28-P2-03-IMAGE-PERCEPTION-ADAPTER-GATE-CLOSURE-v0.1.md
+```
+
+P2-03 proves the architecture can preserve:
+
+```text
+physical origin vs photo capture
+native digital source vs screenshot
+local image-region evidence
+crop/rotation/deskew transform lineage
+literal text vs interpreted meaning
+competing perception alternatives
+shape/type confidence separation
+edge existence/endpoint/direction/role uncertainty
+out-of-frame/occlusion vs absence
+editor/collaborator overlays
+same label vs same occurrence
+reference architecture vs process scope
+functional-model / notation-dependent geometry
+multiple representation identity discipline
+partial perception
+immutable re-perception
+Canvas review of uncertain/source-only evidence
+```
+
+It does **not** claim OCR/vision implementation, accuracy benchmarks, model selection, or production image support.
+
+# Current gate — Language / Document
+
+P2-04 asks:
+
+> Can TALOS receive process knowledge expressed in prose/documents where graph structure, actors, conditions, order, scope and completion may be implicit or distributed across spans, while preserving exact textual evidence and preventing language-model interpretation from becoming source truth automatically?
+
+The next governing distinction is expected to be:
+
+```text
+TEXT SPAN
       ≠
-PERCEIVED STRUCTURE
+SEMANTIC CLAIM AUTOMATICALLY
       ≠
-INTERPRETED SEMANTICS
+PROCESS NODE AUTOMATICALLY
       ≠
-CONFIRMED BUSINESS TRUTH
+CONTROL FLOW AUTOMATICALLY
 ```
 
-The goal is not perfect vision. The goal is **safe, addressable, provenance-backed and reviewable uncertainty**.
+and:
+
+```text
+DOCUMENT ORDER
+      ≠
+PROCESS EXECUTION ORDER AUTOMATICALLY
+```
+
+The goal is not generic summarization. The goal is **exact-evidence-backed, ambiguity-aware, scope-aware and reviewable process interpretation from language/documents**.
 
 # Build policy
 
@@ -266,7 +291,6 @@ BUILD = CLOSED BY DEFAULT
 Remaining before BUILD:
 
 ```text
-Image/Perception Adapter        ⚪
 Language/Document Adapter       ⚪
 Existing Automation Adapter     ⚪
 Cross-Adapter Conformance       ⚪
@@ -276,14 +300,14 @@ Phase-2 Design/Architecture     ⚪ CLOSE
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.7.md
-plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.3.md
+plan/00-TALOS-ROADMAP-v0.8.md
+plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.4.md
 ```
 
 ## Immediate next move
 
 ```text
-P2-03 — IMAGE / PERCEPTION ADAPTER
+P2-04 — LANGUAGE / DOCUMENT ADAPTER
 ```
 
 ## Working definition
