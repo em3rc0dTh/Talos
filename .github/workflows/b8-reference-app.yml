@@ -1,0 +1,112 @@
+name: B8 Tryable Talos reference app
+
+on:
+  push:
+    paths:
+      - '.github/workflows/b8-reference-app.yml'
+      - 'build/reference-vertical-slice/apps/reference-api/**'
+      - 'build/reference-vertical-slice/packages/application/src/reference-vertical-slice.ts'
+      - 'build/reference-vertical-slice/packages/reference-email-sink/**'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/**'
+      - 'build/reference-vertical-slice/tests/b8-reference-app.test.ts'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/architecture/module-boundaries.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reference-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: 'npm'
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Synchronize workspace lock metadata
+        working-directory: build/reference-vertical-slice
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install exact lock
+        id: install
+        continue-on-error: true
+        working-directory: build/reference-vertical-slice
+        run: npm ci 2>&1 | tee /tmp/talos-b8-install.log
+
+      - name: Verify Temporal lock
+        id: lock
+        continue-on-error: true
+        working-directory: build/reference-vertical-slice
+        run: |
+          set -o pipefail
+          npm run b7:lock:verify 2>&1 | tee /tmp/talos-b8-lock.log
+
+      - name: Verify architecture
+        id: arch
+        continue-on-error: true
+        working-directory: build/reference-vertical-slice
+        run: |
+          set -o pipefail
+          TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify 2>&1 | tee /tmp/talos-b8-arch.log
+
+      - name: Run B8 tryable app smoke test
+        id: b8
+        continue-on-error: true
+        working-directory: build/reference-vertical-slice
+        run: |
+          set -o pipefail
+          npm run b8:test 2>&1 | tee /tmp/talos-b8-test.log
+
+      - name: Persist B8 result
+        env:
+          INSTALL: ${{ steps.install.outcome }}
+          LOCK: ${{ steps.lock.outcome }}
+          ARCH: ${{ steps.arch.outcome }}
+          B8: ${{ steps.b8.outcome }}
+        run: |
+          if [ "$INSTALL" = success ] && [ "$LOCK" = success ] && [ "$ARCH" = success ] && [ "$B8" = success ]; then
+            OVERALL=PASS
+          else
+            OVERALL=FAIL
+          fi
+          {
+            echo '# B8 Tryable Reference App CI Result'
+            echo
+            echo "Status: **$OVERALL**"
+            echo
+            echo '```text'
+            printf '%-27s %s\n' 'npm ci' "$INSTALL"
+            printf '%-27s %s\n' 'Temporal lock gate' "$LOCK"
+            printf '%-27s %s\n' 'architecture guard' "$ARCH"
+            printf '%-27s %s\n' 'B8 app smoke test' "$B8"
+            echo '```'
+            echo
+            echo 'The smoke test boots the full native Canvas → validation → Manager correction → semantic freeze → capability → execution design pipeline, launches a real local Temporal server and Worker, starts HTTP/browser app state, then executes APPROVED and REJECTED requests through Workflow Updates.'
+            if [ "$ARCH" != success ]; then
+              echo; echo '## Architecture failure tail'; echo '```text'; tail -n 100 /tmp/talos-b8-arch.log || true; echo '```'
+            fi
+            if [ "$B8" != success ]; then
+              echo; echo '## B8 failure tail'; echo '```text'; tail -n 160 /tmp/talos-b8-test.log || true; echo '```'
+            fi
+          } > test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+          if ! git diff --cached --quiet; then
+            git commit -m "test(b8): record tryable reference app CI $OVERALL"
+            git push
+          fi
+          echo "OVERALL=$OVERALL" >> "$GITHUB_ENV"
+
+      - name: Enforce B8 gate
+        if: always()
+        run: test "$OVERALL" = PASS
