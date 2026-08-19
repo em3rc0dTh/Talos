@@ -78,8 +78,12 @@ test('real Temporal server executes approved/rejected reference paths with durab
       const approvedEvents = approvedHistory.events ?? [];
       assert.ok(approvedEvents.length > 0);
       assert.ok(approvedEvents.some((event) => Boolean(event.activityTaskScheduledEventAttributes)));
-      const startedAttempts = approvedEvents.filter((event) => Boolean(event.activityTaskStartedEventAttributes));
-      assert.ok(startedAttempts.length >= 2, `expected at least 2 Activity Task starts, got ${startedAttempts.length}`);
+      const started = approvedEvents.find((event) => Boolean(event.activityTaskStartedEventAttributes));
+      assert.ok(started?.activityTaskStartedEventAttributes);
+      assert.ok(
+        Number(started.activityTaskStartedEventAttributes.attempt ?? 0) >= 2,
+        `expected server history Activity attempt >= 2, got ${started.activityTaskStartedEventAttributes.attempt ?? 'missing'}`,
+      );
       assert.ok(approvedEvents.some((event) => Boolean(event.activityTaskCompletedEventAttributes)));
       assert.ok(approvedEvents.some((event) => Boolean(event.workflowExecutionCompletedEventAttributes)));
 
