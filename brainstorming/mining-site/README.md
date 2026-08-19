@@ -4,7 +4,7 @@
 
 The Mining Site is TALOS's controlled experimentation area for learning how heterogeneous business-process and architecture sources can be interpreted, normalized, and handed to the Foundry without erasing their origin.
 
-A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, or another process/system representation.
+A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, UML activity-style model, or another process/system representation.
 
 The Mining Site does not produce executable code. Its job is to preserve source truth, perform an auditable transformation, surface uncertainty, classify the source artifact, discover executable slices when they exist, and emit a clean Foundry Source.
 
@@ -63,10 +63,11 @@ A transform may extract and normalize:
 - participant-local control flow versus cross-participant communication;
 - source-node identity independently from display labels;
 - provisional node semantic type: step/stage, capability, service, resource, repository, catalog/state, infrastructure, governance work, model/artifact;
-- edge semantic type where supported: sequence, message/communication, dependency, handoff, feedback, association;
+- edge semantic type where supported: sequence, message/communication, object/data flow, dependency, handoff, feedback, association;
 - decisions and branch outcomes;
 - branch convergence / merge semantics;
-- parallelism and joins;
+- explicit parallel split/fork regions and synchronization joins;
+- branch-completion predicates and join policy;
 - waits, deadlines and external events;
 - human interactions and physical work;
 - subprocesses and nested work;
@@ -91,7 +92,7 @@ The Foundry receives this artifact and asks a different question:
 
 > Which validated semantics are executable lifecycles, what durable boundaries should exist, and how should those lifecycles become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, and decomposition across multiple durable workflows.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, parallel execution semantics, and decomposition across multiple durable workflows.
 
 ## Experimental rule
 
@@ -105,6 +106,7 @@ BUSINESS EXCEPTION               ≠ automatically a technical failure
 BUSINESS REJECTION               ≠ automatically a technical failure
 BUSINESS MESSAGE                 ≠ automatically a known integration
 MESSAGE FLOW                     ≠ sequence flow
+OBJECT / DATA FLOW               ≠ control / sequence flow
 SOURCE NOTATION                  ≠ automatically execution semantics
 IDENTITY / ACCESS GATE           ≠ automatically a known auth implementation
 DATA RETENTION INTENT            ≠ automatically proven consent/compliance semantics
@@ -122,6 +124,10 @@ ARCHITECTURE EDGE                ≠ sequence flow until proven
 FEEDBACK TOPOLOGY                ≠ single process loop until instance semantics are proven
 METRIC / SIMULATION OVERLAY      ≠ business state or execution policy
 FILE EXTENSION                   ≠ authoritative byte-format truth
+OBJECT-STATE NODE                ≠ complete state machine
+MERGE / CONVERGENCE              ≠ JOIN / SYNCHRONIZATION
+PARALLEL BRANCH                  ≠ same executor / Task Queue
+LAST VISIBLE ACTIVITY            ≠ explicit process completion
 ```
 
 ## Current evidence set
@@ -147,9 +153,13 @@ QUARRY-05  Ward / Pharmacy Drug Fulfillment Collaboration
 QUARRY-06  Reference Architecture for AI (REFAI)
            artifact-class detection + architecture layers + capability/resource/infrastructure typing
            + executable-slice discovery + feedback topology + simulation/metric overlay separation
+
+QUARRY-07  Order Validation, Payment & Fulfillment
+           responsibility partitions + Order [New]/[Placed] state evidence + object/data flow
+           + exclusive rejection + explicit parallel split + all-branch synchronization join
 ```
 
-## Emerging evidence after six quarries
+## Emerging evidence after seven quarries
 
 The Mining Site now has evidence for a broader semantic model. It remains provisional:
 
@@ -174,14 +184,19 @@ NODE SEMANTIC TYPE
   └── MODEL / BUSINESS ARTIFACT
 
 EDGE SEMANTIC TYPE
-  ├── SEQUENCE
+  ├── CONTROL / SEQUENCE
   ├── MESSAGE / COMMUNICATION
+  ├── OBJECT / DATA FLOW
   ├── HANDOFF / DEPENDENCY
   ├── FEEDBACK
   └── UNRESOLVED ASSOCIATION
 
 DECISION + BRANCH
 MERGE / CONVERGENCE
+PARALLEL SPLIT / FORK
+JOIN / SYNCHRONIZATION
+JOIN POLICY
+BRANCH COMPLETION PREDICATE
 WAIT / EVENT
 SUBPROCESS / NESTED WORK
 BUSINESS OBJECT / STATE EVIDENCE
@@ -199,15 +214,7 @@ These are evidence-backed hypotheses, not yet a frozen TALOS standard language.
 
 ## Current transformation lesson
 
-After Quarry 06, the Mining Site cannot assume:
-
-```text
-INPUT DIAGRAM
-    ↓
-ONE CANONICAL WORKFLOW
-```
-
-The safer general model is:
+After Quarry 06, the Mining Site learned not to assume every source is one workflow. Quarry 07 adds another safety rule: even when a source **is** workflow-like, its edge and synchronization semantics must be preserved rather than flattened.
 
 ```text
 INPUT SOURCE
@@ -216,7 +223,11 @@ ARTIFACT CLASSIFICATION
     ↓
 SOURCE GRAPH + PROVENANCE
     ↓
-SEMANTIC TYPING
+NODE + EDGE SEMANTIC TYPING
+    ↓
+CONTROL / OBJECT / MESSAGE DISTINCTION
+    ↓
+BRANCH + CONCURRENCY NORMALIZATION
     ↓
 EXECUTABLE-SLICE DISCOVERY
     ↓
