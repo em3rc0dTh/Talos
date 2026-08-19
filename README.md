@@ -84,7 +84,7 @@ SYSTEM TRUTH                         🟢 v0.1 ESTABLISHED
 PROCESS INPUT / ORIGIN PRINCIPLE     🟢 v0.1 ESTABLISHED
 PRODUCT CONTRACT                     🟡 DRAFT
 CANONICAL PROCESS MODEL              🟢 v0.1 FROZEN — T1-01 CLOSED
-MINING SITE                          🟢 Q01–Q10 AUDITED / CROSS-SYNTHESIZED
+MINING SITE                          🟢 Q01–Q12 FIRST BATCH COMPLETE
 PROVENANCE MODEL                     🟡 v0.2 CANDIDATE — PRESSURE TEST NEXT
 SEMANTIC VALIDATION                  ⚪ T1-03 PENDING
 CAPABILITY REGISTRY                  🟡 DRAFT / NOT FROZEN
@@ -105,13 +105,27 @@ The gate evidence lives in:
 test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
 ```
 
-The first ten real Mining Site quarries have also been audited together. Their cross-source evidence now lives in:
+The first ten real Mining Site quarries were cross-synthesized in:
 
 ```text
 brainstorming/mining-site/CROSS-QUARRY-SYNTHESIS-v0.1.md
 ```
 
-That audit exposed additional provenance requirements around exact source bytes vs derivatives, declared-vs-observed format, source presentation/annotation planes, occurrence identity, property-scoped evidence, relationship uncertainty and causality preservation.
+Two deliberately different final quarries then extended that evidence set:
+
+```text
+Q11 — physical hand-drawn process captured digitally
+brainstorming/mining-site/CROSS-QUARRY-Q11-ADDENDUM-v0.1.md
+
+test/03-PHYSICAL-SOURCE-CAPTURE-FIXTURE-Q11-v0.1.md
+
+Q12 — digital-canvas functional model with ICOM-like relationship roles
+brainstorming/mining-site/CROSS-QUARRY-Q12-ADDENDUM-v0.1.md
+
+test/04-FUNCTIONAL-MODEL-CANVAS-FIXTURE-Q12-v0.1.md
+```
+
+Together Q01–Q12 expose provenance requirements around exact source bytes vs derivatives, physical origin vs captured representation, declared-vs-observed format, source presentation/annotation planes, occurrence identity, property-scoped evidence, relationship uncertainty, causality preservation, handwritten ambiguity, functional relationship roles, notation-scoped geometry, and abstraction/decomposition semantics.
 
 The active provenance candidate is:
 
@@ -119,11 +133,13 @@ The active provenance candidate is:
 design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.2.md
 ```
 
-and its gate test is defined in:
+and its base gate test is defined in:
 
 ```text
 test/02-PROVENANCE-PRESSURE-TEST-SPEC-v0.1.md
 ```
+
+with Q11/Q12 supporting fixtures extending the gate through P28.
 
 The next gate remains:
 
@@ -131,7 +147,7 @@ The next gate remains:
 T1-02 — Provenance Model
 ```
 
-but it is now specifically **ready to pressure-test**, not ready to freeze by declaration.
+but it is now specifically **ready to pressure-test against the complete first Mining Site batch**, not ready to freeze by declaration.
 
 ## Working definition
 
@@ -139,4 +155,4 @@ but it is now specifically **ready to pressure-test**, not ready to freeze by de
 
 The Mining Site adds an important operational refinement:
 
-> Before TALOS can normalize a source, it must first determine **what kind of evidence is present, which semantic plane it belongs to, and which parts are actually candidates for business-process execution**.
+> Before TALOS can normalize a source, it must first determine **what kind of evidence is present, which semantic plane it belongs to, which relationship roles the source actually expresses, and which parts are candidates for business-process execution**.
