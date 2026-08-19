@@ -2,308 +2,283 @@
 
 ## Normalize and standardize business processes without erasing their origin
 
-TALOS is a process-intelligence and durable-execution system whose central responsibility is to **normalize and standardize business processes while preserving the truth, semantics, notation, provenance, and evidence of the source from which each process originated**.
+TALOS is a source-aware process-intelligence and durable-execution system. Its central responsibility is to **normalize and standardize business processes while preserving the truth, semantics, provenance, evidence and source-specific meaning of the expression from which each process originated**.
 
-TALOS is not a BPMN converter, not a Temporal UI, and not merely a diagramming product. BPMN, UPN, UML Activity Diagrams, EPC, Petri Nets, SIPOC, Value Stream Mapping, Bizagi exports, Mermaid, draw.io, images, screenshots, physical drawings, digital canvases, natural language, existing workflow definitions, runtime observations, and the TALOS Canvas are all possible **process-expression sources**.
+TALOS is not a BPMN converter, not a Temporal UI, and not merely a diagramming product.
 
-The system preserves a source first, interprets it second, normalizes candidate meaning into the TALOS Canonical Process Model, records why every meaning is believed, validates what is complete or missing, and only later designs capabilities and durable Temporal execution.
+Its source model is intentionally heterogeneous: native TALOS Canvas, BPMN/Bizagi, images, screenshots, physical drawings, whiteboards, natural language, SOP/process documents, existing automations such as n8n, runtime observations, and later additional structured notations may all become process-expression sources.
+
+## Governing source-agnostic principle
+
+> **Talos provides a source-agnostic intake architecture that can support heterogeneous process-expression sources through versioned adapters. Each source family becomes supported only after its adapter passes canonical, provenance, and semantic-validation conformance tests.**
+
+`source-agnostic` does not mean TALOS already understands every source type.
+
+It means:
+
+```text
+COMMON INTAKE ARCHITECTURE
+        +
+VERSIONED SOURCE-FAMILY ADAPTER
+        +
+CANONICAL CONFORMANCE
+        +
+PROVENANCE CONFORMANCE
+        +
+SEMANTIC-VALIDATION CONFORMANCE
+        =
+SUPPORTED SOURCE FAMILY
+```
+
+## Universal intake law
+
+Every source family must follow:
 
 ```text
 REAL PROCESS EXPRESSION
         ↓
-SOURCE ORIGIN / CAPTURE / REPRESENTATION
+RECEIVE
         ↓
-SOURCE PRESERVATION
+PRESERVE SOURCE ORIGIN / CAPTURE / REPRESENTATION
         ↓
-SOURCE ADAPTER ATTEMPT
+CLASSIFY
         ↓
-SOURCE EVIDENCE GRAPH
+VERSIONED ADAPTER ATTEMPT
         ↓
-0..N CANDIDATE SEMANTIC SCOPES
+ADDRESS SOURCE EVIDENCE
         ↓
-TALOS CANONICAL MODEL
+INTERPRET
+        ↓
+DISCOVER 0..N CANDIDATE SEMANTIC SCOPES
+        ↓
+NORMALIZE INTO TALOS CANONICAL MODEL
         ↓
 PROVENANCE / CLAIMS
         ↓
 SEMANTIC VALIDATION
         ↓
-AUTOMATION DESIGN
-        ↓
-CAPABILITY BINDING
-        ↓
-TEMPORAL EXECUTION PLAN
-        ↓
-DURABLE EXECUTION + OBSERVATION
+ONLY LATER: AUTOMATION DESIGN / CAPABILITIES / TEMPORAL
 ```
 
-## Non-negotiable truth
+No adapter may bypass provenance or emit Temporal execution truth directly.
 
-> TALOS normalizes and standardizes the business process **without destroying or replacing its origin**.
-
-Mandatory distinctions now include:
+## Non-negotiable distinctions
 
 ```text
 SOURCE ORIGIN                    ≠ capture event
 CAPTURE EVENT                    ≠ source representation
 PHYSICAL DRAWING                 ≠ photograph bytes
 NATIVE DIGITAL CANVAS            ≠ screenshot
-DERIVATIVE                       ≠ exact source representation
-SOURCE OCCURRENCE                ≠ conceptual identity
-SAME LABEL                       ≠ same source node
+SOURCE OCCURRENCE                ≠ canonical identity
 SOURCE INPUT                     ≠ process automatically
 ONE ARTIFACT                     may produce 0..N semantic scopes
-CANVAS SOURCE                    ≠ canonical model
+CANVAS SOURCE                    ≠ canonical process model
 PRESENTATION EDIT                ≠ semantic edit
 DANGLING RELATIONSHIP            ≠ invalid source
 INCOMPLETE RELATIONSHIP          ≠ fabricated canonical edge
 ADAPTER FAILURE                  ≠ source loss
 UNKNOWN                          ≠ default
 TRUTH CLASS                      ≠ confidence
+EVIDENCE PERSPECTIVE             ≠ truth class
 SEMANTIC VALIDITY                ≠ automation readiness
 VALIDATION                       ≠ repair
 HUMAN INTERACTION                ≠ Temporal mechanism
 FUNCTIONAL DEPENDENCY            ≠ runtime sequence
+IMPLEMENTED BEHAVIOR             ≠ business intent
 ```
 
-## Lifecycle
+# Phase 1 — Canonical Semantics
 
 ```text
-brainstorming/
-      ↓
-design/
-      ↓
-arch/
-      ↓
-plan/
-      ↓
-build/
-      ↓
-test/
+T1-01 CANONICAL PROCESS MODEL    ✅ FROZEN v0.1
+T1-02 PROVENANCE MODEL           ✅ FROZEN v0.3
+T1-03 SEMANTIC VALIDATION        ✅ FROZEN v0.2
+
+PHASE 1                          ✅ CLOSED
 ```
 
-`test/` is also used before BUILD for semantic fixtures, pressure tests, regressions and gate evidence. Superseded versions are retained rather than silently overwritten.
-
-## Repository map
-
-- `brainstorming/` — system truth, Mining Site quarries, hypotheses and discovered constraints.
-- `design/` — product/source/provenance/validation/Canvas contracts and freeze declarations.
-- `arch/` — canonical/system/source-adapter/capability/runtime boundaries.
-- `plan/` — gated roadmap and implementation plans.
-- `build/` — implementation only after the corresponding BUILD gate opens.
-- `test/` — fixtures, pressure tests, regression results and gate closures.
-- `deprecated/` — superseded material retained for history where appropriate.
-
-# Current state
+Phase 1 gives TALOS frozen answers to:
 
 ```text
-SYSTEM TRUTH                         🟢 v0.1 ESTABLISHED
-MINING SITE                          🟢 Q01–Q12 FIRST BATCH COMPLETE
-
-T1-01 CANONICAL PROCESS MODEL        🟢 v0.1 FROZEN
-T1-02 PROVENANCE MODEL               🟢 v0.3 FROZEN
-T1-03 SEMANTIC VALIDATION            🟢 v0.2 FROZEN
-PHASE 1 — CANONICAL SEMANTICS        🟢 CLOSED
-
-PROCESS SOURCE INTAKE CONTRACT       🟢 v0.2 FROZEN
-TALOS CANVAS NATIVE SOURCE           🟢 v0.2 FROZEN
-PHASE-2 ADAPTER ARCHITECTURE         🟢 v0.2 FROZEN
-T2-01 DESIGN / ARCH                  🟢 CLOSED
-T2-01 IMPLEMENTATION PLAN            🟢 READY
-T2-01 BUILD                          🟡 READY FOR EXPLICIT OPENING
-
-T2-02 BPMN ADAPTER                   ⚪ PENDING
-T2-03 IMAGE / GRAPHIC ADAPTER        ⚪ PENDING
-CAPABILITY MODEL                     ⚪ LATER GATE
-TEMPORAL EXECUTION                   ⚪ LATER GATE
+WHAT DOES THE SOURCE MEAN?
+WHY DO WE BELIEVE THAT MEANING?
+IS THE MEANING COHERENT / SUFFICIENT?
+WHAT IS MISSING / CONFLICTED / NEEDS CONFIRMATION?
 ```
 
-# Phase 1 — frozen semantic core
-
-## T1-01 — What does it mean?
-
-Frozen:
+Primary evidence:
 
 ```text
 arch/01-CANONICAL-PROCESS-MODEL-v0.1.md
-```
-
-Evidence:
-
-```text
-test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
-12 / 12 PASS
-```
-
-## T1-02 — Why do we believe it?
-
-Frozen:
-
-```text
 design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.3.md
-blob: 2e20a98aba744e9d719765c15429422f0e03c779
-```
-
-Regression:
-
-```text
-test/06-PROVENANCE-REGRESSION-RESULT-v0.1.md
-28 / 28 PASS
-```
-
-## T1-03 — Is it sufficient, and what is missing?
-
-Frozen:
-
-```text
 design/03-SEMANTIC-VALIDATION-CONTRACT-v0.2.md
-blob: 2b1463a6286fd3c3edcfd0417d29a9ffef45704f
-```
 
-Regression:
-
-```text
+test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
+test/06-PROVENANCE-REGRESSION-RESULT-v0.1.md
 test/10-SEMANTIC-VALIDATION-REGRESSION-RESULT-v0.1.md
-16 / 16 PASS
 ```
 
-Closure:
+Mining evidence:
 
 ```text
-test/11-T1-03-SEMANTIC-VALIDATION-GATE-CLOSURE-v0.1.md
+Q01–Q12 FIRST BATCH COMPLETE
 ```
 
-# Phase 2 — teaching TALOS to receive real sources
+# Phase 2 — Input Understanding
 
-T2-01 begins with the source TALOS controls completely: the native TALOS Canvas.
+Phase 2 is currently **not a BUILD phase**.
 
-The Canvas is now explicitly a **source producer**, not a privileged editor of canonical truth.
+Its job is to pressure-test the common intake architecture against fundamentally different ways real process knowledge enters TALOS.
+
+## Authoritative path
 
 ```text
-CanvasDefinition
+PHASE 2 — INPUT UNDERSTANDING
+
+COMMON SOURCE INTAKE            ✅ FROZEN
         ↓
+CANVAS NATIVE AUTHORING         ✅ DESIGN/ARCH
+        ↓
+CANVAS REVIEW/PROJECTION        🟡 NEED TO PROVE
+        ↓
+BPMN STRUCTURED ADAPTER         ⚪ DESIGN/PRESSURE TEST
+        ↓
+IMAGE/PERCEPTION ADAPTER        ⚪ DESIGN/PRESSURE TEST
+        ↓
+LANGUAGE/DOCUMENT ADAPTER       ⚪ DESIGN/PRESSURE TEST
+        ↓
+EXISTING AUTOMATION ADAPTER     ⚪ DESIGN/PRESSURE TEST
+        ↓
+CROSS-ADAPTER CONFORMANCE       ⚪ PENDING
+        ↓
+PHASE 2 DESIGN/ARCH GATE        ⚪ PENDING
+        ↓
+ONLY THEN
+        ↓
+T2-01 REFERENCE BUILD
+```
+
+## Current authoritative state
+
+```text
+PHASE 1                         ✅ CLOSED
+
+COMMON SOURCE INTAKE            ✅ FROZEN
+
+CANVAS AUTHORING CONTRACT       ✅ PROVEN
+CANVAS REVIEW/PROJECTION        🟡 NOT YET PROVEN
+BPMN ADAPTER CONTRACT           ⚪ NOT YET PROVEN
+IMAGE ADAPTER CONTRACT          ⚪ NOT YET PROVEN
+LANGUAGE ADAPTER CONTRACT       ⚪ NOT YET PROVEN
+AUTOMATION ADAPTER CONTRACT     ⚪ NOT YET PROVEN
+
+PHASE 2 INPUT ARCHITECTURE      🟡 OPEN
+
+BUILD                           ⛔ CLOSED
+```
+
+This status supersedes earlier planning that marked the T2-01 reference build as ready for opening.
+
+The existing implementation plan remains preserved as preparatory/historical material, but it is **not active authorization to build**.
+
+# The two Canvas roles
+
+## ROLE 1 — Native process authoring
+
+```text
+"Create my process here."
+```
+
+The Canvas is the source producer:
+
+```text
 CanvasRevision
-        ↓
-NATIVE_STRUCTURED SourceRepresentation
-        ↓
-AdapterAttempt
-        ↓
-SourceEvidenceGraph
-        ↓
-CandidateSemanticScope
-        ↓
-Canonical ProcessRevision
-        ↓
-Provenance
-        ↓
-Semantic Validation
+→ NATIVE_STRUCTURED SourceRepresentation
+→ TalosCanvasAdapter
+→ common intake
 ```
 
-## Frozen T2-01 design contracts
+This role has been designed/pressure-tested.
+
+## ROLE 2 — Imported-process review/correction
 
 ```text
-design/05-TALOS-CANVAS-NATIVE-SOURCE-CONTRACT-v0.2.md
-design/06-PROCESS-SOURCE-INTAKE-CONTRACT-v0.2.md
-arch/03-PHASE-2-SOURCE-INTAKE-AND-CANVAS-ADAPTER-v0.2.md
+"Show me what you understood from my source and let me correct it."
 ```
 
-Freeze declaration:
+In this role Canvas is not the original source.
+
+Required lineage:
 
 ```text
-design/07-T2-01-CANVAS-AND-INTAKE-v0.2-FREEZE-DECLARATION.md
+EXTERNAL SOURCE
+      ↓
+SOURCE ADAPTER
+      ↓
+CANONICAL / CLAIM INTERPRETATION
+      ↓
+CANVAS REVIEW PROJECTION
+      ↓
+USER CORRECTION / CONFIRMATION
+      ↓
+NEW TALOS-AUTHORED SOURCE/CLAIM REVISION
+      ↓
+NEW PROCESS REVISION
 ```
 
-## T2-01 pressure-test history
+The original imported evidence remains immutable and traceable.
 
-Initial result:
+This is the immediate next proof.
+
+# Phase-2 source families
+
+The initial architecture must survive these fundamentally different evidence families before BUILD:
 
 ```text
-C01–C20
-18 PASS / 2 FAIL
+TALOS Canvas            NATIVE_STRUCTURED
+BPMN                     STRUCTURED_PARSE
+Image / Photo            VISUAL_PERCEPTION
+Language / Document      TEXT_INTERPRETATION
+Existing Automation      AUTOMATION_PARSE
 ```
 
-Failures exposed two important requirements:
+For existing automation, implemented behavior is evidence with perspective `IMPLEMENTED_BEHAVIOR`; it is not automatically business intent.
+
+# Build policy
 
 ```text
-C03 — user-authored incomplete/dangling relationship must be preserved
-C20 — adapter failure must not lose/recreate the source
+BUILD = CLOSED BY DEFAULT
 ```
 
-v0.2 added:
+BUILD may open only after:
 
 ```text
-CanvasEndpointRef
-SET / UNKNOWN / UNCONNECTED endpoint states
-
-AdapterAttempt
-failure-stage diagnostics
-retry lineage
-input fingerprint / idempotent replay
+Canvas Review/Projection        ✅
+BPMN Adapter                    ✅
+Image/Perception Adapter        ✅
+Language/Document Adapter       ✅
+Existing Automation Adapter     ✅
+Cross-Adapter Conformance       ✅
+Phase-2 Design/Architecture     ✅ CLOSED
 ```
 
-Full regression:
+Then TALOS may reopen the reference Canvas adapter implementation plan and build against architecture already challenged by heterogeneous sources.
+
+# Active planning
 
 ```text
-test/14-T2-01-CANVAS-ADAPTER-REGRESSION-RESULT-v0.1.md
-20 / 20 PASS
+plan/00-TALOS-ROADMAP-v0.5.md
+plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.1.md
 ```
 
-Design/architecture closure:
+## Immediate next move
 
 ```text
-test/15-T2-01-DESIGN-ARCH-GATE-CLOSURE-v0.1.md
+P2-01B — CANVAS REVIEW / PROJECTION CONTRACT
 ```
 
-# Universal intake law
-
-Every future adapter—BPMN, image, text, automation, runtime evidence—must use the same source boundary:
-
-```text
-RECEIVE
-  ↓
-PRESERVE
-  ↓
-CLASSIFY
-  ↓
-ADAPTER ATTEMPT
-  ↓
-ADDRESS SOURCE EVIDENCE
-  ↓
-INTERPRET
-  ↓
-DISCOVER 0..N CANDIDATE SCOPES
-  ↓
-NORMALIZE
-  ↓
-VALIDATE
-```
-
-No adapter receives permission to bypass provenance or emit Temporal code directly.
-
-# Current gate
-
-Implementation plan:
-
-```text
-plan/02-T2-01-CANVAS-ADAPTER-IMPLEMENTATION-PLAN-v0.1.md
-```
-
-Recommended reference implementation:
-
-```text
-TypeScript
-framework-independent domain modules
-versioned deterministic JSON source serialization
-executable C01–C20 fixtures
-```
-
-BUILD is not yet marked open. The next explicit action is the T2-01 BUILD-opening review, authorizing only the reference Canvas/intake adapter slice.
-
-Active roadmap:
-
-```text
-plan/00-TALOS-ROADMAP-v0.4.md
-```
+Design and pressure-test imported-source projection and user correction without replacing original provenance.
 
 ## Working definition
 
-> **TALOS is the semantic guard between business-process expression and durable machine execution.** It receives heterogeneous process expressions as evidence, preserves their origin before interpretation, discovers the semantic scope actually present, normalizes what is supportable, exposes what remains unknown, and only then permits automation and durable execution design.
+> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves the source before interpretation, uses versioned adapters to recover the meaning each source family can actually support, normalizes that meaning without erasing origin, validates what is known or missing, and only then allows automation and Temporal execution design.
