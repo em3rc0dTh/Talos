@@ -59,6 +59,16 @@ export class ReferenceBootstrapStore implements ImmutableDocumentRepository {
   close(): void {}
 }
 
+function comparisonMaterial(document: ImmutableDocument) {
+  return {
+    aggregateKind: document.aggregateKind,
+    schemaVersion: document.schemaVersion,
+    payload: document.payload,
+    ...(document.parentId ? { parentId: document.parentId } : {}),
+    createdAt: document.createdAt,
+  };
+}
+
 export function buildRestartSafeReferenceVerticalSlice(
   durableRepo: ReferenceDocumentStore,
   options: ReferenceVerticalSliceBuildOptions = {},
@@ -69,20 +79,8 @@ export function buildRestartSafeReferenceVerticalSlice(
   for (const document of staged.allDocuments()) {
     const existing = durableRepo.get(String(document.id)) as ImmutableDocument | undefined;
     if (existing) {
-      const existingMaterial = deterministicJson({
-        aggregateKind: existing.aggregateKind,
-        schemaVersion: existing.schemaVersion,
-        payload: existing.payload,
-        parentId: existing.parentId,
-        createdAt: existing.createdAt,
-      });
-      const nextMaterial = deterministicJson({
-        aggregateKind: document.aggregateKind,
-        schemaVersion: document.schemaVersion,
-        payload: document.payload,
-        parentId: document.parentId,
-        createdAt: document.createdAt,
-      });
+      const existingMaterial = deterministicJson(comparisonMaterial(existing));
+      const nextMaterial = deterministicJson(comparisonMaterial(document));
       if (existingMaterial !== nextMaterial) {
         throw new TypeError([
           `Reference staged/durable mismatch id=${document.id}`,
