@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.16.0 <23"
+    "node": ">=22.16.0 <23 || >=24.0.0 <25"
   },
   "workspaces": [
     "packages/*",
@@ -29,6 +29,7 @@
     "b7:partial:verify": "npm run architecture:verify && npm run b7:lock:status && npm run b7:provider:test && npm run b7:contract:test",
     "b8:test": "node --experimental-strip-types --test ./tests/b8-reference-app.test.ts",
     "b9:test": "node --experimental-strip-types --test ./tests/b9-temporal-e2e.test.ts",
+    "b10:restart:test": "node --experimental-strip-types --test ./tests/b10-restart-safe-bootstrap.test.ts",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
