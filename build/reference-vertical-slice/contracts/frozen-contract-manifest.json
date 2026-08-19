@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "talos.contract-manifest.v1",
+  "manifestId": "reference-vertical-slice-contract-manifest-v1",
+  "repository": "em3rc0dTh/Talos",
+  "ref": "main",
+  "buildAuthorizationScope": "build/reference-vertical-slice/",
+  "contracts": [
+    {"phase":"P1","contractId":"canonical-process-model","version":"v0.1","path":"arch/01-CANONICAL-PROCESS-MODEL-v0.1.md","blobSha":"b9109bf8e289a1b2ccd4974dca1df7813fd41cb1","implementedInReferenceSlice":true},
+    {"phase":"P1","contractId":"provenance","version":"v0.3","path":"design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.3.md","blobSha":"2e20a98aba744e9d719765c15429422f0e03c779","implementedInReferenceSlice":true},
+    {"phase":"P1","contractId":"semantic-validation","version":"v0.2","path":"design/03-SEMANTIC-VALIDATION-CONTRACT-v0.2.md","blobSha":"2b1463a6286fd3c3edcfd0417d29a9ffef45704f","implementedInReferenceSlice":true},
+    {"phase":"P2","contractId":"canvas-native-source","version":"v0.2","path":"design/05-TALOS-CANVAS-NATIVE-SOURCE-CONTRACT-v0.2.md","blobSha":"f3b616fe11222b862fd76b75286a8ee31e208049","implementedInReferenceSlice":true},
+    {"phase":"P2","contractId":"process-source-intake","version":"v0.2","path":"design/06-PROCESS-SOURCE-INTAKE-CONTRACT-v0.2.md","blobSha":"3520961c9345914992468120b997e97e9ffe2b24","implementedInReferenceSlice":true},
+    {"phase":"P2","contractId":"canvas-review-projection","version":"v0.2","path":"design/08-CANVAS-REVIEW-PROJECTION-CONTRACT-v0.2.md","blobSha":"ff11714d6bc6ae1c8957221018e6335aba21adc6","implementedInReferenceSlice":true},
+    {"phase":"P2","contractId":"cross-adapter-conformance","version":"v0.1","path":"design/18-CROSS-ADAPTER-CONFORMANCE-CONTRACT-v0.1.md","blobSha":"f699402d37f623f79dbc44d6ec621ac51e85ba1c","implementedInReferenceSlice":false,"role":"architecture-guard"},
+    {"phase":"P3","contractId":"human-readable-workflow-draft","version":"v0.2","path":"design/20-HUMAN-READABLE-WORKFLOW-DRAFT-CONTRACT-v0.2.md","blobSha":"da6a9e7b0646ce6553faf760a63a3f4d693292f8","implementedInReferenceSlice":true},
+    {"phase":"P3","contractId":"visual-review-workspace","version":"v0.2","path":"design/22-VISUAL-REVIEW-WORKSPACE-PRODUCT-CONTRACT-v0.2.md","blobSha":"ad518ca6742ae27c3ba952c4bc1f10118b98cda5","implementedInReferenceSlice":true},
+    {"phase":"P3","contractId":"correction-confirmation-freeze","version":"v0.2","path":"design/24-CORRECTION-CONFIRMATION-FREEZE-LOOP-CONTRACT-v0.2.md","blobSha":"13576b40ee48dae505f28ecde4d62b190a0cbdab","implementedInReferenceSlice":true},
+    {"phase":"P4","contractId":"capability","version":"v0.2","path":"design/26-CAPABILITY-CONTRACT-v0.2.md","blobSha":"ff2ee808b946230517b1539e3973d947accdc811","implementedInReferenceSlice":true},
+    {"phase":"P4","contractId":"forms-human-interaction","version":"v0.2","path":"design/28-FORMS-HUMAN-INTERACTION-CONTRACT-v0.2.md","blobSha":"00e9ba034982156d97e4836fc9a7d2ef911c10d5","implementedInReferenceSlice":true},
+    {"phase":"P4","contractId":"integration-capability-binding","version":"v0.2","path":"design/30-INTEGRATION-CAPABILITY-BINDING-CONTRACT-v0.2.md","blobSha":"132b22baa7c188b67e80b0321005048c02e519ed","implementedInReferenceSlice":true},
+    {"phase":"P5","contractId":"execution-plan","version":"v0.2","path":"design/32-EXECUTION-PLAN-CONTRACT-v0.2.md","blobSha":"81d7a50cfccaa3803388e27500b8b3534384f85a","implementedInReferenceSlice":true},
+    {"phase":"P5","contractId":"temporal-mapping","version":"v0.2","path":"design/34-TEMPORAL-MAPPING-STRATEGY-CONTRACT-v0.2.md","blobSha":"aed10f4b0a3161ae3e36a05992fc99a38ebcfa06","implementedInReferenceSlice":true},
+    {"phase":"P5","contractId":"runtime-safety-policy","version":"v0.2","path":"design/36-RUNTIME-SAFETY-POLICY-CONTRACT-v0.2.md","blobSha":"5aa94e1a88db26b7775241b83e85211ac81a532e","implementedInReferenceSlice":true},
+    {"phase":"P5","contractId":"deployment-environment","version":"v0.2","path":"design/38-DEPLOYMENT-REVISION-ENVIRONMENT-CONTRACT-v0.2.md","blobSha":"1db182a95a091e8404ecda07f449bb5d9c7bd00f","implementedInReferenceSlice":true}
+  ],
+  "phaseConsolidations": [
+    {"phase":"P2","path":"arch/09-PHASE-2-INPUT-ARCHITECTURE-CONSOLIDATION-v0.1.md","blobSha":"9f47a968d9b7cd41cd2fac037c4ffa03498d230d"},
+    {"phase":"P3","path":"arch/13-PHASE-3-EXPLANATION-REVIEW-CONSOLIDATION-v0.1.md","blobSha":"de97063f7307e26fb2778e0be103beb41dbda102"},
+    {"phase":"P4","path":"arch/17-PHASE-4-CAPABILITY-MODEL-CONSOLIDATION-v0.1.md","blobSha":"f83aceb4a004dcdd4b3321869bea4bac1701e105"},
+    {"phase":"P5","path":"arch/22-PHASE-5-TEMPORAL-EXECUTION-MODEL-CONSOLIDATION-v0.1.md","blobSha":"2a8da998af2bf5f69b476d6e683ca6735f018415"}
+  ],
+  "buildGovernance": [
+    {"kind":"implementation-plan","path":"plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.2.md","blobSha":"107fc89cda5ad709ce5fed6844f496dec9e6ffc8"},
+    {"kind":"authorization","path":"plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.1.md","blobSha":"f419930077a322046ffc231ada8eac704397d157"},
+    {"kind":"opening-result","path":"test/86-POST-PHASE-5-BUILD-OPENING-REVIEW-FINAL-RESULT-v0.1.md","blobSha":"70ed071a30378597e22568e2247c7e42265e8867"}
+  ]
+}
