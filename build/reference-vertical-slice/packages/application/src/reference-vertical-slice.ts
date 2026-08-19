@@ -8,7 +8,15 @@ import type {
 } from '../../canvas-source/src/types.ts';
 import { buildCanvasRevision } from '../../canvas-source/src/revision.ts';
 import { preserveCanvasRevision } from '../../canvas-source/src/preservation.ts';
-import { adaptPreservedCanvas } from '../../canvas-source/src/adapter.ts';
+import {
+  adaptPreservedCanvas,
+  canvasAdapterInputFingerprint,
+  DEFAULT_CANVAS_ADAPTER_CONFIG,
+} from '../../canvas-source/src/adapter.ts';
+import {
+  findSuccessfulResultByFingerprint,
+  getAttemptView,
+} from '../../source-intake/src/store.ts';
 import { validateProcessRevision } from '../../semantic-core/src/validation.ts';
 import type {
   FreezeRequestPayload,
@@ -27,6 +35,7 @@ import {
   applyFreezeCommand,
   initializeReview,
 } from './review.ts';
+import { hydrateReferenceCorrectionReplay } from './reference-replay.ts';
 import { persistCapabilityReferenceBundle } from './capability.ts';
 import { persistReferenceExecutionDesign } from './execution-design.ts';
 
@@ -148,8 +157,13 @@ export function buildReferenceVerticalSlice(
     initialCanvasRevision,
     { startedAt: createdAt, initiatedBy: requestedBy },
   );
-  const adapterAttempt = adaptPreservedCanvas(repo as never, preserved, undefined, { now: createdAt });
-  if (!adapterAttempt.result) throw new TypeError('Reference Canvas adapter did not produce a result');
+
+  const fingerprint = canvasAdapterInputFingerprint(preserved, DEFAULT_CANVAS_ADAPTER_CONFIG);
+  const existingResult = findSuccessfulResultByFingerprint(repo as never, fingerprint);
+  const adapterAttempt = existingResult
+    ? getAttemptView(repo as never, existingResult.adapterAttemptId)
+    : adaptPreservedCanvas(repo as never, preserved, DEFAULT_CANVAS_ADAPTER_CONFIG, { now: createdAt });
+  if (!adapterAttempt?.result) throw new TypeError('Reference Canvas adapter did not produce a result');
 
   const initialNormalized = normalizeAdapterResult(repo as never, adapterAttempt.result.id, { normalizedAt: createdAt });
   const initialValidation = validateProcessRevision(
@@ -193,7 +207,7 @@ export function buildReferenceVerticalSlice(
     requestedAt: actorCorrectionAt,
   };
 
-  const corrected = applyActorCorrection(
+  const correctionAttempt = applyActorCorrection(
     repo as never,
     initialReview.context,
     initialNormalized.processRevision,
@@ -202,7 +216,12 @@ export function buildReferenceVerticalSlice(
     initialCanvasRevision,
     correction,
   );
-  if (corrected.application.result !== 'APPLIED' || !corrected.nextContext || !corrected.candidateProcessRevision || !corrected.candidateValidation) {
+  const corrected = correctionAttempt.application.result === 'IDEMPOTENT_REPLAY'
+    ? hydrateReferenceCorrectionReplay(repo as never, correctionAttempt.application) ?? correctionAttempt
+    : correctionAttempt;
+  const correctionSucceeded = corrected.application.result === 'APPLIED'
+    || corrected.application.result === 'IDEMPOTENT_REPLAY';
+  if (!correctionSucceeded || !corrected.nextContext || !corrected.candidateProcessRevision || !corrected.candidateValidation) {
     throw new TypeError(`Reference actor correction failed: ${corrected.application.result}`);
   }
 
