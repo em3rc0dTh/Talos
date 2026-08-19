@@ -1,12 +1,13 @@
 import { sha256Utf8 } from '../../foundation/src/digest.ts';
 import { ReferenceEmailSinkStore } from './email-sink-store.ts';
 
+export const REFERENCE_CONFIRMATION_SUBJECT = 'Talos reference confirmation';
+export const REFERENCE_CONFIRMATION_BODY = 'The reference request was approved.';
+
 export interface ReferenceEmailSendRequest {
   referenceRequestId: string;
   capabilityUseOccurrenceId: string;
   to: string;
-  subject: string;
-  body: string;
   effectCreatedAt: string;
 }
 
@@ -59,8 +60,8 @@ export class ReferenceEmailSinkService {
     const attempt = (this.#attempts.get(key) ?? 0) + 1;
     this.#attempts.set(key, attempt);
 
-    if (!request.to.includes('@') || !request.subject.trim() || !request.body.trim() || !request.effectCreatedAt.trim()) {
-      throw new ReferenceEmailInvalidRequestError('valid to, subject, body and effectCreatedAt are required');
+    if (!request.to.includes('@') || !request.effectCreatedAt.trim()) {
+      throw new ReferenceEmailInvalidRequestError('valid to and effectCreatedAt are required');
     }
 
     if (attempt <= plan.transientFailuresBeforeSuccess) {
@@ -69,7 +70,11 @@ export class ReferenceEmailSinkService {
 
     const recorded = this.store.record({
       idempotencyKey: key,
-      request: { to: request.to, subject: request.subject, body: request.body },
+      request: {
+        to: request.to,
+        subject: REFERENCE_CONFIRMATION_SUBJECT,
+        body: REFERENCE_CONFIRMATION_BODY,
+      },
       createdAt: request.effectCreatedAt,
     });
 
