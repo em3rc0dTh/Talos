@@ -4,7 +4,7 @@
 
 The Mining Site is TALOS's controlled experimentation area for learning how heterogeneous business-process and architecture sources can be interpreted, normalized, and handed to the Foundry without erasing their origin.
 
-A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, UML activity-style model, lane-partitioned service process, or another process/system representation.
+A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, UML activity-style model, lane-partitioned service process, annotated notation example, or another process/system representation.
 
 The Mining Site does not produce executable code. Its job is to preserve source truth, perform an auditable transformation, surface uncertainty, classify the source artifact, discover executable slices when they exist, and emit a clean Foundry Source.
 
@@ -63,6 +63,8 @@ A transform may extract and normalize:
 - participant-local control flow versus cross-participant communication;
 - cross-lane responsibility handoffs inside one process scope;
 - source-node identity independently from display labels;
+- source-asserted notation type independently from geometry-inferred type;
+- notation legends/annotation overlays independently from business graph edges;
 - visible task/execution markers separately from implementation semantics;
 - provisional node semantic type: step/stage, capability, service, resource, repository, catalog/state, infrastructure, governance work, model/artifact;
 - edge semantic type where supported: sequence, message/communication, object/data flow, dependency, handoff, feedback, association;
@@ -70,12 +72,14 @@ A transform may extract and normalize:
 - branch convergence / merge semantics;
 - explicit parallel split/fork regions and synchronization joins;
 - branch-completion predicates and join policy;
+- explicit loops/back-edges, re-entry targets and exit conditions;
 - waits, deadlines, callback/re-entry intent and external events;
 - event identity, incoming/outgoing topology and termination evidence separately from icon shape;
 - human interactions and physical work;
 - subprocesses and nested work;
 - boundary events and exception paths;
-- business objects and state evidence;
+- business objects, object-node occurrences and state evidence;
+- conceptual object identity separately from source object-node occurrence identity;
 - identity/access gates and preconditions;
 - business communication intent and explicit channel evidence;
 - message/correlation requirements across participant boundaries;
@@ -96,7 +100,7 @@ The Foundry receives this artifact and asks a different question:
 
 > Which validated semantics are executable lifecycles, what durable boundaries should exist, and how should those lifecycles become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, human-interaction implementation, parallel execution semantics, and decomposition across multiple durable workflows.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, human-interaction implementation, parallel execution semantics, loop/history-management strategy, and decomposition across multiple durable workflows.
 
 ## Experimental rule
 
@@ -112,6 +116,8 @@ BUSINESS MESSAGE                 ≠ automatically a known integration
 MESSAGE FLOW                     ≠ sequence flow
 OBJECT / DATA FLOW               ≠ control / sequence flow
 SOURCE NOTATION                  ≠ automatically execution semantics
+SOURCE-ASSERTED NODE TYPE        ≠ geometry-only inference
+NOTATION ANNOTATION EDGE         ≠ process edge
 IDENTITY / ACCESS GATE           ≠ automatically a known auth implementation
 DATA RETENTION INTENT            ≠ automatically proven consent/compliance semantics
 PARTICIPANT BOUNDARY             ≠ automatically a Temporal Workflow boundary
@@ -122,6 +128,7 @@ EXTERNAL-SOUNDING ROLE NAME      ≠ proven external participant
 PERSON / USER TASK ICON          ≠ known Temporal interaction mechanism
 SAME DISPLAY LABEL               ≠ same source node
 SAME BUSINESS QUESTION           ≠ same authority / data context
+SAME OBJECT LABEL                ≠ same source node or proven same runtime object
 SYMMETRIC BRANCHES               ≠ duplicate nodes to collapse
 MISSING CONTINUATION             ≠ implicit success
 REFERENCE ARCHITECTURE           ≠ one executable Workflow
@@ -134,12 +141,16 @@ FEEDBACK TOPOLOGY                ≠ single process loop until instance semantic
 METRIC / SIMULATION OVERLAY      ≠ business state or execution policy
 FILE EXTENSION                   ≠ authoritative byte-format truth
 OBJECT-STATE NODE                ≠ complete state machine
+OBJECT NODE OCCURRENCE           ≠ business-object instance identity
+LABEL WORDING                    ≠ node type
 MERGE / CONVERGENCE              ≠ JOIN / SYNCHRONIZATION
 PARALLEL BRANCH                  ≠ same executor / Task Queue
 CIRCULAR EVENT SYMBOL            ≠ automatic terminal outcome
 CALLBACK INTENT                  ≠ explicit timer / wait
+CONTROL-FLOW LOOP                ≠ technical retry or Continue-As-New
 DIAGRAM READING ORDER            ≠ process execution order
 AMBIGUOUS LONG CONNECTOR         ≠ license to invent an edge
+ACTIVITY FINAL                   ≠ automatic business success
 LAST VISIBLE ACTIVITY            ≠ explicit process completion
 ```
 
@@ -175,15 +186,22 @@ QUARRY-08  Multi-Department Call / Complaint / Service Handling
            lane-vs-participant distinction + visible human/user-task markers + repeated decision identity
            + two departmental parallel regions + symmetric m/e branches + callback/re-entry intent
            + event-topology discipline + nonlocal/partially ambiguous cross-lane connectors
+
+QUARRY-09  Proposal Preparation Activity Process
+           source-asserted UML notation annotations + guarded decisions + explicit control-flow loop/back-edge
+           + three-way parallel fork/join + object-node production + object occurrence vs runtime identity
+           + explicit Activity Final evidence
 ```
 
-## Emerging evidence after eight quarries
+## Emerging evidence after nine quarries
 
 The Mining Site now has evidence for a broader semantic model. It remains provisional:
 
 ```text
 SOURCE ARTIFACT CLASS
 SOURCE PROVENANCE / BYTE IDENTITY
+SOURCE NOTATION / ANNOTATION OVERLAY
+SOURCE-ASSERTED SEMANTIC TYPE
 
 PROCESS / PROCESS SCOPE
 EXECUTABLE SLICE
@@ -217,16 +235,20 @@ EDGE SEMANTIC TYPE
 
 EDGE CONFIDENCE / ENDPOINT CERTAINTY
 
-DECISION + BRANCH
+DECISION + GUARD + BRANCH
 MERGE / CONVERGENCE
 PARALLEL SPLIT / FORK
 JOIN / SYNCHRONIZATION
 JOIN POLICY
 BRANCH COMPLETION PREDICATE
 
+CONTROL-FLOW LOOP / BACK-EDGE
+RE-ENTRY TARGET
+LOOP EXIT CONDITION
+
 EVENT
   ├── SOURCE SHAPE
-  ├── SUBTYPE
+  ├── SOURCE-ASSERTED / INFERRED SUBTYPE
   ├── INCOMING / OUTGOING TOPOLOGY
   └── TERMINATION EVIDENCE
 
@@ -234,6 +256,8 @@ WAIT / DEADLINE
 CALLBACK / RE-ENTRY INTENT
 SUBPROCESS / NESTED WORK
 BUSINESS OBJECT / STATE EVIDENCE
+OBJECT NODE OCCURRENCE
+CONCEPTUAL OBJECT IDENTITY
 BUSINESS OUTCOME
 EXCEPTION / ESCALATION
 IDENTITY / ACCESS CONDITION
@@ -248,7 +272,7 @@ These are evidence-backed hypotheses, not yet a frozen TALOS standard language.
 
 ## Current transformation lesson
 
-Q06 established that every source is not necessarily one workflow. Q07 established that workflow-like sources must preserve control/object/concurrency semantics. Q08 adds that internal responsibility lanes, human-task hints, event icons and complex nonlocal connectors each require independent semantic treatment.
+Q06 established that every source is not necessarily one workflow. Q07 established that workflow-like sources must preserve control/object/concurrency semantics. Q08 added independent treatment for lanes, human-task hints, events and graph uncertainty. Q09 adds a new provenance level: a source may explicitly assert its own notation semantics, and those assertions must remain separate from business edges while strengthening canonical typing. Q09 also gives the Mining Site its clearest explicit business loop/back-edge.
 
 ```text
 INPUT SOURCE
@@ -257,15 +281,19 @@ ARTIFACT CLASSIFICATION
     ↓
 SOURCE GRAPH + PROVENANCE
     ↓
-NODE + EDGE SEMANTIC TYPING
+NOTATION / ANNOTATION LAYER EXTRACTION
+    ↓
+SOURCE-ASSERTED + INFERRED NODE/EDGE TYPING
     ↓
 PARTICIPANT / LANE / ROLE BOUNDARY CLASSIFICATION
     ↓
 CONTROL / OBJECT / MESSAGE / HANDOFF DISTINCTION
     ↓
+DECISION + LOOP + CONCURRENCY NORMALIZATION
+    ↓
 EVENT + TASK-MARKER INTERPRETATION
     ↓
-BRANCH + CONCURRENCY NORMALIZATION
+OBJECT OCCURRENCE / OBJECT IDENTITY SEPARATION
     ↓
 GRAPH-LEVEL UNCERTAINTY PRESERVATION
     ↓
