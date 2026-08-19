@@ -53,8 +53,7 @@ export class ReferenceEmailSinkStore {
     `).get(effect.idempotencyKey) as Record<string, unknown> | undefined;
     if (existing) {
       const same = existing.request_json === requestJson
-        && existing.request_sha256 === requestSha256
-        && existing.created_at === effect.createdAt;
+        && existing.request_sha256 === requestSha256;
       if (!same) throw new ReferenceEmailIdempotencyConflictError(effect.idempotencyKey);
       return { status: 'DUPLICATE_IDENTICAL', requestSha256 };
     }
