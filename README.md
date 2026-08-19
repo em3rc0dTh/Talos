@@ -35,9 +35,11 @@ HUMAN-READABLE EXPLANATION
         ↓
 VISUAL REVIEW / CORRECTION
         ↓
-ACCEPTED SEMANTIC REVISION
+SEMANTIC FREEZE / AUTOMATION-DESIGN HANDOFF WHEN ELIGIBLE
         ↓
-LATER: CAPABILITY + EXECUTION DESIGN
+LATER: CAPABILITY DESIGN
+        ↓
+LATER: TEMPORAL EXECUTION DESIGN
 ```
 
 No adapter may bypass provenance or emit Temporal execution truth directly.
@@ -63,6 +65,13 @@ RUNTIME EXECUTION                ≠ business success
 DERIVED EXPLANATION              ≠ source
 RENDERED TEXT                    ≠ new semantic truth
 PROPOSITION                      may contain multiple evidence facets
+ONE VISIBLE REVIEW ITEM          may contain multiple evidence states
+SCOPE SWITCH                     ≠ semantic revision
+REVIEW ACTION                    ≠ source rewrite
+STALE REVIEW COMMAND             ≠ safe write
+SEMANTIC FREEZE                  ≠ ProcessRevision mutation
+BUSINESS SEMANTIC FREEZE         ≠ automation readiness
+AUTOMATION DESIGN HANDOFF        requires READY_FOR_AUTOMATION_DESIGN
 TRUTH CLASS                      ≠ confidence
 TRUTH CLASS                      ≠ evidence perspective
 SEMANTIC VALIDITY                ≠ automation readiness
@@ -101,34 +110,19 @@ P2-06 Cross-Adapter Conformance     ✅ 24/24
 PHASE 2                             ✅ CLOSED
 ```
 
-Consolidated architecture:
+Consolidation:
 
 ```text
 arch/09-PHASE-2-INPUT-ARCHITECTURE-CONSOLIDATION-v0.1.md
 ```
 
-TALOS now has one design/architecture path for:
-
-```text
-Canvas       native structured expression
-BPMN         external structured notation
-Image        spatial/perceptual expression
-Language     linguistic/distributed expression
-Automation   implemented-behavior expression
-```
+TALOS now has one architecture path for native Canvas, BPMN, images, language/documents and existing automation while preserving each source family's evidence differences.
 
 This is architecture proof, not production adapter implementation.
 
 # Build-opening review
 
-Phase-2 closure did not automatically authorize BUILD.
-
-The post-closure review found two issues:
-
-```text
-1. the old Canvas implementation plan predates the complete Phase-2 architecture;
-2. immediate BUILD would skip the still-open Explanation/Review, Capability and Temporal Execution design gates from the earlier master roadmap.
-```
+Phase-2 closure did not authorize BUILD.
 
 Formal decision:
 
@@ -144,85 +138,167 @@ Evidence:
 test/40-REFERENCE-BUILD-OPENING-REVIEW-RESULT-v0.1.md
 ```
 
-The old implementation plan is preserved as historical/future planning evidence; it is not BUILD authorization.
+The NO-GO restored the architecture-first sequence:
+
+```text
+Phase 3 Explanation & Review
+→ Phase 4 Capability Model
+→ Phase 5 Temporal Execution Model
+→ explicit vertical-slice BUILD review
+```
 
 # Phase 3 — Explanation & Review
 
 Phase 3 answers:
 
-> **How does TALOS show a human what it understood, what remains uncertain/conflicted, why it believes each statement, and what must be confirmed/corrected before a semantic revision is accepted?**
+> **How does TALOS show a human what it understood, preserve evidence/uncertainty/conflict in that explanation, allow explicit correction/confirmation without rewriting history, and freeze reviewed semantic scopes safely?**
 
 ## T3-01 — Human-readable Workflow Draft
 
 ```text
 ✅ FROZEN v0.2
-30 / 30 E-fixtures PASS
+30 / 30 PASS
 ```
 
-Initial pressure test:
-
-```text
-29 PASS / 1 FAIL
-```
-
-E10 exposed a subtle explanation problem: one human sentence can combine properties with different truth/confidence/perspective states.
-
-v0.2 introduced:
+Key structure:
 
 ```text
 ExplanationEvidenceFacet
 ```
 
-so a proposition such as:
+One readable proposition may contain multiple property-level epistemic states without flattening Provenance.
+
+## T3-02 — Visual Review Workspace
 
 ```text
-The box contains "Brainst" [SOURCE_STATED],
-which TALOS interprets as "brainstorm" [INFERRED].
+✅ FROZEN v0.2
+32 / 32 PASS
 ```
 
-can remain readable without flattening provenance.
-
-Frozen:
+Initial result:
 
 ```text
-design/20-HUMAN-READABLE-WORKFLOW-DRAFT-CONTRACT-v0.2.md
-arch/10-HUMAN-READABLE-WORKFLOW-DRAFT-ARCHITECTURE-v0.2.md
-design/21-HUMAN-READABLE-WORKFLOW-DRAFT-v0.2-FREEZE-DECLARATION.md
+31 PASS / 1 FAIL
 ```
 
-## T3-02 — Visual Review Workspace Product Contract
+W30 exposed that one review workspace may contain multiple semantic scopes, each with its own explanation/assessment/visual grammar.
+
+v0.2 introduced:
 
 ```text
-🟢 NEXT
+ReviewBaselineBundle
+ReviewScopeSurfaceBinding
+scope-aware ExplanationFacetVisualBinding
 ```
 
-Build on P2-01B and define how the user sees the same semantic baseline visually:
+Core visual-review law:
 
 ```text
-canonical meaning
-source-only evidence
-truth/confidence/perspective
-uncertainty
-conflicts
-validation findings
-clarification questions
-source/provenance navigation
-review actions
-baseline/version state
+TEXT DRAFT
+CANVAS
+EVIDENCE
+FINDINGS / QUESTIONS
+HISTORY / COMPARE
 ```
 
-The Canvas remains a projection/review surface, not provenance owner.
+must all resolve from one pinned review baseline rather than independent `latest` state.
 
 ## T3-03 — Correction / Confirmation / Freeze
 
 ```text
-⚪ PENDING
+✅ FROZEN v0.2
+36 / 36 PASS
+```
+
+Initial result:
+
+```text
+35 PASS / 1 FAIL
+```
+
+H34 exposed that a multi-scope freeze intent cannot be safely reconstructed from unrelated singular-scope commands.
+
+v0.2 introduced:
+
+```text
+ReviewCommand.targetSemanticScopeRefs[]
+FreezeRequestPayload
+ScopeFreezeRequest
+SemanticFreezeApplication
+ScopeFreezeOutcome
+```
+
+Core correction/freeze law:
+
+```text
+explicit review action
+→ new review-authored evidence
+→ new ProcessRevision when meaning changes
+→ new ValidationAssessment
+→ explicit baseline transition
+→ SemanticFreezeRecord / ScopeFreezeRecord
+```
+
+Old source, interpretation, revision and validation history remain immutable.
+
+For:
+
+```text
+AUTOMATION_DESIGN_HANDOFF
+```
+
+an accepted scope must already have:
+
+```text
+assessmentIntent = AUTOMATION_DESIGN_READINESS
+executionReadiness = READY_FOR_AUTOMATION_DESIGN
+```
+
+Phase 3 cannot manufacture readiness.
+
+## Phase-3 consolidation
+
+```text
+arch/13-PHASE-3-EXPLANATION-REVIEW-CONSOLIDATION-v0.1.md
+plan/05-PHASE-3-EXPLANATION-REVIEW-GATE-v0.2.md
+```
+
+```text
+PHASE 3 — EXPLANATION & REVIEW      ✅ CLOSED
+```
+
+# Phase 4 — Capability Model
+
+```text
+T4-01 Capability Contract           🟢 NEXT
+T4-02 Forms / Human Interaction     ⚪ PENDING
+T4-03 Integration Binding Model     ⚪ PENDING
+PHASE 4                             🟡 OPEN / NEXT
+```
+
+Phase-4 governing question:
+
+> **Given an accepted semantic scope, what capability does the process require from the world, and how does TALOS represent that requirement independently from any concrete provider, credential, API, n8n node, UI widget or Temporal Activity?**
+
+Required distinction:
+
+```text
+BUSINESS ACTION / HUMAN INTERACTION
+        ≠
+CAPABILITY REQUIREMENT
+        ≠
+CAPABILITY OFFERING / IMPLEMENTATION
+        ≠
+PROVIDER BINDING
+        ≠
+CREDENTIAL / SECRET
+        ≠
+TEMPORAL ACTIVITY
 ```
 
 # Later phases
 
 ```text
-PHASE 4 — CAPABILITY MODEL          ⚪ PENDING
 PHASE 5 — TEMPORAL EXECUTION MODEL  ⚪ PENDING
 PHASE 6 — END-TO-END VERTICAL SLICE ⚪ PENDING
 BUILD                               ⛔ CLOSED
@@ -233,16 +309,16 @@ Before eventual BUILD, the implementation plan will be reconciled again against 
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.13.md
-plan/05-PHASE-3-EXPLANATION-REVIEW-GATE-v0.1.md
+plan/00-TALOS-ROADMAP-v0.14.md
+plan/05-PHASE-3-EXPLANATION-REVIEW-GATE-v0.2.md
 ```
 
 ## Immediate next move
 
 ```text
-T3-02 — VISUAL REVIEW WORKSPACE PRODUCT CONTRACT
+T4-01 — CAPABILITY CONTRACT
 ```
 
 ## Working definition
 
-> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves source truth before interpretation, recovers only supportable meaning through versioned adapters, normalizes without erasing origin, validates uncertainty/conflict, explains that meaning to humans with provenance-safe evidence, allows controlled review/correction, and only later permits capability and durable execution design.
+> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves source truth before interpretation, recovers only supportable meaning through versioned adapters, normalizes without erasing origin, validates uncertainty/conflict, explains that meaning to humans with provenance-safe evidence, allows immutable review/correction/freeze, and only then permits capability design followed by durable execution design.
