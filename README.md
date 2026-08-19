@@ -12,27 +12,9 @@ Its source model is intentionally heterogeneous: native TALOS Canvas, BPMN/Bizag
 
 > **Talos provides a source-agnostic intake architecture that can support heterogeneous process-expression sources through versioned adapters. Each source family becomes supported only after its adapter passes canonical, provenance, and semantic-validation conformance tests.**
 
-`source-agnostic` does not mean TALOS already understands every source type.
-
-It means:
-
-```text
-COMMON INTAKE ARCHITECTURE
-        +
-VERSIONED SOURCE-FAMILY ADAPTER
-        +
-CANONICAL CONFORMANCE
-        +
-PROVENANCE CONFORMANCE
-        +
-SEMANTIC-VALIDATION CONFORMANCE
-        =
-SUPPORTED SOURCE FAMILY
-```
+`source-agnostic` does not mean TALOS already understands every source type. It means one common intake architecture plus versioned source-family adapters and conformance to the frozen semantic/provenance/validation core.
 
 ## Universal intake law
-
-Every source family must follow:
 
 ```text
 REAL PROCESS EXPRESSION
@@ -78,16 +60,19 @@ DISPLAY OF IMPORTED MEANING      ≠ provenance ownership transfer
 PRESENTATION EDIT                ≠ semantic edit
 USER CORRECTION                  ≠ source rewrite
 ADAPTER REINTERPRETATION         ≠ automatic review rebase
+BPMN SOURCE MODEL                ≠ TALOS CANONICAL MODEL
+BPMN TASK                        ≠ Temporal Activity
+BPMN PARTICIPANT                 ≠ lane
+SEQUENCE FLOW                    ≠ message flow
+BPMN DI                          ≠ process semantics
+BPMN isExecutable                ≠ TALOS readiness
 DANGLING RELATIONSHIP            ≠ invalid source
-INCOMPLETE RELATIONSHIP          ≠ fabricated canonical edge
 ADAPTER FAILURE                  ≠ source loss
 UNKNOWN                          ≠ default
 TRUTH CLASS                      ≠ confidence
 EVIDENCE PERSPECTIVE             ≠ truth class
 SEMANTIC VALIDITY                ≠ automation readiness
 VALIDATION                       ≠ repair
-HUMAN INTERACTION                ≠ Temporal mechanism
-FUNCTIONAL DEPENDENCY            ≠ runtime sequence
 IMPLEMENTED BEHAVIOR             ≠ business intent
 ```
 
@@ -97,40 +82,14 @@ IMPLEMENTED BEHAVIOR             ≠ business intent
 T1-01 CANONICAL PROCESS MODEL    ✅ FROZEN v0.1
 T1-02 PROVENANCE MODEL           ✅ FROZEN v0.3
 T1-03 SEMANTIC VALIDATION        ✅ FROZEN v0.2
-
 PHASE 1                          ✅ CLOSED
-```
-
-Phase 1 gives TALOS frozen answers to:
-
-```text
-WHAT DOES THE SOURCE MEAN?
-WHY DO WE BELIEVE THAT MEANING?
-IS THE MEANING COHERENT / SUFFICIENT?
-WHAT IS MISSING / CONFLICTED / NEEDS CONFIRMATION?
-```
-
-Primary evidence:
-
-```text
-arch/01-CANONICAL-PROCESS-MODEL-v0.1.md
-design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.3.md
-design/03-SEMANTIC-VALIDATION-CONTRACT-v0.2.md
-```
-
-Mining evidence:
-
-```text
-Q01–Q12 FIRST BATCH COMPLETE
 ```
 
 # Phase 2 — Input Understanding
 
 Phase 2 is **not yet a BUILD phase**.
 
-Its job is to pressure-test the common intake architecture against fundamentally different ways real process knowledge enters TALOS.
-
-## Current path
+Current path:
 
 ```text
 COMMON SOURCE INTAKE            ✅ FROZEN
@@ -139,9 +98,9 @@ CANVAS NATIVE AUTHORING         ✅ PROVEN
         ↓
 CANVAS REVIEW/PROJECTION        ✅ PROVEN
         ↓
-BPMN STRUCTURED ADAPTER         🟡 NEXT
+BPMN STRUCTURED ADAPTER         ✅ DESIGN/ARCH PROVEN
         ↓
-IMAGE/PERCEPTION ADAPTER        ⚪ PENDING
+IMAGE/PERCEPTION ADAPTER        🟡 NEXT
         ↓
 LANGUAGE/DOCUMENT ADAPTER       ⚪ PENDING
         ↓
@@ -163,8 +122,8 @@ PHASE 1                         ✅ CLOSED
 COMMON SOURCE INTAKE            ✅ FROZEN
 CANVAS AUTHORING CONTRACT       ✅ PROVEN
 CANVAS REVIEW/PROJECTION        ✅ PROVEN
-BPMN ADAPTER CONTRACT           🟡 NEXT / NOT YET PROVEN
-IMAGE ADAPTER CONTRACT          ⚪ NOT YET PROVEN
+BPMN ADAPTER CONTRACT           ✅ DESIGN/ARCH PROVEN
+IMAGE ADAPTER CONTRACT          🟡 NEXT / NOT YET PROVEN
 LANGUAGE ADAPTER CONTRACT       ⚪ NOT YET PROVEN
 AUTOMATION ADAPTER CONTRACT     ⚪ NOT YET PROVEN
 CROSS-ADAPTER CONFORMANCE       ⚪ PENDING
@@ -172,21 +131,12 @@ PHASE 2 INPUT ARCHITECTURE      🟡 OPEN
 BUILD                           ⛔ CLOSED
 ```
 
-# The two Canvas roles
+# Canvas dual-role proof
 
-## ROLE 1 — Native process authoring
+Native authoring:
 
 ```text
 "Create my process here."
-```
-
-The Canvas is the source producer:
-
-```text
-CanvasRevision
-→ NATIVE_STRUCTURED SourceRepresentation
-→ TalosCanvasAdapter
-→ common intake
 ```
 
 Evidence:
@@ -197,130 +147,115 @@ test/14-T2-01-CANVAS-ADAPTER-REGRESSION-RESULT-v0.1.md
 20 / 20 PASS
 ```
 
-## ROLE 2 — Imported-process review/correction
+Imported-source review/correction:
 
 ```text
 "Show me what you understood from my source and let me correct it."
 ```
 
-In this role Canvas is a projection/read surface, not the original source.
-
-Read path:
-
-```text
-EXTERNAL SOURCE
-      ↓
-SOURCE EVIDENCE / CLAIMS
-      ↓
-PROCESS REVISION
-      ↓
-REVIEW WORKSPACE REVISION
-      ↓
-CANVAS REVIEW PROJECTION
-```
-
-Semantic correction follows a separate write/evidence path:
-
-```text
-REVIEW ACTION
-      ↓
-REVIEW-AUTHORED SOURCE REVISION
-      ↓
-NEW CLAIM / CONFIRMATION / RESOLUTION
-      ↓
-NEW PROCESS REVISION
-      ↓
-NEW VALIDATION ASSESSMENT
-      ↓
-BASELINE TRANSITION CANDIDATE
-      ↓
-RECONCILIATION + DECISION
-      ↓
-NEW REVIEW WORKSPACE REVISION
-      ↓
-NEW PROJECTION
-```
-
-Original imported evidence remains immutable and traceable.
-
-Pressure-test history:
-
-```text
-v0.1 → R01–R14 → 12 PASS / 2 FAIL
-```
-
-The failures exposed mutable review-baseline history. v0.2 added:
-
-```text
-ReviewWorkspaceDefinition
-ReviewWorkspaceRevision
-BaselineTransitionCandidate
-BaselineReconciliationAnalysis
-BaselineTransitionDecision
-```
-
-Full regression:
-
-```text
-test/20-CANVAS-REVIEW-PROJECTION-REGRESSION-RESULT-v0.1.md
-14 / 14 PASS
-```
-
-Frozen:
+Evidence:
 
 ```text
 design/08-CANVAS-REVIEW-PROJECTION-CONTRACT-v0.2.md
 arch/04-CANVAS-REVIEW-PROJECTION-ARCHITECTURE-v0.1.md
-design/09-CANVAS-REVIEW-PROJECTION-v0.2-FREEZE-DECLARATION.md
+test/20-CANVAS-REVIEW-PROJECTION-REGRESSION-RESULT-v0.1.md
+14 / 14 PASS
 ```
 
-Gate closure:
+Core review lineage:
 
 ```text
-test/21-P2-01B-CANVAS-REVIEW-PROJECTION-GATE-CLOSURE-v0.1.md
+EXTERNAL SOURCE
+      ↓
+PROCESS REVISION / PROVENANCE / VALIDATION
+      ↓
+REVIEW WORKSPACE REVISION
+      ↓
+CANVAS PROJECTION
+      ↓
+REVIEW-AUTHORED EVIDENCE
+      ↓
+NEW PROCESS REVISION
+      ↓
+EXPLICIT BASELINE TRANSITION
+      ↓
+NEW REVIEW WORKSPACE REVISION
 ```
 
-# Phase-2 source families
+# BPMN structured-source proof
 
-The input architecture must survive these fundamentally different evidence families before BUILD:
+P2-02 is now design/architecture proven:
 
 ```text
-TALOS Canvas            NATIVE_STRUCTURED        ✅ authoring + review proven
-BPMN                     STRUCTURED_PARSE         🟡 next
-Image / Photo            VISUAL_PERCEPTION        ⚪ pending
-Language / Document      TEXT_INTERPRETATION      ⚪ pending
-Existing Automation      AUTOMATION_PARSE         ⚪ pending
+design/10-BPMN-STRUCTURED-ADAPTER-CONTRACT-v0.1.md
+arch/05-BPMN-STRUCTURED-ADAPTER-ARCHITECTURE-v0.1.md
 ```
 
-For existing automation, implemented behavior is evidence with perspective `IMPLEMENTED_BEHAVIOR`; it is not automatically business intent.
+Pressure test:
 
-# Current gate — BPMN structured input
+```text
+test/23-BPMN-STRUCTURED-ADAPTER-PRESSURE-TEST-RESULT-v0.1.md
+20 / 20 PASS
+```
 
-P2-02 asks:
+Freeze / closure:
 
-> Can an external structured notation with exact native IDs and rich notation semantics enter the same TALOS intake architecture without becoming the canonical model, losing BPMN-specific truth, or bypassing provenance and semantic validation?
+```text
+design/11-BPMN-STRUCTURED-ADAPTER-v0.1-FREEZE-DECLARATION.md
+test/24-P2-02-BPMN-STRUCTURED-ADAPTER-GATE-CLOSURE-v0.1.md
+```
 
-The BPMN proof must challenge at minimum:
+This proves the architecture can preserve:
 
 ```text
 native BPMN IDs
-process/collaboration scope
+multiple process/collaboration scopes
 participants vs lanes
-message flow vs sequence flow
-gateway/event subtypes
-boundary events
-interrupting/non-interrupting behavior
-subprocess/call activity distinctions
+sequence vs message flow
+gateway role context
+event/boundary semantics
+subprocess/call distinctions
 data associations
-conditions
-extension/vendor metadata
-DI/layout vs semantics
-unsupported/unknown constructs
-invalid/incomplete BPMN
-0..N candidate semantic scopes
+conditions/default flows
+BPMN DI separation
+vendor extensions
+unsupported constructs
+unresolved references
+partial/failed parse evidence
+Canvas review provenance
 ```
 
-No BPMN → Temporal shortcut is allowed.
+It does **not** claim parser implementation or production BPMN support yet.
+
+# Current gate — Image / Perception
+
+P2-03 asks:
+
+> Can TALOS receive a visual source where structure itself must be perceived, preserve local uncertainty and source-only evidence, and prevent perception/AI output from being laundered into source truth?
+
+Use Mining Site evidence heavily:
+
+```text
+Q06 — non-process reference architecture
+Q08 — ambiguous long connectors / event topology
+Q10 — collaborative editor overlays
+Q11 — physical paper + handwriting
+Q12 — digital-canvas screenshot + functional/ICOM-like semantics
+```
+
+The critical image law is:
+
+```text
+PIXELS / CAPTURED BYTES
+      ≠
+PERCEIVED STRUCTURE
+      ≠
+INTERPRETED SEMANTICS
+      ≠
+CONFIRMED BUSINESS TRUTH
+```
+
+The goal is not perfect vision. The goal is **safe, addressable, provenance-backed and reviewable uncertainty**.
 
 # Build policy
 
@@ -328,35 +263,29 @@ No BPMN → Temporal shortcut is allowed.
 BUILD = CLOSED BY DEFAULT
 ```
 
-BUILD may open only after:
+Remaining before BUILD:
 
 ```text
-Canvas Review/Projection        ✅
-BPMN Adapter                    ✅
-Image/Perception Adapter        ✅
-Language/Document Adapter       ✅
-Existing Automation Adapter     ✅
-Cross-Adapter Conformance       ✅
-Phase-2 Design/Architecture     ✅ CLOSED
+Image/Perception Adapter        ⚪
+Language/Document Adapter       ⚪
+Existing Automation Adapter     ⚪
+Cross-Adapter Conformance       ⚪
+Phase-2 Design/Architecture     ⚪ CLOSE
 ```
-
-Then TALOS may reactivate the reference Canvas adapter implementation plan and build against architecture already challenged by heterogeneous sources.
 
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.6.md
-plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.2.md
+plan/00-TALOS-ROADMAP-v0.7.md
+plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.3.md
 ```
 
 ## Immediate next move
 
 ```text
-P2-02 — BPMN STRUCTURED ADAPTER
+P2-03 — IMAGE / PERCEPTION ADAPTER
 ```
-
-Design and pressure-test the first external structured semantic source family.
 
 ## Working definition
 
-> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves the source before interpretation, uses versioned adapters to recover the meaning each source family can actually support, normalizes that meaning without erasing origin, validates what is known or missing, allows provenance-safe human review/correction, and only then permits automation and Temporal execution design.
+> **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.** It preserves the source before interpretation, uses versioned adapters to recover only the meaning each source family can support, normalizes that meaning without erasing origin, validates what is known or missing, allows provenance-safe human review/correction, and only then permits automation and Temporal execution design.
