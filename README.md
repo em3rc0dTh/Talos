@@ -84,7 +84,8 @@ SYSTEM TRUTH                         🟢 v0.1 ESTABLISHED
 PROCESS INPUT / ORIGIN PRINCIPLE     🟢 v0.1 ESTABLISHED
 PRODUCT CONTRACT                     🟡 DRAFT
 CANONICAL PROCESS MODEL              🟢 v0.1 FROZEN — T1-01 CLOSED
-PROVENANCE MODEL                     🟡 T1-02 NEXT FREEZE
+MINING SITE                          🟢 Q01–Q10 AUDITED / CROSS-SYNTHESIZED
+PROVENANCE MODEL                     🟡 v0.2 CANDIDATE — PRESSURE TEST NEXT
 SEMANTIC VALIDATION                  ⚪ T1-03 PENDING
 CAPABILITY REGISTRY                  🟡 DRAFT / NOT FROZEN
 TEMPORAL EXECUTION MODEL             🟡 DRAFT / NOT FROZEN
@@ -104,12 +105,38 @@ The gate evidence lives in:
 test/01-CANONICAL-PROCESS-MODEL-PRESSURE-TEST-v0.1.md
 ```
 
-The next gate is:
+The first ten real Mining Site quarries have also been audited together. Their cross-source evidence now lives in:
+
+```text
+brainstorming/mining-site/CROSS-QUARRY-SYNTHESIS-v0.1.md
+```
+
+That audit exposed additional provenance requirements around exact source bytes vs derivatives, declared-vs-observed format, source presentation/annotation planes, occurrence identity, property-scoped evidence, relationship uncertainty and causality preservation.
+
+The active provenance candidate is:
+
+```text
+design/01-ORIGIN-PROVENANCE-AND-NORMALIZATION-v0.2.md
+```
+
+and its gate test is defined in:
+
+```text
+test/02-PROVENANCE-PRESSURE-TEST-SPEC-v0.1.md
+```
+
+The next gate remains:
 
 ```text
 T1-02 — Provenance Model
 ```
 
+but it is now specifically **ready to pressure-test**, not ready to freeze by declaration.
+
 ## Working definition
 
 > **TALOS is the semantic guard between business-process intent and durable machine execution.** It accepts heterogeneous process representations, preserves where each process came from, normalizes them into a common semantic model, makes ambiguity and conflicting evidence visible, designs an integrated execution plan, and only then maps validated process truth into Temporal and connected capabilities.
+
+The Mining Site adds an important operational refinement:
+
+> Before TALOS can normalize a source, it must first determine **what kind of evidence is present, which semantic plane it belongs to, and which parts are actually candidates for business-process execution**.
