@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startReferenceDemo } from '../apps/reference-api/src/server.ts';
 
+// This smoke test is the user-try gate: it must traverse real Talos semantics and real Temporal runtime.
 async function requestJson(baseUrl: string, pathname: string, init?: RequestInit) {
   const response = await fetch(`${baseUrl}${pathname}`, init);
   const body = await response.json();
