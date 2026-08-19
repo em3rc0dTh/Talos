@@ -4,7 +4,7 @@
 
 TALOS is a source-aware process-intelligence and durable-execution system. Its central responsibility is to **normalize and standardize business processes while preserving the truth, semantics, provenance, evidence and source-specific meaning of the expression from which each process originated**.
 
-TALOS is not a BPMN converter, not a Temporal UI, not generic OCR, and not merely a diagramming product.
+TALOS is not a BPMN converter, not a Temporal UI, not generic OCR, not generic document summarization, and not merely a diagramming product.
 
 Its source model is intentionally heterogeneous: native TALOS Canvas, BPMN/Bizagi, images, screenshots, physical drawings, whiteboards, natural language, SOP/process documents, existing automations such as n8n, runtime observations, and later additional structured notations may all become process-expression sources.
 
@@ -66,10 +66,18 @@ BPMN DI                          ≠ process semantics
 PIXELS / CAPTURED BYTES          ≠ perceived structure
 PERCEIVED STRUCTURE              ≠ interpreted semantics
 INTERPRETED SEMANTICS            ≠ confirmed business truth
-MODEL PREFERENCE                 ≠ human confirmation
 VISIBLE ARROW                    ≠ sequence flow
 NO DETECTED CONTINUATION         ≠ proven termination
 GEOMETRY                         ≠ universal semantics
+TEXT SPAN                        ≠ semantic claim automatically
+SEMANTIC CLAIM                   ≠ process node automatically
+DOCUMENT ORDER                   ≠ process execution order automatically
+LIST / TABLE ORDER               ≠ control flow automatically
+PRONOUN                          ≠ resolved actor automatically
+MODALITY                         ≠ executable action automatically
+EXAMPLE                          ≠ normative requirement
+POLICY                           ≠ procedure automatically
+MODEL PREFERENCE                 ≠ human confirmation
 DANGLING RELATIONSHIP            ≠ invalid source
 ADAPTER FAILURE                  ≠ source loss
 UNKNOWN                          ≠ default
@@ -106,9 +114,9 @@ BPMN STRUCTURED ADAPTER         ✅ DESIGN/ARCH PROVEN
         ↓
 IMAGE/PERCEPTION ADAPTER        ✅ DESIGN/ARCH PROVEN
         ↓
-LANGUAGE/DOCUMENT ADAPTER       🟡 NEXT
+LANGUAGE/DOCUMENT ADAPTER       ✅ DESIGN/ARCH PROVEN
         ↓
-EXISTING AUTOMATION ADAPTER     ⚪ PENDING
+EXISTING AUTOMATION ADAPTER     🟡 NEXT
         ↓
 CROSS-ADAPTER CONFORMANCE       ⚪ PENDING
         ↓
@@ -128,8 +136,8 @@ CANVAS AUTHORING CONTRACT       ✅ PROVEN
 CANVAS REVIEW/PROJECTION        ✅ PROVEN
 BPMN ADAPTER CONTRACT           ✅ DESIGN/ARCH PROVEN
 IMAGE ADAPTER CONTRACT          ✅ DESIGN/ARCH PROVEN
-LANGUAGE ADAPTER CONTRACT       🟡 NEXT / NOT YET PROVEN
-AUTOMATION ADAPTER CONTRACT     ⚪ NOT YET PROVEN
+LANGUAGE ADAPTER CONTRACT       ✅ DESIGN/ARCH PROVEN
+AUTOMATION ADAPTER CONTRACT     🟡 NEXT / NOT YET PROVEN
 CROSS-ADAPTER CONFORMANCE       ⚪ PENDING
 PHASE 2 INPUT ARCHITECTURE      🟡 OPEN
 BUILD                           ⛔ CLOSED
@@ -168,12 +176,9 @@ test/20-CANVAS-REVIEW-PROJECTION-REGRESSION-RESULT-v0.1.md
 
 # BPMN structured-source proof
 
-P2-02:
-
 ```text
 design/10-BPMN-STRUCTURED-ADAPTER-CONTRACT-v0.1.md
 arch/05-BPMN-STRUCTURED-ADAPTER-ARCHITECTURE-v0.1.md
-
 test/23-BPMN-STRUCTURED-ADAPTER-PRESSURE-TEST-RESULT-v0.1.md
 20 / 20 PASS
 ```
@@ -182,28 +187,18 @@ This is design/architecture proof, not parser implementation or production suppo
 
 # Image / Perception proof
 
-P2-03 is now design/architecture proven.
-
-Initial candidate:
+Initial pressure test:
 
 ```text
 I01–I28
 27 PASS / 1 FAIL
 ```
 
-The failure exposed a historical-state defect:
+v0.2 separates:
 
 ```text
 PerceptionAlternativeSet
-```
-
-could appear to change from model preference to human confirmation in place.
-
-v0.2 now separates:
-
-```text
-PerceptionAlternativeSet
-  = immutable record of what one model/attempt observed/preferred
+  = immutable model/attempt output
 
 PerceptionAlternativeDecision
   = immutable later human/authority resolution
@@ -224,63 +219,106 @@ arch/06-IMAGE-PERCEPTION-ADAPTER-ARCHITECTURE-v0.2.md
 design/13-IMAGE-PERCEPTION-ADAPTER-v0.2-FREEZE-DECLARATION.md
 ```
 
+# Language / Document proof
+
+P2-04 is now design/architecture proven.
+
+Initial pressure test:
+
+```text
+L01–L30
+29 PASS / 1 FAIL
+```
+
+L28 exposed a history/addressability gap: model alternatives were immutable, but a later authority decision did not yet have a dedicated record identifying the exact selected/rejected alternatives outside Canvas-specific review flows.
+
+v0.2 now separates:
+
+```text
+LanguageAlternativeSet
+  = immutable record of what one interpreter/model proposed/preferred
+
+LanguageAlternativeDecision
+  = immutable later human/authority resolution
+```
+
+Full regression:
+
+```text
+test/31-LANGUAGE-DOCUMENT-ADAPTER-REGRESSION-RESULT-v0.1.md
+30 / 30 PASS
+```
+
+Frozen:
+
+```text
+design/14-LANGUAGE-DOCUMENT-ADAPTER-CONTRACT-v0.2.md
+arch/07-LANGUAGE-DOCUMENT-ADAPTER-ARCHITECTURE-v0.2.md
+design/15-LANGUAGE-DOCUMENT-ADAPTER-v0.2-FREEZE-DECLARATION.md
+```
+
 Gate closure:
 
 ```text
-test/28-P2-03-IMAGE-PERCEPTION-ADAPTER-GATE-CLOSURE-v0.1.md
+test/32-P2-04-LANGUAGE-DOCUMENT-ADAPTER-GATE-CLOSURE-v0.1.md
 ```
 
-P2-03 proves the architecture can preserve:
+P2-04 proves the architecture can preserve:
 
 ```text
-physical origin vs photo capture
-native digital source vs screenshot
-local image-region evidence
-crop/rotation/deskew transform lineage
-literal text vs interpreted meaning
-competing perception alternatives
-shape/type confidence separation
-edge existence/endpoint/direction/role uncertainty
-out-of-frame/occlusion vs absence
-editor/collaborator overlays
-same label vs same occurrence
-reference architecture vs process scope
-functional-model / notation-dependent geometry
-multiple representation identity discipline
-partial perception
-immutable re-perception
-Canvas review of uncertain/source-only evidence
+source document vs extracted text
+exact span/section/table evidence anchors
+one paragraph → many claims
+one claim → many spans
+document order vs execution order
+explicit ordering markers
+normal path vs conditional/exception override
+pronoun/coreference ambiguity
+must/should/may modality
+negation/prohibition
+example vs requirement
+definition/policy vs activity
+lists/checklists without automatic sequence
+tables/RACI without automatic flow
+cross-reference resolution states
+0..N process/policy/procedure scopes
+mixed-content delegation
+partial extraction
+immutable interpreter/model upgrades
+Canvas review/correction lineage
 ```
 
-It does **not** claim OCR/vision implementation, accuracy benchmarks, model selection, or production image support.
+It does **not** claim PDF/DOCX/LLM implementation, extraction accuracy, production document support or Temporal execution.
 
-# Current gate — Language / Document
+# Current gate — Existing Automation
 
-P2-04 asks:
+P2-05 asks:
 
-> Can TALOS receive process knowledge expressed in prose/documents where graph structure, actors, conditions, order, scope and completion may be implicit or distributed across spans, while preserving exact textual evidence and preventing language-model interpretation from becoming source truth automatically?
+> Can TALOS ingest an existing executable automation such as n8n as evidence of implemented behavior, preserve provider/runtime-specific structure and configuration, infer only supportable business semantics, and prevent existing technical implementation from being promoted into business intent or future execution design automatically?
 
-The next governing distinction is expected to be:
+The next governing distinction is:
 
 ```text
-TEXT SPAN
+IMPLEMENTED BEHAVIOR
       ≠
-SEMANTIC CLAIM AUTOMATICALLY
+BUSINESS INTENT
       ≠
-PROCESS NODE AUTOMATICALLY
-      ≠
-CONTROL FLOW AUTOMATICALLY
+FUTURE TALOS EXECUTION DESIGN
 ```
 
-and:
+Expected anti-assumptions include:
 
 ```text
-DOCUMENT ORDER
-      ≠
-PROCESS EXECUTION ORDER AUTOMATICALLY
+AUTOMATION NODE        ≠ business Activity automatically
+TECHNICAL EDGE         ≠ business control flow automatically
+TECHNICAL RETRY        ≠ business loop automatically
+ERROR HANDLER          ≠ business exception automatically
+PROVIDER BINDING       ≠ canonical capability automatically
+CREDENTIAL / SECRET    ≠ canonical process data
+WORKFLOW EXECUTABLE    ≠ semantically complete business process
 ```
 
-The goal is not generic summarization. The goal is **exact-evidence-backed, ambiguity-aware, scope-aware and reviewable process interpretation from language/documents**.
+The goal is not to clone n8n into TALOS. The goal is to recover **what the automation actually implements** as implementation evidence without allowing that evidence to overwrite business intent.
 
 # Build policy
 
@@ -291,7 +329,6 @@ BUILD = CLOSED BY DEFAULT
 Remaining before BUILD:
 
 ```text
-Language/Document Adapter       ⚪
 Existing Automation Adapter     ⚪
 Cross-Adapter Conformance       ⚪
 Phase-2 Design/Architecture     ⚪ CLOSE
@@ -300,14 +337,14 @@ Phase-2 Design/Architecture     ⚪ CLOSE
 # Active planning
 
 ```text
-plan/00-TALOS-ROADMAP-v0.8.md
-plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.4.md
+plan/00-TALOS-ROADMAP-v0.9.md
+plan/03-PHASE-2-INPUT-UNDERSTANDING-GATE-v0.5.md
 ```
 
 ## Immediate next move
 
 ```text
-P2-04 — LANGUAGE / DOCUMENT ADAPTER
+P2-05 — EXISTING AUTOMATION ADAPTER
 ```
 
 ## Working definition
