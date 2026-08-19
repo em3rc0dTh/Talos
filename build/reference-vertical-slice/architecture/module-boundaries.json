@@ -15,7 +15,7 @@
     {"name":"application","root":"packages/application","allowedInternalImports":["foundation","source-intake","canvas-source","semantic-core","review","capability","execution","temporal-design","runtime-policy","deployment"],"allowedExternalPackages":["zod"]},
     {"name":"persistence-sqlite","root":"packages/persistence-sqlite","allowedInternalImports":["foundation","source-intake","semantic-core","review","capability","execution","temporal-design","runtime-policy","deployment","application"],"allowedExternalPackages":["better-sqlite3","zod"]},
     {"name":"reference-email-sink","root":"packages/reference-email-sink","allowedInternalImports":["foundation"],"allowedExternalPackages":["better-sqlite3","zod"]},
-    {"name":"reference-api","root":"apps/reference-api","allowedInternalImports":["foundation","application","persistence-sqlite","deployment"],"allowedExternalPackages":["@temporalio/client","zod"]},
+    {"name":"reference-api","root":"apps/reference-api","allowedInternalImports":["foundation","application","persistence-sqlite","deployment","reference-email-sink","reference-temporal-worker"],"allowedExternalPackages":["@temporalio/client","@temporalio/testing","zod"]},
     {"name":"reference-web","root":"apps/reference-web","allowedInternalImports":[],"allowedExternalPackages":[]},
     {"name":"reference-temporal-worker","root":"workers/reference-temporal-worker","allowedInternalImports":["foundation","execution","temporal-design","runtime-policy","deployment","reference-email-sink"],"allowedExternalPackages":["@temporalio/common","@temporalio/worker","@temporalio/workflow","@temporalio/activity","zod"]}
   ],
