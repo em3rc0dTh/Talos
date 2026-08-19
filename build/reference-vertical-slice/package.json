@@ -16,6 +16,8 @@
     "architecture:verify": "node ./scripts/verify-architecture.mjs",
     "b1:test": "node --experimental-strip-types --test ./tests/b1-*.test.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
-    "test": "npm run b1:verify"
+    "b2:test": "node --experimental-strip-types --test ./tests/b2-*.test.ts",
+    "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
+    "test": "npm run b2:verify"
   }
 }
