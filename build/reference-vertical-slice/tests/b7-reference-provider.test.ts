@@ -18,14 +18,18 @@ function request() {
     referenceRequestId: 'ref-001',
     capabilityUseOccurrenceId: 'exe_cap_use_001',
     to: 'receiver@example.test',
-    effectCreatedAt: '2026-08-19T19:30:00Z',
   };
+}
+
+function advancingClock() {
+  let index = 0;
+  const values = ['2026-08-19T19:30:00Z', '2026-08-19T19:31:00Z', '2026-08-19T19:32:00Z'];
+  return () => values[Math.min(index++, values.length - 1)];
 }
 
 test('provider request surface matches the B5/B6 mapped input boundary', () => {
   assert.deepEqual(Object.keys(request()).sort(), [
     'capabilityUseOccurrenceId',
-    'effectCreatedAt',
     'referenceRequestId',
     'to',
   ]);
@@ -40,7 +44,7 @@ test('provider key matches frozen B6 sha256 contract', () => {
 
 test('transient failure can be injected before one logical provider effect', () => {
   const store = new ReferenceEmailSinkStore(':memory:');
-  const provider = new ReferenceEmailSinkService(store);
+  const provider = new ReferenceEmailSinkService(store, advancingClock());
   assert.throws(
     () => provider.send(request(), { transientFailuresBeforeSuccess: 1 }),
     ReferenceEmailTransientFailureError,
@@ -52,9 +56,9 @@ test('transient failure can be injected before one logical provider effect', () 
   store.close();
 });
 
-test('repeated identical request is deduplicated by provider store', () => {
+test('later identical retry remains duplicate-identical even when provider clock advanced', () => {
   const store = new ReferenceEmailSinkStore(':memory:');
-  const provider = new ReferenceEmailSinkService(store);
+  const provider = new ReferenceEmailSinkService(store, advancingClock());
   assert.equal(provider.send(request()).effectStatus, 'INSERTED');
   assert.equal(provider.send(request()).effectStatus, 'DUPLICATE_IDENTICAL');
   assert.equal(store.count(), 1);
@@ -63,7 +67,7 @@ test('repeated identical request is deduplicated by provider store', () => {
 
 test('same idempotency key with changed mapped destination is rejected', () => {
   const store = new ReferenceEmailSinkStore(':memory:');
-  const provider = new ReferenceEmailSinkService(store);
+  const provider = new ReferenceEmailSinkService(store, advancingClock());
   provider.send(request());
   assert.throws(
     () => provider.send({ ...request(), to: 'other@example.test' }),
@@ -75,7 +79,7 @@ test('same idempotency key with changed mapped destination is rejected', () => {
 
 test('invalid request is permanent provider failure and creates no effect', () => {
   const store = new ReferenceEmailSinkStore(':memory:');
-  const provider = new ReferenceEmailSinkService(store);
+  const provider = new ReferenceEmailSinkService(store, advancingClock());
   assert.throws(
     () => provider.send({ ...request(), to: 'not-an-email' }),
     ReferenceEmailInvalidRequestError,
@@ -90,7 +94,7 @@ test('provider effect survives restart in its own database', () => {
   const db = path.join(dir, 'reference-email-sink.sqlite');
   try {
     let store = new ReferenceEmailSinkStore(db);
-    const provider = new ReferenceEmailSinkService(store);
+    const provider = new ReferenceEmailSinkService(store, () => '2026-08-19T19:30:00Z');
     provider.send(request());
     store.close();
 
