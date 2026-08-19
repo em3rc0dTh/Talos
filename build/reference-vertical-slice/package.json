@@ -15,11 +15,17 @@
     "b0:verify": "node ./scripts/verify-b0.mjs",
     "architecture:verify": "node ./scripts/verify-architecture.mjs",
     "b1:test": "node --experimental-strip-types --test ./tests/b1-*.test.ts",
-    "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:test": "node --experimental-strip-types --test ./tests/b2-*.test.ts",
-    "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:test": "node --experimental-strip-types --test ./tests/b3-*.test.ts",
+    "b4:test": "node --experimental-strip-types --test ./tests/b4-*.test.ts",
+    "b5:test": "node --experimental-strip-types --test ./tests/b5-*.test.ts",
+    "b6:test": "node --experimental-strip-types --test ./tests/b6-*.test.ts",
+    "b1:verify": "npm run architecture:verify && npm run b1:test",
+    "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
-    "test": "npm run b3:verify"
+    "b4:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test && npm run b4:test",
+    "b5:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test && npm run b4:test && npm run b5:test",
+    "b6:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test && npm run b4:test && npm run b5:test && npm run b6:test",
+    "test": "npm run b6:verify"
   }
 }
