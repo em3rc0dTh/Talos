@@ -32,8 +32,10 @@ jobs:
           cache-dependency-path: build/reference-vertical-slice/package-lock.json
 
       - name: Synchronize workspace lock metadata
+        id: sync
+        continue-on-error: true
         working-directory: build/reference-vertical-slice
-        run: npm install --package-lock-only --ignore-scripts
+        run: npm install --package-lock-only --ignore-scripts 2>&1 | tee /tmp/talos-b8-sync.log
 
       - name: Install exact lock
         id: install
@@ -67,12 +69,13 @@ jobs:
 
       - name: Persist B8 result
         env:
+          SYNC: ${{ steps.sync.outcome }}
           INSTALL: ${{ steps.install.outcome }}
           LOCK: ${{ steps.lock.outcome }}
           ARCH: ${{ steps.arch.outcome }}
           B8: ${{ steps.b8.outcome }}
         run: |
-          if [ "$INSTALL" = success ] && [ "$LOCK" = success ] && [ "$ARCH" = success ] && [ "$B8" = success ]; then
+          if [ "$SYNC" = success ] && [ "$INSTALL" = success ] && [ "$LOCK" = success ] && [ "$ARCH" = success ] && [ "$B8" = success ]; then
             OVERALL=PASS
           else
             OVERALL=FAIL
@@ -83,6 +86,7 @@ jobs:
             echo "Status: **$OVERALL**"
             echo
             echo '```text'
+            printf '%-27s %s\n' 'workspace lock sync' "$SYNC"
             printf '%-27s %s\n' 'npm ci' "$INSTALL"
             printf '%-27s %s\n' 'Temporal lock gate' "$LOCK"
             printf '%-27s %s\n' 'architecture guard' "$ARCH"
@@ -90,12 +94,12 @@ jobs:
             echo '```'
             echo
             echo 'The smoke test boots the full native Canvas → validation → Manager correction → semantic freeze → capability → execution design pipeline, launches a real local Temporal server and Worker, starts HTTP/browser app state, then executes APPROVED and REJECTED requests through Workflow Updates.'
-            if [ "$ARCH" != success ]; then
-              echo; echo '## Architecture failure tail'; echo '```text'; tail -n 100 /tmp/talos-b8-arch.log || true; echo '```'
-            fi
-            if [ "$B8" != success ]; then
-              echo; echo '## B8 failure tail'; echo '```text'; tail -n 160 /tmp/talos-b8-test.log || true; echo '```'
-            fi
+            for pair in "SYNC:/tmp/talos-b8-sync.log" "INSTALL:/tmp/talos-b8-install.log" "LOCK:/tmp/talos-b8-lock.log" "ARCH:/tmp/talos-b8-arch.log" "B8:/tmp/talos-b8-test.log"; do
+              key="${pair%%:*}"; file="${pair#*:}"; eval value="\$$key";
+              if [ "$value" != success ]; then
+                echo; echo "## $key failure tail"; echo '```text'; tail -n 180 "$file" 2>/dev/null || true; echo '```'
+              fi
+            done
           } > test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
 
           git config user.name 'github-actions[bot]'
@@ -103,6 +107,7 @@ jobs:
           git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
           if ! git diff --cached --quiet; then
             git commit -m "test(b8): record tryable reference app CI $OVERALL"
+            git pull --rebase
             git push
           fi
           echo "OVERALL=$OVERALL" >> "$GITHUB_ENV"
