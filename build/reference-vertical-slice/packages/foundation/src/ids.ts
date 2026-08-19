@@ -5,6 +5,7 @@ export type IdKind =
   | 'canvas'
   | 'canonical'
   | 'provenance'
+  | 'validation'
   | 'review'
   | 'capability'
   | 'execution'
@@ -20,6 +21,7 @@ const prefixes: Record<IdKind, string> = {
   canvas: 'can',
   canonical: 'prc',
   provenance: 'prv',
+  validation: 'val',
   review: 'rvw',
   capability: 'cap',
   execution: 'exe',
