@@ -1,0 +1,52 @@
+name: B7-B9 Temporal reference runtime
+
+on:
+  push:
+    paths:
+      - '.github/workflows/b7-b9-temporal-runtime.yml'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/**'
+      - 'build/reference-vertical-slice/tests/b7-temporal-sdk.test.ts'
+      - 'build/reference-vertical-slice/tests/b9-temporal-e2e.test.ts'
+      - 'build/reference-vertical-slice/tests/helpers/reference-runtime-program.ts'
+      - 'build/reference-vertical-slice/packages/reference-email-sink/**'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  temporal-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: 'npm'
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact locked dependencies
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify Temporal lock gate
+        working-directory: build/reference-vertical-slice
+        run: npm run b7:lock:verify
+
+      - name: Verify architecture boundaries
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Verify real SDK Activity boundary
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/b7-temporal-sdk.test.ts
+
+      - name: Run real local Temporal E2E
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/b9-temporal-e2e.test.ts
