@@ -1,0 +1,7 @@
+# TALOS reference vertical slice local runtime
+build/reference-vertical-slice/node_modules/
+build/reference-vertical-slice/.runtime/
+
+# Local logs / diagnostics
+*.log
+npm-debug.log*
