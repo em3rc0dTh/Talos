@@ -1,0 +1,75 @@
+name: B8 reference app one-shot gate
+
+on:
+  push:
+    paths:
+      - '.github/workflows/b8-smoke-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: 'npm'
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Run and persist B8 gate
+        shell: bash
+        run: |
+          set +e
+          cd build/reference-vertical-slice
+          npm install --package-lock-only --ignore-scripts > /tmp/b8-sync.log 2>&1
+          SYNC=$?
+          npm ci > /tmp/b8-install.log 2>&1
+          INSTALL=$?
+          npm run b7:lock:verify > /tmp/b8-lock.log 2>&1
+          LOCK=$?
+          TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify > /tmp/b8-arch.log 2>&1
+          ARCH=$?
+          npm run b8:test > /tmp/b8-test.log 2>&1
+          B8=$?
+          cd ../..
+
+          if [ "$SYNC" -eq 0 ] && [ "$INSTALL" -eq 0 ] && [ "$LOCK" -eq 0 ] && [ "$ARCH" -eq 0 ] && [ "$B8" -eq 0 ]; then
+            OVERALL=PASS
+            EXIT=0
+          else
+            OVERALL=FAIL
+            EXIT=1
+          fi
+
+          {
+            echo '# B8 Tryable Reference App CI Result'
+            echo
+            echo "Status: **$OVERALL**"
+            echo
+            echo '```text'
+            printf '%-27s %s\n' 'workspace lock sync' "$SYNC"
+            printf '%-27s %s\n' 'npm ci' "$INSTALL"
+            printf '%-27s %s\n' 'Temporal lock gate' "$LOCK"
+            printf '%-27s %s\n' 'architecture guard' "$ARCH"
+            printf '%-27s %s\n' 'B8 app smoke test' "$B8"
+            echo '```'
+            echo
+            echo 'The B8 test boots the actual Talos reference pipeline, local Temporal dev server, real Worker and HTTP app; it executes both approved and rejected requests through Workflow Updates.'
+            if [ "$SYNC" -ne 0 ]; then echo; echo '## workspace sync'; echo '```text'; tail -n 120 /tmp/b8-sync.log; echo '```'; fi
+            if [ "$INSTALL" -ne 0 ]; then echo; echo '## npm ci'; echo '```text'; tail -n 120 /tmp/b8-install.log; echo '```'; fi
+            if [ "$LOCK" -ne 0 ]; then echo; echo '## lock gate'; echo '```text'; tail -n 120 /tmp/b8-lock.log; echo '```'; fi
+            if [ "$ARCH" -ne 0 ]; then echo; echo '## architecture'; echo '```text'; tail -n 140 /tmp/b8-arch.log; echo '```'; fi
+            if [ "$B8" -ne 0 ]; then echo; echo '## B8 smoke'; echo '```text'; tail -n 220 /tmp/b8-test.log; echo '```'; fi
+          } > test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+          git commit -m "test(b8): record tryable reference app CI $OVERALL" || true
+          git pull --rebase || true
+          git push || true
+          exit "$EXIT"
