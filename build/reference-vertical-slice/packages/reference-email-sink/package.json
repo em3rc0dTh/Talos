@@ -1,0 +1,6 @@
+{
+  "name": "@talos/reference-email-sink",
+  "version": "0.0.0-reference",
+  "private": true,
+  "type": "module"
+}
