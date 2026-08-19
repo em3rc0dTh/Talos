@@ -4,7 +4,7 @@
 
 The Mining Site is TALOS's controlled experimentation area for learning how heterogeneous business-process and architecture sources can be interpreted, normalized, and handed to the Foundry without erasing their origin.
 
-A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, UML activity-style model, or another process/system representation.
+A quarry is one concrete source used as evidence. A quarry may begin from an image, BPMN/Bizagi model, whiteboard, flowchart, Mermaid/draw.io artifact, natural-language description, existing automation, reference architecture, service topology, UML activity-style model, lane-partitioned service process, or another process/system representation.
 
 The Mining Site does not produce executable code. Its job is to preserve source truth, perform an auditable transformation, surface uncertainty, classify the source artifact, discover executable slices when they exist, and emit a clean Foundry Source.
 
@@ -59,16 +59,19 @@ A transform may extract and normalize:
 - process trigger and terminal outcomes;
 - process scope and candidate executable slices;
 - architecture layers/domain containers;
-- participants, actors, lanes and ownership;
+- participants versus internal responsibility lanes/roles;
 - participant-local control flow versus cross-participant communication;
+- cross-lane responsibility handoffs inside one process scope;
 - source-node identity independently from display labels;
+- visible task/execution markers separately from implementation semantics;
 - provisional node semantic type: step/stage, capability, service, resource, repository, catalog/state, infrastructure, governance work, model/artifact;
 - edge semantic type where supported: sequence, message/communication, object/data flow, dependency, handoff, feedback, association;
 - decisions and branch outcomes;
 - branch convergence / merge semantics;
 - explicit parallel split/fork regions and synchronization joins;
 - branch-completion predicates and join policy;
-- waits, deadlines and external events;
+- waits, deadlines, callback/re-entry intent and external events;
+- event identity, incoming/outgoing topology and termination evidence separately from icon shape;
 - human interactions and physical work;
 - subprocesses and nested work;
 - boundary events and exception paths;
@@ -81,6 +84,7 @@ A transform may extract and normalize:
 - data, rules and explicit integrations;
 - architecture/resource/infrastructure nodes that may not belong to executable control flow;
 - source analytics, simulation or performance overlays separately from semantic process state;
+- graph-level uncertainty, including partially legible long-edge endpoints;
 - uncertainties, conflicts and missing semantics;
 - candidate Temporal concepts, without pretending an implementation choice is source truth.
 
@@ -92,7 +96,7 @@ The Foundry receives this artifact and asks a different question:
 
 > Which validated semantics are executable lifecycles, what durable boundaries should exist, and how should those lifecycles become a durable executable system?
 
-Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, parallel execution semantics, and decomposition across multiple durable workflows.
+Only the Foundry may resolve execution design such as Workflow boundaries, Activities, Signals / Updates, Timers, Child Workflows, retry policies, task queues, integration adapters, worker topology, correlation strategy, technical failure behavior, human-interaction implementation, parallel execution semantics, and decomposition across multiple durable workflows.
 
 ## Experimental rule
 
@@ -112,8 +116,13 @@ IDENTITY / ACCESS GATE           ≠ automatically a known auth implementation
 DATA RETENTION INTENT            ≠ automatically proven consent/compliance semantics
 PARTICIPANT BOUNDARY             ≠ automatically a Temporal Workflow boundary
 PARTICIPANT-LOCAL END            ≠ global collaboration completion
+LANE BOUNDARY                    ≠ participant / message boundary
+ROLE HANDOFF                     ≠ message flow
+EXTERNAL-SOUNDING ROLE NAME      ≠ proven external participant
+PERSON / USER TASK ICON          ≠ known Temporal interaction mechanism
 SAME DISPLAY LABEL               ≠ same source node
 SAME BUSINESS QUESTION           ≠ same authority / data context
+SYMMETRIC BRANCHES               ≠ duplicate nodes to collapse
 MISSING CONTINUATION             ≠ implicit success
 REFERENCE ARCHITECTURE           ≠ one executable Workflow
 ARCHITECTURE LAYER               ≠ participant / role / Task Queue
@@ -127,6 +136,10 @@ FILE EXTENSION                   ≠ authoritative byte-format truth
 OBJECT-STATE NODE                ≠ complete state machine
 MERGE / CONVERGENCE              ≠ JOIN / SYNCHRONIZATION
 PARALLEL BRANCH                  ≠ same executor / Task Queue
+CIRCULAR EVENT SYMBOL            ≠ automatic terminal outcome
+CALLBACK INTENT                  ≠ explicit timer / wait
+DIAGRAM READING ORDER            ≠ process execution order
+AMBIGUOUS LONG CONNECTOR         ≠ license to invent an edge
 LAST VISIBLE ACTIVITY            ≠ explicit process completion
 ```
 
@@ -157,9 +170,14 @@ QUARRY-06  Reference Architecture for AI (REFAI)
 QUARRY-07  Order Validation, Payment & Fulfillment
            responsibility partitions + Order [New]/[Placed] state evidence + object/data flow
            + exclusive rejection + explicit parallel split + all-branch synchronization join
+
+QUARRY-08  Multi-Department Call / Complaint / Service Handling
+           lane-vs-participant distinction + visible human/user-task markers + repeated decision identity
+           + two departmental parallel regions + symmetric m/e branches + callback/re-entry intent
+           + event-topology discipline + nonlocal/partially ambiguous cross-lane connectors
 ```
 
-## Emerging evidence after seven quarries
+## Emerging evidence after eight quarries
 
 The Mining Site now has evidence for a broader semantic model. It remains provisional:
 
@@ -173,6 +191,7 @@ EXECUTABLE SLICE
 ARCHITECTURE LAYER / DOMAIN CONTAINER
 PARTICIPANT
 ROLE / LANE
+ROLE HANDOFF
 
 SOURCE NODE IDENTITY
 NODE SEMANTIC TYPE
@@ -183,6 +202,11 @@ NODE SEMANTIC TYPE
   ├── GOVERNANCE WORK
   └── MODEL / BUSINESS ARTIFACT
 
+TASK / EXECUTION HINT
+  ├── HUMAN / USER MARKER
+  ├── PHYSICAL WORK EVIDENCE
+  └── UNKNOWN
+
 EDGE SEMANTIC TYPE
   ├── CONTROL / SEQUENCE
   ├── MESSAGE / COMMUNICATION
@@ -191,13 +215,23 @@ EDGE SEMANTIC TYPE
   ├── FEEDBACK
   └── UNRESOLVED ASSOCIATION
 
+EDGE CONFIDENCE / ENDPOINT CERTAINTY
+
 DECISION + BRANCH
 MERGE / CONVERGENCE
 PARALLEL SPLIT / FORK
 JOIN / SYNCHRONIZATION
 JOIN POLICY
 BRANCH COMPLETION PREDICATE
-WAIT / EVENT
+
+EVENT
+  ├── SOURCE SHAPE
+  ├── SUBTYPE
+  ├── INCOMING / OUTGOING TOPOLOGY
+  └── TERMINATION EVIDENCE
+
+WAIT / DEADLINE
+CALLBACK / RE-ENTRY INTENT
 SUBPROCESS / NESTED WORK
 BUSINESS OBJECT / STATE EVIDENCE
 BUSINESS OUTCOME
@@ -214,7 +248,7 @@ These are evidence-backed hypotheses, not yet a frozen TALOS standard language.
 
 ## Current transformation lesson
 
-After Quarry 06, the Mining Site learned not to assume every source is one workflow. Quarry 07 adds another safety rule: even when a source **is** workflow-like, its edge and synchronization semantics must be preserved rather than flattened.
+Q06 established that every source is not necessarily one workflow. Q07 established that workflow-like sources must preserve control/object/concurrency semantics. Q08 adds that internal responsibility lanes, human-task hints, event icons and complex nonlocal connectors each require independent semantic treatment.
 
 ```text
 INPUT SOURCE
@@ -225,9 +259,15 @@ SOURCE GRAPH + PROVENANCE
     ↓
 NODE + EDGE SEMANTIC TYPING
     ↓
-CONTROL / OBJECT / MESSAGE DISTINCTION
+PARTICIPANT / LANE / ROLE BOUNDARY CLASSIFICATION
+    ↓
+CONTROL / OBJECT / MESSAGE / HANDOFF DISTINCTION
+    ↓
+EVENT + TASK-MARKER INTERPRETATION
     ↓
 BRANCH + CONCURRENCY NORMALIZATION
+    ↓
+GRAPH-LEVEL UNCERTAINTY PRESERVATION
     ↓
 EXECUTABLE-SLICE DISCOVERY
     ↓
