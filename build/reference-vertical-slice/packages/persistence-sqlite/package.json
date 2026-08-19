@@ -1,0 +1,6 @@
+{
+  "name": "@talos/persistence-sqlite",
+  "version": "0.0.0-reference",
+  "private": true,
+  "type": "module"
+}
