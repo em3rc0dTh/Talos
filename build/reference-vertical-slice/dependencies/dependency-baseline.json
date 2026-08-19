@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "talos.dependency-baseline.v1",
+  "referenceRuntime": {"node":"22.16.x","packageManager":"npm 10.x"},
+  "rule": "Exact versions only. A dependency must be promoted into package.json and the package-manager lockfile before the first source import that consumes it.",
+  "dependencies": [
+    {"name":"typescript","version":"7.0.2","kind":"dev","firstAllowedStage":"B1"},
+    {"name":"tsx","version":"4.23.12","kind":"dev","firstAllowedStage":"B1"},
+    {"name":"vitest","version":"4.1.10","kind":"dev","firstAllowedStage":"B1"},
+    {"name":"@types/node","version":"22.20.1","kind":"dev","firstAllowedStage":"B1"},
+    {"name":"zod","version":"4.4.3","kind":"runtime","firstAllowedStage":"B1"},
+    {"name":"better-sqlite3","version":"13.0.3","kind":"runtime","firstAllowedStage":"B1"},
+    {"name":"@temporalio/client","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7"},
+    {"name":"@temporalio/worker","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7"},
+    {"name":"@temporalio/workflow","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7"},
+    {"name":"@temporalio/activity","version":"1.22.0","kind":"runtime","firstAllowedStage":"B7"},
+    {"name":"@temporalio/testing","version":"1.22.0","kind":"dev","firstAllowedStage":"B7"}
+  ],
+  "forbiddenPackages": ["temporalio"],
+  "referenceWebDecision": "STANDARDS_ONLY_UNTIL_B8_REVIEW",
+  "notes": [
+    "B0 itself uses only Node built-ins so its package-lock remains dependency-free and reproducible offline.",
+    "At B1/B7, planned dependencies become installed/locked before code may import them.",
+    "No caret, tilde, wildcard, latest or next specifiers are allowed."
+  ]
+}
