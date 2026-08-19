@@ -1,0 +1,43 @@
+name: B10 Restart safety
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/b10-restart-safety.yml'
+      - 'build/reference-vertical-slice/apps/reference-api/**'
+      - 'build/reference-vertical-slice/packages/application/**'
+      - 'build/reference-vertical-slice/tests/b10-restart-safe-bootstrap.test.ts'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  restart-safe:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.16.0', '24.11.1']
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Verify restart-safe bootstrap and app lifecycle
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
