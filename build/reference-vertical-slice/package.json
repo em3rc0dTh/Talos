@@ -20,6 +20,8 @@
     "b4:test": "node --experimental-strip-types --test ./tests/b4-*.test.ts",
     "b5:test": "node --experimental-strip-types --test ./tests/b5-*.test.ts",
     "b6:test": "node --experimental-strip-types --test ./tests/b6-*.test.ts",
+    "b7:provider:test": "node --experimental-strip-types --test ./tests/b7-reference-provider.test.ts",
+    "b7:provider:verify": "npm run architecture:verify && npm run b7:provider:test",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
