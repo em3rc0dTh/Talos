@@ -64,6 +64,8 @@ A transform may extract and normalize:
 - subprocesses;
 - boundary events and exception paths;
 - business objects and state evidence;
+- identity/access gates and preconditions;
+- business communication intent and explicit channel evidence;
 - data and rules;
 - integrations explicitly present in the source;
 - uncertainties, conflicts and missing semantics;
@@ -83,12 +85,16 @@ Only the Foundry may resolve execution design such as Workflow boundaries, Activ
 
 Do not standardize from one example. Each quarry must be compared against prior quarries. Repeated semantics may become TALOS primitives; one-off details remain source-specific until evidence supports generalization.
 
-A critical rule exposed by Mining Site work is:
+Critical rules exposed by Mining Site work:
 
 ```text
 BUSINESS PROCESS NODE            ≠ automatically a Temporal Activity
 BUSINESS EXCEPTION               ≠ automatically a technical failure
+BUSINESS REJECTION               ≠ automatically a technical failure
+BUSINESS MESSAGE                 ≠ automatically a known integration
 SOURCE NOTATION                  ≠ automatically execution semantics
+IDENTITY / ACCESS GATE           ≠ automatically a known auth implementation
+DATA RETENTION INTENT            ≠ automatically proven consent/compliance semantics
 ```
 
 ## Current evidence set
@@ -102,6 +108,10 @@ QUARRY-02  Water Order & Delivery
 
 QUARRY-03  Availability / Procurement / Settlement
            message start + subprocess boundary events + domain exception/escalation + multiple business outcomes
+
+QUARRY-04  Candidate Application Lifecycle
+           identity/access gateway + optional pre-processing + shared rejection handling
+           + three-way domain decision + explicit SMS channel + retention intent
 ```
 
 The standard language remains provisional. Each new quarry should either reinforce existing concepts, expose missing semantics, or challenge an assumption already present in the model.
