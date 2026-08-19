@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createOpaqueId } from '../packages/foundation/src/ids.ts';
+import { digestDeterministicJson } from '../packages/foundation/src/digest.ts';
+import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-document-store.ts';
+import type { SourcePropertyEvidenceDescriptor } from '../packages/source-intake/src/types.ts';
+import type { CanvasChangeSet,CanvasDefinition,CanvasElementDraft,CanvasRelationshipDraft } from '../packages/canvas-source/src/types.ts';
+import { buildCanvasRevision,applyCanvasChangeSet } from '../packages/canvas-source/src/revision.ts';
+import { preserveCanvasRevision } from '../packages/canvas-source/src/preservation.ts';
+import { adaptPreservedCanvas } from '../packages/canvas-source/src/adapter.ts';
+
+const T='2026-08-19T12:00:00Z';
+const cid=(s:string)=>createOpaqueId('canvas',s);
+const sid=(s:string)=>createOpaqueId('source',s);
+function base(){const dId=cid('inv:def');const a:CanvasElementDraft={canvasElementId:cid('inv:a'),kind:'WAIT',label:'Wait',propertyValues:{timezone:{state:'UNKNOWN'}},actorRefs:[],dataRefs:[],ruleRefs:[]};const b:CanvasElementDraft={canvasElementId:cid('inv:b'),kind:'END',label:'Done',propertyValues:{},actorRefs:[],dataRefs:[],ruleRefs:[]};const r:CanvasRelationshipDraft={canvasRelationshipId:cid('inv:r'),kind:'CONTROL_FLOW',sourceEndpoint:{state:'SET',elementId:a.canvasElementId},targetEndpoint:{state:'SET',elementId:b.canvasElementId},relationshipProperties:{}};const rev=buildCanvasRevision({id:cid('inv:r1'),canvasDefinitionId:dId,revisionNumber:1,createdAt:T,revisionKind:'SEMANTIC',changeSetId:cid('inv:cs1'),elements:[a,b],relationships:[r]});const def:CanvasDefinition={id:dId,sourceOriginId:sid('inv:origin'),title:'Invariant fixture',createdAt:T,latestRevisionId:rev.id};return{def,rev,a,b,r};}
+
+test('property-level source evidence is addressable',()=>{const {def,rev,a}=base();const repo=new SqliteDocumentStore(':memory:');const p=preserveCanvasRevision(repo,def,rev,{startedAt:T});adaptPreservedCanvas(repo,p,undefined,{now:T});const evid=repo.listByKind<SourcePropertyEvidenceDescriptor>('SourcePropertyEvidenceDescriptor').map(d=>d.payload);assert.ok(evid.some(e=>e.nativeSourceId===a.canvasElementId&&e.propertyPath==='propertyValues.timezone'&&e.sourceState==='UNKNOWN'));repo.close();});
+test('partial result remains partial and is not reused as a successful result',()=>{const {def,rev}=base();const repo=new SqliteDocumentStore(':memory:');const p=preserveCanvasRevision(repo,def,rev,{startedAt:T});const partial=adaptPreservedCanvas(repo,p,undefined,{now:T,partialDiagnostic:{code:'REFERENCE_PARTIAL',description:'One optional region unresolved'}});assert.equal(partial.completion?.status,'PARTIAL');assert.ok(partial.result);const success=adaptPreservedCanvas(repo,p,undefined,{now:'2026-08-19T12:01:00Z'});assert.equal(success.completion?.status,'SUCCEEDED');assert.notEqual(success.result?.id,partial.result?.id);assert.notEqual(success.completion?.reusedResult,true);repo.close();});
+test('source representation content hash fingerprints the preserved native envelope',()=>{const {def,rev}=base();const repo=new SqliteDocumentStore(':memory:');const p=preserveCanvasRevision(repo,def,rev,{startedAt:T});assert.equal(p.nativeRepresentation.contentHash,digestDeterministicJson(p.nativeRepresentation.nativeValue));repo.close();});
+test('presentation revision cannot hide a semantic edit',()=>{const {def,rev,a}=base();const cs:CanvasChangeSet={id:cid('inv:cs2'),canvasDefinitionId:def.id,baseRevisionId:rev.id,resultingRevisionId:cid('inv:r2'),authoredAt:'2026-08-19T12:01:00Z',operations:[{kind:'UPDATE_ELEMENT_PROPERTY',elementId:a.canvasElementId,patch:{label:'Changed meaning'}}]};assert.throws(()=>applyCanvasChangeSet(rev,cs,'PRESENTATION'),/cannot change semanticDigest/);});
+test('retiring an element does not silently retire attached relationships',()=>{const {def,rev,a}=base();const cs:CanvasChangeSet={id:cid('inv:cs3'),canvasDefinitionId:def.id,baseRevisionId:rev.id,resultingRevisionId:cid('inv:r3'),authoredAt:'2026-08-19T12:01:00Z',operations:[{kind:'RETIRE_ELEMENT',elementId:a.canvasElementId}]};assert.throws(()=>applyCanvasChangeSet(rev,cs,'SEMANTIC'),/requires explicit relationship retirement/);});
