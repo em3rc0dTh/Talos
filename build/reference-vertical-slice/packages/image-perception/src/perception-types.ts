@@ -47,6 +47,16 @@ export interface ProviderObservation {
   notes?: string;
 }
 
+/** Property-level interpretation candidate backed by perception observations/anchors. */
+export interface ProviderPropertyCandidate {
+  propertyPath: string;
+  sourceState?: string;
+  literalValue?: unknown;
+  supportingObservationKeys: string[];
+  confidence?: number;
+  notes?: string;
+}
+
 export interface ProviderOccurrenceCandidate {
   providerOccurrenceKey: string;
   anchorKeys: string[];
@@ -55,6 +65,7 @@ export interface ProviderOccurrenceCandidate {
   candidateSemanticType?: string;
   sourcePlaneKind: SourcePlaneKind;
   supportingObservationKeys: string[];
+  propertyCandidates?: ProviderPropertyCandidate[];
   confidence?: number;
   notes?: string;
 }

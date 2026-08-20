@@ -140,6 +140,7 @@ export function createImageApi(repo: ImmutableDocumentRepository, runtimeDir: st
               excludedOccurrenceCount: common.scope.excludedOccurrenceRefs.length,
             },
             planes: common.planes,
+            properties: common.properties,
             occurrences: common.occurrences,
             relationships: common.relationships,
             graphId: common.graph.id,
@@ -161,6 +162,7 @@ export function createImageApi(repo: ImmutableDocumentRepository, runtimeDir: st
               name: node.name,
               truthClass: node.truthClass,
               actorRefs: node.actorRefs,
+              details: node.details,
             })),
             edges: semantic.normalization.processRevision.edges.map((edge) => ({
               id: edge.id,

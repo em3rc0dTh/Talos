@@ -276,7 +276,7 @@ test('I5A-02 structured branch rules and subprocess correction are first-class r
   });
 });
 
-test('I5A-02 full reviewer correction sequence reaches READY_FOR_AUTOMATION_DESIGN only through re-validation', () => {
+test('I5A-02 closes its own correction targets but hardened v0.2 validation keeps broader Quarry readiness insufficient', () => {
   withFixture(({ repo, byteStore, bytes }) => {
     const prepared = prepare(repo, byteStore, bytes);
     const initialCodes = prepared.current.validation.findings.map((finding) => finding.code);
@@ -290,19 +290,23 @@ test('I5A-02 full reviewer correction sequence reaches READY_FOR_AUTOMATION_DESI
     assert.equal(codes.includes('SV-SUB-002'), false);
     assert.equal(codes.includes('SV-CFL-001'), false);
     assert.equal(codes.includes('SV-SRC-001'), false);
-    assert.equal(final.validation.assessment.executionReadiness, 'READY_FOR_AUTOMATION_DESIGN');
-    assert.equal(final.validation.assessment.semanticVerdict, 'VALID');
+    assert.ok(codes.includes('SV-STR-001'), 'company process entry/trigger must remain unresolved');
+    assert.ok(codes.includes('SV-EVT-001'), 'accepted WAIT still lacks a business resume/time class');
+    assert.ok(codes.includes('SV-SUB-001'), 'collapsed subprocess boundary does not reveal internals');
+    assert.ok(codes.includes('SV-COR-001'), 'message interaction still lacks accepted correlation identity');
+    assert.equal(final.validation.assessment.executionReadiness, 'INSUFFICIENT_DETAIL');
+    assert.equal(final.validation.assessment.semanticVerdict, 'VALID_WITH_FINDINGS');
     assert.equal(final.process.parentRevisionIds.length, 1);
     assert.equal(final.process.derivationKind, 'HUMAN_CONFIRMATION');
     assert.equal(repo.listByKind('FindingDisposition').length >= 4, true);
   });
 });
 
-test('I5A-02 readiness does not itself create freeze, capability, execution or Temporal artifacts', () => {
+test('I5A-02 insufficient readiness still creates no freeze, capability, execution or Temporal artifacts', () => {
   withFixture(({ repo, byteStore, bytes }) => {
     const prepared = prepare(repo, byteStore, bytes);
     const final = fullCorrection(repo, prepared);
-    assert.equal(final.validation.assessment.executionReadiness, 'READY_FOR_AUTOMATION_DESIGN');
+    assert.equal(final.validation.assessment.executionReadiness, 'INSUFFICIENT_DETAIL');
     assert.equal(repo.listByKind('SemanticFreezeRecord').length, 0);
     assert.equal(repo.listByKind('CapabilityDesignRevision').length, 0);
     assert.equal(repo.listByKind('CapabilityBindingRevision').length, 0);
