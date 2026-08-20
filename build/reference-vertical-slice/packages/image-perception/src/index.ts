@@ -4,4 +4,5 @@ export * from './byte-store.ts';
 export * from './intake.ts';
 export * from './perception-types.ts';
 export * from './perception-adapter.ts';
+export * from './admission.ts';
 export * from './reference-quarry-provider.ts';
