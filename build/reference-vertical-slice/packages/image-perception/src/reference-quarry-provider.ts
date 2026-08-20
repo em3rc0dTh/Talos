@@ -30,15 +30,18 @@ const labels = [
   ['channel-annotation', 'Over 90% of requests are made by phone call, 10% by email.'],
 ] as const;
 
+// Values crossing the common SourceRelationshipDescriptor boundary use only the
+// frozen Process Source Intake v0.2 candidate-role vocabulary. Fixture-specific
+// wording remains in notes/source records rather than leaking into common truth.
 const relationSpecs = [
-  ['place-order-to-verify', 'place-order', 'verify-customer-identity', 'MESSAGE_INTERACTION_CANDIDATE'],
-  ['verify-to-exists', 'verify-customer-identity', 'customer-exist', 'FLOW_CANDIDATE'],
-  ['exists-no-to-create', 'customer-exist', 'create-customer-account', 'CONDITIONAL_FLOW_CANDIDATE'],
-  ['exists-yes-to-wednesday', 'customer-exist', 'on-next-wednesday', 'CONDITIONAL_FLOW_CANDIDATE'],
-  ['create-to-wednesday', 'create-customer-account', 'on-next-wednesday', 'FLOW_CANDIDATE'],
-  ['wednesday-to-forward', 'on-next-wednesday', 'forward-order', 'FLOW_CANDIDATE'],
-  ['forward-to-arrange', 'forward-order', 'arrange-delivery', 'FLOW_CANDIDATE'],
-  ['arrange-to-deliver', 'arrange-delivery', 'deliver-water', 'FLOW_CANDIDATE'],
+  ['place-order-to-verify', 'place-order', 'verify-customer-identity', 'MESSAGE_CANDIDATE', 'cross-participant message interaction'],
+  ['verify-to-exists', 'verify-customer-identity', 'customer-exist', 'SEQUENCE_CANDIDATE', 'visible flow'],
+  ['exists-no-to-create', 'customer-exist', 'create-customer-account', 'CONTROL_FLOW_CANDIDATE', 'decision branch: No'],
+  ['exists-yes-to-wednesday', 'customer-exist', 'on-next-wednesday', 'CONTROL_FLOW_CANDIDATE', 'decision branch: Yes'],
+  ['create-to-wednesday', 'create-customer-account', 'on-next-wednesday', 'SEQUENCE_CANDIDATE', 'visible flow'],
+  ['wednesday-to-forward', 'on-next-wednesday', 'forward-order', 'SEQUENCE_CANDIDATE', 'visible flow'],
+  ['forward-to-arrange', 'forward-order', 'arrange-delivery', 'SEQUENCE_CANDIDATE', 'visible flow'],
+  ['arrange-to-deliver', 'arrange-delivery', 'deliver-water', 'SEQUENCE_CANDIDATE', 'visible flow'],
 ] as const;
 
 function textObservations(): ProviderObservation[] {
@@ -129,7 +132,7 @@ function occurrences(): ProviderOccurrenceCandidate[] {
 }
 
 function relations(): ProviderRelationCandidate[] {
-  return relationSpecs.map(([key, source, target, role]) => ({
+  return relationSpecs.map(([key, source, target, role, sourceMeaning]) => ({
     providerRelationKey: key,
     strokeObservationKeys: [`stroke:${key}`],
     anchorKeys: ['whole-image'],
@@ -138,7 +141,7 @@ function relations(): ProviderRelationCandidate[] {
     targetEndpointCandidates: [{ occurrenceCandidateKey: target, anchorKey: 'whole-image', endpointState: 'SET_CANDIDATE', confidence: 1 }],
     directionCandidates: [{ value: 'SOURCE_TO_TARGET', confidence: 1 }],
     roleAlternativeSetKey: `role:${key}`,
-    notes: `TEST_ONLY fixture expectation for ${role}; model/provider preference is not confirmed business truth.`,
+    notes: `TEST_ONLY fixture expectation: ${sourceMeaning}; common candidate role=${role}. Provider preference is not confirmed business truth.`,
   }));
 }
 
@@ -198,12 +201,12 @@ export class ReferenceQuarryPerceptionProvider implements ImagePerceptionProvide
         { providerObservationKey: 'plane:business-graph', anchorKey: 'whole-image', observationKind: 'PLANE_REGION', observedValue: 'BUSINESS_GRAPH', confidence: 1, notes: 'Fixture expectation from the source record classification.' },
       ],
       occurrenceCandidates: occurrences(),
-      alternativeSets: relationSpecs.map(([key, , , role]) => ({
+      alternativeSets: relationSpecs.map(([key, , , role, sourceMeaning]) => ({
         providerAlternativeSetKey: `role:${key}`,
         propertyPath: 'relationshipRole',
         exclusivityMode: 'MUTUALLY_EXCLUSIVE',
         alternatives: [
-          { providerAlternativeKey: `role:${key}:preferred`, value: role, confidence: 0.95, anchorKeys: ['whole-image'], supportingObservationKeys: [`stroke:${key}`], interpretationNotes: 'TEST_ONLY preferred fixture interpretation; preference is not human confirmation.' },
+          { providerAlternativeKey: `role:${key}:preferred`, value: role, confidence: 0.95, anchorKeys: ['whole-image'], supportingObservationKeys: [`stroke:${key}`], interpretationNotes: `TEST_ONLY preferred fixture interpretation (${sourceMeaning}); preference is not human confirmation.` },
           { providerAlternativeKey: `role:${key}:unknown`, value: 'UNKNOWN_RELATIONSHIP_ROLE', confidence: 0.05, anchorKeys: ['whole-image'], supportingObservationKeys: [`stroke:${key}`], interpretationNotes: 'Retained to prove provider preference does not erase an alternative.' },
         ],
         modelPreferredAlternativeKey: `role:${key}:preferred`,
