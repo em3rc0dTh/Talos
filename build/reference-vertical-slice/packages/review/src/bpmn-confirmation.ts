@@ -108,7 +108,7 @@ export function createBpmnProcessRevision(input: CreateBpmnProcessRevisionInput)
   const id = createOpaqueId('review', digestDeterministicJson({
     kind: 'BpmnProcessRevision',
     revisionNumber: input.revisionNumber,
-    parentBpmnRevisionId: input.parentBpmnRevisionId,
+    ...(input.parentBpmnRevisionId ? { parentBpmnRevisionId: input.parentBpmnRevisionId } : {}),
     sourceRoute: input.sourceRoute,
     editMode: input.editMode,
     canonicalProcessRevisionId: input.canonicalProcessRevisionId,
