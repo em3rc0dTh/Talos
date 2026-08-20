@@ -8,7 +8,7 @@ import { QUARRY_02_VERIFIED_SHA256 } from '../packages/image-perception/src/inde
 
 const fixturePath = path.resolve(process.cwd(), '../../brainstorming/mining-site/quarry-02-water-order-delivery/quarry-02.png');
 
-test('I3 browser/API source review remains intact while I4 adds inferred Canonical/Validation and keeps Temporal closed', { timeout: 120_000 }, async () => {
+test('I3 browser/API exposes recovered image evidence as INFERRED Canonical/Validation and keeps execution closed', { timeout: 120_000 }, async () => {
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-image-i3-'));
   const demo = await startReferenceDemo({ port: 0, runtimeDir, injectTransientFailure: false });
   try {
@@ -42,27 +42,56 @@ test('I3 browser/API source review remains intact while I4 adds inferred Canonic
     assert.equal(data.perception.providerId, 'REFERENCE_QUARRY_PERCEPTION');
     assert.equal(data.perception.providerClass, 'FIXTURE_PROVIDER');
     assert.equal(data.perception.providerStatus, 'SUCCEEDED');
-    assert.equal(data.perception.observationCount, 30);
-    assert.equal(data.perception.occurrenceCandidateCount, 18);
-    assert.equal(data.perception.relationCandidateCount, 8);
+    assert.equal(data.perception.providerVersion, '1.1.0-reference');
+    assert.equal(data.perception.observationCount, 35);
+    assert.equal(data.perception.occurrenceCandidateCount, 20);
+    assert.equal(data.perception.alternativeSetCount, 10);
+    assert.equal(data.perception.relationCandidateCount, 10);
+    assert.ok(data.perception.diagnostics.some((item: any) => item.code === 'FIXTURE_SOURCE_RECORD_BYTE_IDENTITY_MISMATCH'));
+
     assert.equal(data.commonEvidence.classification.artifactClass, 'COLLABORATION_DIAGRAM');
     assert.equal(data.commonEvidence.classification.truthClass, 'INFERRED');
     assert.equal(data.commonEvidence.scope.kind, 'COLLABORATION');
     assert.equal(data.commonEvidence.scope.truthClass, 'INFERRED');
-    assert.equal(data.commonEvidence.occurrences.length, 18);
-    assert.equal(data.commonEvidence.relationships.length, 8);
+    assert.equal(data.commonEvidence.properties.length, 10);
+    assert.equal(data.commonEvidence.occurrences.length, 20);
+    assert.equal(data.commonEvidence.relationships.length, 10);
+    assert.equal(data.commonEvidence.properties.every((item: any) => !Object.hasOwn(item, 'nativeSourceId')), true);
+    assert.equal(data.commonEvidence.properties.every((item: any) => (item.sourceExtensionRefs?.length ?? 0) >= 2), true);
 
     assert.equal(data.canonical.created, true);
     assert.equal(data.canonical.gate, 'I4_CLOSED');
     assert.equal(data.canonical.truthDiscipline, 'INFERRED_FROM_VISUAL_PERCEPTION');
-    assert.equal(data.canonical.nodeCount, 8);
-    assert.equal(data.canonical.edgeCount, 8);
+    assert.equal(data.canonical.nodeCount, 10);
+    assert.equal(data.canonical.edgeCount, 10);
+    assert.equal(data.canonical.actorCount, 5);
+    assert.equal(data.canonical.dataObjectCount, 4);
     assert.equal(data.canonical.nodes.every((node: any) => node.truthClass === 'INFERRED'), true);
     assert.equal(data.canonical.edges.every((edge: any) => edge.truthClass === 'INFERRED'), true);
+
+    const start = data.canonical.nodes.find((node: any) => node.kind === 'EVENT' && node.details?.eventRole === 'START');
+    const end = data.canonical.nodes.find((node: any) => node.kind === 'END' && node.details?.eventRole === 'END');
+    const wait = data.canonical.nodes.find((node: any) => node.name === 'On Next Wednesday');
+    const subprocess = data.canonical.nodes.find((node: any) => node.name === 'Arrange Delivery');
+    const delivery = data.canonical.nodes.find((node: any) => node.name === 'Deliver Water');
+    const worker = data.canonical.actors.find((actor: any) => actor.name === 'Worker');
+    assert.ok(start && end && wait && subprocess && delivery && worker);
+    assert.equal(wait.details?.waitKind, 'CALENDAR_TIME');
+    assert.equal(subprocess.details?.subprocessMode, 'COLLAPSED_SUBPROCESS');
+    assert.deepEqual(delivery.actorRefs, [worker.id]);
+
     assert.equal(data.validation.semanticVerdict, 'INCOMPLETE');
     assert.equal(data.validation.executionReadiness, 'INSUFFICIENT_DETAIL');
-    assert.ok(data.validation.findings.some((finding: any) => finding.code === 'SV-CMP-001'));
-    assert.ok(data.validation.findings.some((finding: any) => finding.code === 'SV-SRC-001'));
+    const findingCodes = data.validation.findings.map((finding: any) => finding.code);
+    assert.equal(findingCodes.includes('SV-CMP-001'), false, 'visible END must not be dropped and then re-requested from reviewer');
+    assert.equal(findingCodes.includes('SV-STR-001'), false, 'visible collaboration START event establishes collaboration-level entry candidate');
+    assert.equal(findingCodes.includes('SV-SUB-002'), false, 'visible collapsed boundary is preserved as inferred candidate');
+    assert.ok(findingCodes.includes('SV-EVT-002'), 'exact Next Wednesday expression/timezone is still unresolved');
+    assert.ok(findingCodes.includes('SV-SUB-001'), 'collapsed subprocess internals are still unresolved');
+    assert.ok(findingCodes.includes('SV-HUM-001'), 'Worker responsibility does not establish physical completion observation');
+    assert.ok(findingCodes.includes('SV-COR-001'), 'message interaction still lacks correlation identity');
+    assert.equal(findingCodes.filter((code: string) => code === 'SV-CFL-001').length, 2);
+    assert.ok(findingCodes.includes('SV-SRC-001'), 'perception-derived semantics still require explicit review confirmation');
 
     assert.equal(data.executionHandoff.frozenFromImage, false);
     assert.equal(data.executionHandoff.gate, 'I5_CLOSED');
