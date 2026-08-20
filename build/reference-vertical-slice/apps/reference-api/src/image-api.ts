@@ -7,6 +7,7 @@ import {
   intakePngUpload,
   runImagePerception,
 } from '../../../packages/image-perception/src/index.ts';
+import { normalizeAndValidateImageResult } from '../../../packages/application/src/image-semantic.ts';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -50,7 +51,7 @@ export function createImageApi(repo: ImmutableDocumentRepository, runtimeDir: st
     if (request.method === 'POST' && url.pathname === '/api/images') {
       const contentType = String(request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       if (contentType !== 'image/png') {
-        json(response, 415, { error: 'IMAGE_UPLOAD_UNSUPPORTED_MEDIA_TYPE: I3 accepts image/png only.' });
+        json(response, 415, { error: 'IMAGE_UPLOAD_UNSUPPORTED_MEDIA_TYPE: I4 accepts image/png only.' });
         return true;
       }
 
@@ -62,12 +63,23 @@ export function createImageApi(repo: ImmutableDocumentRepository, runtimeDir: st
           initiatedBy: 'reference-browser-user',
           ...(declaredFileName(request) ? { declaredName: declaredFileName(request)! } : {}),
         });
+        const perceptionAt = new Date(Date.now() + 1).toISOString();
         const perception = runImagePerception(repo, intake, provider, {
-          now: new Date(Date.now() + 1).toISOString(),
+          now: perceptionAt,
           materializeCommonEvidence: true,
         });
         const common = perception.commonEvidence;
-        const stage = common ? 'COMMON_EVIDENCE_READY_FOR_REVIEW' : 'PRESERVED_SOURCE_ONLY';
+        const semantic = common && perception.attempt.result
+          ? normalizeAndValidateImageResult(repo, perception.attempt.result.id, {
+              normalizedAt: new Date(Date.now() + 2).toISOString(),
+              assessedAt: new Date(Date.now() + 3).toISOString(),
+            })
+          : undefined;
+        const stage = semantic
+          ? 'CANONICAL_VALIDATION_READY_FOR_REVIEW'
+          : common
+            ? 'COMMON_EVIDENCE_READY_FOR_REVIEW'
+            : 'PRESERVED_SOURCE_ONLY';
 
         json(response, common ? 201 : 202, {
           stage,
@@ -132,10 +144,64 @@ export function createImageApi(repo: ImmutableDocumentRepository, runtimeDir: st
             relationships: common.relationships,
             graphId: common.graph.id,
           } : null,
-          canonical: {
-            created: false,
+          canonical: semantic ? {
+            created: true,
             gate: 'I4_CLOSED',
-            note: 'I3 presents preserved/perceived/common evidence only. Image-derived ProcessRevision support is not claimed yet.',
+            processDefinitionId: semantic.normalization.processDefinition.id,
+            processRevisionId: semantic.normalization.processRevision.id,
+            semanticStatus: semantic.normalization.processRevision.semanticStatus,
+            truthDiscipline: 'INFERRED_FROM_VISUAL_PERCEPTION',
+            nodeCount: semantic.normalization.processRevision.nodes.length,
+            edgeCount: semantic.normalization.processRevision.edges.length,
+            actorCount: semantic.normalization.processRevision.actors.length,
+            dataObjectCount: semantic.normalization.processRevision.dataObjects.length,
+            nodes: semantic.normalization.processRevision.nodes.map((node) => ({
+              id: node.id,
+              kind: node.kind,
+              name: node.name,
+              truthClass: node.truthClass,
+              actorRefs: node.actorRefs,
+            })),
+            edges: semantic.normalization.processRevision.edges.map((edge) => ({
+              id: edge.id,
+              kind: edge.kind,
+              sourceNodeId: edge.sourceNodeId,
+              targetNodeId: edge.targetNodeId,
+              truthClass: edge.truthClass,
+            })),
+            actors: semantic.normalization.processRevision.actors,
+            dataObjects: semantic.normalization.processRevision.dataObjects,
+          } : {
+            created: false,
+            gate: 'I4_AVAILABLE_ONLY_AFTER_COMMON_EVIDENCE',
+            note: 'The source is preserved, but no perception/common evidence exists to normalize.',
+          },
+          validation: semantic ? {
+            assessmentId: semantic.validation.assessment.id,
+            semanticVerdict: semantic.validation.assessment.semanticVerdict,
+            executionReadiness: semantic.validation.assessment.executionReadiness,
+            findingCount: semantic.validation.findings.length,
+            findings: semantic.validation.findings.map((finding) => ({
+              id: finding.id,
+              code: finding.code,
+              title: finding.title,
+              description: finding.description,
+              severity: finding.severity,
+              blockerClass: finding.blockerClass,
+              resolutionRoute: finding.resolutionRoute,
+              targetRefs: finding.targetRefs,
+            })),
+            questions: semantic.validation.questions.map((question) => ({
+              id: question.id,
+              questionText: question.questionText,
+              targetRef: question.targetRef,
+              findingRefs: question.findingRefs,
+            })),
+          } : null,
+          executionHandoff: {
+            frozenFromImage: false,
+            gate: 'I5_CLOSED',
+            note: 'I4 exposes inferred Canonical/Validation for review. It does not freeze or authorize execution.',
           },
           temporal: {
             startedFromImage: false,
