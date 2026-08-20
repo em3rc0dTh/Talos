@@ -1,9 +1,11 @@
 import { createOpaqueId } from '../../packages/foundation/src/ids.ts';
 import type { SqliteDocumentStore } from '../../packages/persistence-sqlite/src/sqlite-document-store.ts';
-import type { LocalImageByteStore } from '../../packages/image-perception/src/byte-store.ts';
-import { ReferenceQuarryPerceptionProvider } from '../../packages/image-perception/src/reference-quarry-provider.ts';
-import { intakePngUpload } from '../../packages/image-perception/src/intake.ts';
-import { runImagePerception } from '../../packages/image-perception/src/adapter.ts';
+import {
+  type LocalImageByteStore,
+  ReferenceQuarryPerceptionProvider,
+  intakePngUpload,
+  runImagePerception,
+} from '../../packages/image-perception/src/index.ts';
 import { normalizeAndValidateImageResult } from '../../packages/application/src/image-semantic.ts';
 import { initializeReview } from '../../packages/application/src/review.ts';
 import { applyClaimConfirmation } from '../../packages/application/src/semantic-review.ts';
