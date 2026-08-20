@@ -1,7 +1,7 @@
 # Talos — I5A-02 Semantic Correction / Addition Result v0.1
 
 Status: **PASS — I5A-02 CLOSED**  
-Date: **2026-08-19**
+Date: **2026-08-20**
 
 ## Gate under test
 
@@ -51,7 +51,7 @@ and updated the I5A-01 regression to assert it.
 
 No frozen Canonical contract was changed.
 
-## New semantic correction engine
+## Semantic correction engine
 
 Implemented:
 
@@ -128,44 +128,76 @@ Each becomes a first-class `BusinessRule` referenced through `ProcessEdge.condit
 
 ## Pressure tests
 
-New suite:
+Executable suites:
 
 ```text
 build/reference-vertical-slice/tests/image-i5a-02-semantic-correction.test.ts
+build/reference-vertical-slice/tests/image-i5a-02-freeze-preflight.test.ts
 ```
 
-Result:
+Final strict result:
 
 ```text
-I5A-02 tests                                      6 / 6 PASS
+I5A-02 tests                                      7 / 7 PASS
 I5A-01 confirmation tests                         5 / 5 PASS
 ```
 
-The I5A-02 suite proves:
+The I5A-02 gate proves:
 
-1. stale corrections are rejected;
-2. corrections without explicit authority are rejected;
-3. attached END addition clears completion only through the new semantic revision;
-4. exact image/perception history remains unchanged;
-5. no Canvas revision is fabricated;
-6. `ADD_RELATIONSHIP` works as a separate generic primitive;
-7. branch conditions become first-class reviewer-authored BusinessRules;
-8. subprocess meaning becomes explicit;
-9. the full correction sequence reaches `READY_FOR_AUTOMATION_DESIGN` through re-validation;
-10. readiness creates no freeze/capability/execution/Temporal artifacts.
+1. the final ready graph passes a dedicated freeze-preflight structural audit;
+2. stale corrections are rejected;
+3. corrections without explicit authority are rejected;
+4. attached END addition clears completion only through the new semantic revision;
+5. exact image/perception history remains unchanged;
+6. no Canvas revision is fabricated;
+7. `ADD_RELATIONSHIP` works as a separate generic primitive;
+8. branch conditions become first-class reviewer-authored BusinessRules;
+9. subprocess meaning becomes explicit;
+10. the full correction sequence reaches `READY_FOR_AUTOMATION_DESIGN` through re-validation;
+11. readiness creates no freeze/capability/execution/Temporal artifacts.
+
+## Freeze-preflight / stop-condition audit
+
+The gate was deliberately strengthened beyond the current validator before closure.
+
+Verified executable invariants:
+
+```text
+END has one bounded inbound business flow                  PASS
+END has no outgoing ordinary process flow                 PASS
+full corrected ProcessNode graph is connected             PASS
+both conditional branches reference actual BusinessRules  PASS
+branch rule refs are distinct                              PASS
+branch expressions are materially opposite false / true   PASS
+subprocess boundary meaning is explicit                    PASS
+subprocess carries no Child Workflow / Activity meaning   PASS
+all accepted corrections carry authorityRef                PASS
+all accepted corrections have review-authored lineage      PASS
+ProcessRevision history advances one revision at a time   PASS
+parentRevisionIds point to the exact prior revision        PASS
+final review workspace pins final ProcessRevision          PASS
+final review workspace pins final ValidationAssessment     PASS
+readiness authority remains ValidationAssessment           PASS
+source image digest remains unchanged                     PASS
+source/perception record counts remain unchanged          PASS
+CanvasRevision count remains unchanged                    PASS
+freeze/execution/Temporal artifacts remain absent         PASS
+```
+
+No structurally unsafe condition was found that requires versioning Semantic Validation before the bounded image freeze opening review.
 
 ## Full regression evidence
 
-Final code commit under gate:
+Final strict PR #8 head under gate:
 
 ```text
-f7e87b47501cbbd1706e4fca930b40af91c9b2a2
+467b289813263bcdd2df64938573ca157c7512cf
 ```
 
 Image workflow run:
 
 ```text
-32331911072
+32368698157
 ```
 
 Result:
@@ -180,13 +212,14 @@ I1 perception                       PASS
 I2 common evidence                  PASS
 I3 browser source review            PASS
 I4 canonical + validation           5 / 5 PASS
-I5A-01 + I5A-02 combined            11 / 11 PASS
+I5A-01 confirmation                 5 / 5 PASS
+I5A-02 correction + preflight       7 / 7 PASS
 ```
 
-Existing real Temporal reference runtime remained green on the same commit:
+Existing real Temporal reference runtime also remained green on the PR lineage:
 
 ```text
-workflow run 32331911039             PASS
+workflow run 32368286467             PASS
 real SDK Activity boundary           PASS
 tryable local app smoke              PASS
 real local Temporal E2E              PASS
@@ -195,10 +228,12 @@ real local Temporal E2E              PASS
 Restart safety remained green:
 
 ```text
-workflow run 32331911022
+workflow run 32368286538
 Node 22.16.0                         PASS
 Node 24.11.1                         PASS
 ```
+
+These runtime regressions prove the existing Canvas/reference runtime was not damaged. They are **not** evidence of image → Temporal execution.
 
 ## Final semantic state
 
@@ -222,6 +257,8 @@ SV-SUB-002  absent
 semanticVerdict     = VALID
 executionReadiness  = READY_FOR_AUTOMATION_DESIGN
 ```
+
+The `ProcessRevision` itself remains `executionReadiness = NOT_ASSESSED`; readiness authority belongs to the superseding immutable `ValidationAssessment`.
 
 ## Anti-corruption result
 
@@ -266,4 +303,12 @@ READY_FOR_AUTOMATION_DESIGN ≠ Temporal
 
 The next lawful move is an **I5B opening review**, not automatic freeze.
 
-That review must independently verify that the corrected semantic graph is structurally coherent enough to freeze and hand off. In particular, current validation's recognition of an explicit END must not be treated as proof that every completion or branch topology is semantically safe merely because blocker findings disappeared.
+Roadmap continuation:
+
+```text
+I5A-02 semantic correction / addition   ✅ CLOSED
+I5B semantic freeze + execution handoff  🟡 OPENING REVIEW NEXT
+I6 image → real Temporal execution       ⛔ CLOSED
+```
+
+The I5B opening review must independently prove that the frozen Phase-3 `AUTOMATION_DESIGN_HANDOFF` freeze contract can accept this source-agnostic image-derived review baseline without Canvas assumptions, preserves stale-baseline protections and backward lineage, and creates no runtime meaning merely by freezing.
