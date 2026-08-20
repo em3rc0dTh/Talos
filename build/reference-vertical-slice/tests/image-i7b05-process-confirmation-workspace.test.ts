@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { startProcessConfirmationWorkspace } from '../apps/reference-api/src/workspace-server.ts';
+import { BpmnWorkspaceService } from '../packages/application/src/bpmn-workspace.ts';
+import { LocalImageByteStore } from '../packages/image-perception/src/byte-store.ts';
+import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-document-store.ts';
+import { alignBpmnRevisionToCanonical } from '../packages/review/src/bpmn-confirmation.ts';
 
 const nativeBpmn = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_User_Input" targetNamespace="https://talos.local/i7b05">
@@ -159,5 +164,78 @@ test('I7B-05 invalid XML never replaces the current valid BPMN revision', async 
     assert.equal(secondEdit.body.changeClass, 'SEMANTIC');
   } finally {
     await app.close();
+  }
+});
+
+test('I7B-05 importing the same native BPMN twice creates distinct immutable review revisions', async () => {
+  const app = await startProcessConfirmationWorkspace({ port: 0 });
+  try {
+    const first = await post(app.baseUrl, '/api/input/bpmn', {
+      fileName: 'same-process.bpmn',
+      bpmnXml: nativeBpmn,
+      initiatedBy: 'i7b05-test-user',
+    });
+    const second = await post(app.baseUrl, '/api/input/bpmn', {
+      fileName: 'same-process.bpmn',
+      bpmnXml: nativeBpmn,
+      initiatedBy: 'i7b05-test-user',
+    });
+    assert.equal(first.response.status, 201);
+    assert.equal(second.response.status, 201);
+    assert.notEqual(second.body.revision.id, first.body.revision.id);
+    assert.ok(second.body.revision.revisionNumber > first.body.revision.revisionNumber);
+    assert.equal(second.body.revision.bpmnXmlSha256, first.body.revision.bpmnXmlSha256);
+  } finally {
+    await app.close();
+  }
+});
+
+test('I7B-05 confirmation persists as independent authority evidence without mutating the stored BPMN revision', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-i7b05-confirmation-'));
+  const repo = new SqliteDocumentStore(path.join(runtimeDir, 'state.sqlite'));
+  const byteStore = new LocalImageByteStore(path.join(runtimeDir, 'source-bytes'));
+  const workspace = new BpmnWorkspaceService(repo, byteStore);
+  try {
+    const imported = await workspace.importNativeBpmn({
+      bpmnXml: nativeBpmn,
+      declaredName: 'confirmation-proof.bpmn',
+      initiatedBy: 'i7b05-test-user',
+      importedAt: '2026-08-20T22:20:00.000Z',
+    });
+    const canonicalProcessRevisionId = 'canonical_i7b05_confirmation' as any;
+    const aligned = alignBpmnRevisionToCanonical(imported.revision, {
+      canonicalProcessRevisionId,
+      alignedBy: 'canonical-reconciliation-test',
+      alignedAt: '2026-08-20T22:20:01.000Z',
+      authorityRef: 'business-process-owner',
+      revisionNumber: imported.revision.revisionNumber + 1,
+    });
+    repo.append({
+      id: aligned.id as any,
+      aggregateKind: 'BpmnProcessRevision',
+      schemaVersion: 'talos-bpmn-workspace-v0.1',
+      payload: aligned,
+      parentId: imported.revision.id as any,
+      createdAt: aligned.createdAt,
+    });
+
+    const result = workspace.confirm({
+      revisionId: aligned.id,
+      canonicalProcessRevisionId,
+      confirmedBy: 'i7b05-test-user',
+      confirmedAt: '2026-08-20T22:20:02.000Z',
+      authorityRef: 'business-process-owner',
+    });
+    assert.equal(result.revision.state, 'CONFIRMED');
+    assert.equal(result.confirmation.status, 'CONFIRMED');
+
+    const stored = repo.get<any>(aligned.id as any);
+    assert.equal(stored?.payload.state, 'DRAFT');
+    assert.equal(workspace.getRevision(aligned.id)?.state, 'CONFIRMED');
+    assert.equal(repo.listByKind('BusinessProcessConfirmationRecord').length, 1);
+    assert.equal(repo.listByKind('BpmnProcessRevision').length, 2);
+  } finally {
+    repo.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
   }
 });
