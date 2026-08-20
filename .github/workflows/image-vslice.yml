@@ -1,0 +1,67 @@
+name: Image vertical slice
+
+on:
+  push:
+    branches: [image-vslice-v0.1]
+    paths:
+      - '.github/workflows/image-vslice.yml'
+      - 'build/reference-vertical-slice/packages/image-perception/**'
+      - 'build/reference-vertical-slice/tests/image-*.test.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/**'
+      - 'build/reference-vertical-slice/architecture/module-boundaries.json'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'build/reference-vertical-slice/packages/image-perception/**'
+      - 'build/reference-vertical-slice/tests/image-*.test.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/**'
+      - 'build/reference-vertical-slice/architecture/module-boundaries.json'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+      - '.github/workflows/image-vslice.yml'
+  workflow_dispatch:
+
+jobs:
+  image-i3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Regress frozen B2 source-intake implementation
+        working-directory: build/reference-vertical-slice
+        run: npm run b2:test
+
+      - name: Run I0 exact image intake gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i0:test
+
+      - name: Run I1 provider/perception gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i1:test
+
+      - name: Run I2 common source-evidence gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i2:test
+
+      - name: Run I3 browser image review gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i3:test

@@ -15,6 +15,7 @@ import {
 } from '../../../workers/reference-temporal-worker/src/workflow.ts';
 import { deriveReferenceEmailIdempotencyKey } from '../../../packages/reference-email-sink/src/reference-email-sink.ts';
 import { referenceDemoHtml } from './ui.ts';
+import { createImageApi } from './image-api.ts';
 
 export interface StartReferenceDemoOptions {
   port?: number;
@@ -75,6 +76,7 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
   const talosDbPath = path.join(runtimeDir, 'talos-state.sqlite');
   const providerDbPath = path.join(runtimeDir, 'reference-email-sink.sqlite');
   const talosStore = new SqliteDocumentStore(talosDbPath);
+  const imageApi = createImageApi(talosStore, runtimeDir);
 
   let temporal: TestWorkflowEnvironment | undefined;
   let workerRuntime: Awaited<ReturnType<typeof createReferenceTemporalWorker>> | undefined;
@@ -211,6 +213,8 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
           return;
         }
 
+        if (await imageApi.handle(request, response, url)) return;
+
         if (request.method === 'POST' && url.pathname === '/api/processes') {
           const body = await readJson(request);
           const recipientEmail = typeof body.recipientEmail === 'string' ? body.recipientEmail.trim() : '';
@@ -260,10 +264,7 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
           const result = await handle.result();
           const description = await handle.describe();
           const history = await handle.fetchHistory();
-          const expectedKey = deriveReferenceEmailIdempotencyKey(
-            referenceRequestId,
-            program.activity.capabilityUseOccurrenceRef,
-          );
+          const expectedKey = deriveReferenceEmailIdempotencyKey(referenceRequestId, program.activity.capabilityUseOccurrenceRef);
           const providerEffects = workerRuntime!.providerStore.list().filter((effect) => effect.idempotencyKey === expectedKey);
           json(response, 200, {
             referenceRequestId,
@@ -305,12 +306,7 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
       await rollback();
     };
 
-    return {
-      baseUrl,
-      port: actualPort,
-      baseline: baselineSnapshot,
-      close,
-    };
+    return { baseUrl, port: actualPort, baseline: baselineSnapshot, close };
   } catch (error) {
     await rollback();
     throw error;
