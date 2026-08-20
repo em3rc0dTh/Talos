@@ -2,7 +2,7 @@ name: Image vertical slice
 
 on:
   push:
-    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff, image-i5c02-generic-execution-draft]
+    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff, image-i5c02-generic-execution-draft, image-i5c03-execution-resolution-v0.1]
     paths:
       - '.github/workflows/image-vslice.yml'
       - 'build/reference-vertical-slice/packages/image-perception/**'
@@ -36,7 +36,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i5c02:
+  image-i5c03:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -109,3 +109,7 @@ jobs:
       - name: Run I5C-02 generic ExecutionPlan draft gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i5c02:test
+
+      - name: Run I5C-03 capability binding / human design / resolved ExecutionPlan gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i5c03:test
