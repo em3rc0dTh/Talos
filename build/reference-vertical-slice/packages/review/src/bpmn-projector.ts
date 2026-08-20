@@ -22,7 +22,9 @@ export type BpmnProjectionDiagnosticCode =
   | 'DECISION_NOT_EXCLUSIVE_BY_SEMANTICS'
   | 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED'
   | 'MULTIPLE_ACTORS_PRESERVED_AS_REFERENCES'
-  | 'RULE_REFERENCE_MISSING';
+  | 'RULE_REFERENCE_MISSING'
+  | 'DEFAULT_EDGE_HAS_CONDITION_RULE'
+  | 'DEFAULT_EDGE_SOURCE_UNSUPPORTED';
 
 export interface BpmnProjectionDiagnostic {
   code: BpmnProjectionDiagnosticCode;
@@ -272,13 +274,15 @@ function extensionElements(node: ProcessNode): string {
   return `<bpmn:extensionElements>${refs}</bpmn:extensionElements>`;
 }
 
-function renderNode(node: ProjectedNode): string {
+function renderNode(node: ProjectedNode, defaultFlowBySource: Map<string, string>): string {
   const name = node.canonical.name ? ` name="${xmlEscape(node.canonical.name)}"` : '';
+  const defaultFlow = defaultFlowBySource.get(node.bpmnId);
+  const defaultAttr = defaultFlow ? ` default="${defaultFlow}"` : '';
   const ext = extensionElements(node.canonical);
   if (node.kind === 'subProcess') {
-    return `<bpmn:subProcess id="${node.bpmnId}"${name}>${ext}</bpmn:subProcess>`;
+    return `<bpmn:subProcess id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:subProcess>`;
   }
-  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}>${ext}</bpmn:${node.kind}>`;
+  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:${node.kind}>`;
 }
 
 function renderRule(edge: ProjectedEdge): string {
@@ -307,6 +311,10 @@ function renderDi(nodes: ProjectedNode[], edges: ProjectedEdge[]): string {
     return `<bpmndi:BPMNEdge id="DI_${edge.bpmnId}" bpmnElement="${edge.bpmnId}"><di:waypoint x="${x1}" y="${y1}"/><di:waypoint x="${x2}" y="${y2}"/></bpmndi:BPMNEdge>`;
   }).join('');
   return `<bpmndi:BPMNDiagram id="Talos_BPMNDiagram"><bpmndi:BPMNPlane id="Talos_BPMNPlane" bpmnElement="Talos_Process">${shapes}${edgeDi}</bpmndi:BPMNPlane></bpmndi:BPMNDiagram>`;
+}
+
+function supportsDefaultAttribute(kind: ProjectedNodeKind): boolean {
+  return kind === 'task' || kind === 'userTask' || kind === 'exclusiveGateway' || kind === 'subProcess';
 }
 
 export function projectCanonicalProcessToBpmn(input: {
@@ -363,6 +371,26 @@ export function projectCanonicalProcessToBpmn(input: {
       unprojectable.add(edge.id);
       continue;
     }
+    if (edge.kind === 'DEFAULT' && edge.conditionRuleRef) {
+      diagnostics.push({
+        code: 'DEFAULT_EDGE_HAS_CONDITION_RULE',
+        targetRef: edge.id,
+        severity: 'ERROR',
+        message: 'Canonical DEFAULT edge also carries a conditionRuleRef; Talos refuses to flatten contradictory branch semantics into BPMN.',
+      });
+      unprojectable.add(edge.id);
+      continue;
+    }
+    if (edge.kind === 'DEFAULT' && !supportsDefaultAttribute(source.kind)) {
+      diagnostics.push({
+        code: 'DEFAULT_EDGE_SOURCE_UNSUPPORTED',
+        targetRef: edge.id,
+        severity: 'ERROR',
+        message: `BPMN element kind ${source.kind} cannot safely carry the canonical DEFAULT-flow semantics in the v0.1 projector.`,
+      });
+      unprojectable.add(edge.id);
+      continue;
+    }
     const rule = edge.conditionRuleRef ? ruleById.get(edge.conditionRuleRef) : undefined;
     if (edge.conditionRuleRef && !rule) {
       diagnostics.push({
@@ -383,7 +411,12 @@ export function projectCanonicalProcessToBpmn(input: {
     });
   }
 
-  const processBody = `${nodes.map(renderNode).join('')}${edges.map(renderEdge).join('')}`;
+  const defaultFlowBySource = new Map<string, string>();
+  for (const edge of edges) {
+    if (edge.canonical.kind === 'DEFAULT') defaultFlowBySource.set(edge.sourceBpmnId, edge.bpmnId);
+  }
+
+  const processBody = `${nodes.map((node) => renderNode(node, defaultFlowBySource)).join('')}${edges.map(renderEdge).join('')}`;
   const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:talos="urn:talos:bpmn:extensions:v0.1" id="Talos_Definitions" targetNamespace="urn:talos:process-review"><bpmn:process id="Talos_Process" isExecutable="false">${processBody}</bpmn:process>${renderDi(nodes, edges)}</bpmn:definitions>`;
 
   const semanticDigest = semanticProjectionDigest(process);
