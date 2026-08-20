@@ -3,16 +3,15 @@
 Status: **FAIL**
 
 ```text
-workspace lock sync         success
-npm ci                      success
-Temporal lock gate          success
-architecture guard          failure
-B8 app smoke test           success
+npm ci                     success
+Temporal lock gate         success
+architecture guard         failure
+B8 app smoke test          success
 ```
 
-The smoke test boots the full native Canvas → validation → Manager correction → semantic freeze → capability → execution design pipeline, launches a real local Temporal server and Worker, starts HTTP/browser app state, then executes APPROVED and REJECTED requests through Workflow Updates.
+The smoke test boots the real Talos reference pipeline, local Temporal server/Worker and HTTP app, then executes APPROVED and REJECTED requests through Workflow Updates.
 
-## ARCH failure tail
+## Architecture failure tail
 ```text
 
 > @talos/reference-vertical-slice@0.0.0-reference architecture:verify
