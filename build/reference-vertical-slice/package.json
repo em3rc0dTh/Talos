@@ -65,6 +65,8 @@
     "image:i7b04:verify": "npm run image:i7b01:verify && npm run image:i7b02:test && npm run image:i7b03:test && npm run image:i7b04:test",
     "image:i7b05:test": "node --experimental-strip-types --test ./tests/image-i7b05-process-confirmation-workspace.test.ts",
     "image:i7b05:verify": "npm run image:i7b04:verify && npm run image:i7b05:test",
+    "image:i7b06:test": "node --experimental-strip-types --test ./tests/image-i7b06-natural-language-bpmn-correction.test.ts",
+    "image:i7b06:verify": "npm run image:i7b05:verify && npm run image:i7b06:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
