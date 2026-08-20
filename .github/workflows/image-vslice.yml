@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i1:
+  image-i2:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,6 +45,10 @@ jobs:
         working-directory: build/reference-vertical-slice
         run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
 
+      - name: Regress frozen B2 source-intake implementation
+        working-directory: build/reference-vertical-slice
+        run: npm run b2:test
+
       - name: Run I0 exact image intake gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i0:test
@@ -52,3 +56,7 @@ jobs:
       - name: Run I1 provider/perception gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i1:test
+
+      - name: Run I2 common source-evidence gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i2:test
