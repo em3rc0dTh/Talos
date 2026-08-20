@@ -28,7 +28,7 @@ function documentCount(dbPath: string): number {
   }
 }
 
-test('reference bootstrap is idempotent against the same durable Talos SQLite store', () => {
+test('reference bootstrap replays immutable review history against the same durable Talos SQLite store', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'talos-b10-bootstrap-'));
   const dbPath = path.join(dir, 'talos-state.sqlite');
   const store = new SqliteDocumentStore(dbPath);
@@ -39,10 +39,15 @@ test('reference bootstrap is idempotent against the same durable Talos SQLite st
     const secondCount = documentCount(dbPath);
 
     assert.equal(first.initial.validation.assessment.executionReadiness, 'INSUFFICIENT_DETAIL');
+    assert.equal(first.correction.application.result, 'APPLIED');
     assert.equal(first.correction.candidateValidation?.assessment.executionReadiness, 'READY_FOR_AUTOMATION_DESIGN');
-    assert.equal(second.correction.application.result, 'APPLIED');
+
+    assert.equal(second.correction.application.result, 'IDEMPOTENT_REPLAY');
+    assert.equal(second.correction.candidateProcessRevision?.id, first.correction.candidateProcessRevision?.id);
+    assert.equal(second.correction.candidateValidation?.assessment.id, first.correction.candidateValidation?.assessment.id);
+    assert.equal(second.correction.nextContext?.workspaceRevision.id, first.correction.nextContext?.workspaceRevision.id);
     assert.equal(second.correction.candidateValidation?.assessment.executionReadiness, 'READY_FOR_AUTOMATION_DESIGN');
-    assert.equal(secondCount, firstCount, 'restart-safe bootstrap must not create duplicate immutable history');
+    assert.equal(secondCount, firstCount, 'restart replay must not create duplicate semantic/review/execution history');
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -70,7 +75,7 @@ test('reference HTTP/Temporal app can close and restart with the same runtime di
     }
 
     const countAfterSecond = documentCount(talosDbPath);
-    assert.equal(countAfterSecond, countAfterFirst, 'second app start must reuse identical immutable bootstrap history');
+    assert.equal(countAfterSecond, countAfterFirst, 'second app start must reuse identical immutable semantic history');
   } finally {
     rmSync(runtimeDir, { recursive: true, force: true });
   }
