@@ -4,6 +4,7 @@ import type {
   ImagePerceptionProviderResult,
   ProviderObservation,
   ProviderOccurrenceCandidate,
+  ProviderPropertyCandidate,
   ProviderRelationCandidate,
 } from './perception-types.ts';
 
@@ -31,6 +32,7 @@ const labels = [
 ] as const;
 
 const relationSpecs = [
+  ['start-to-place-order', 'customer-start', 'place-order', 'FLOW_CANDIDATE'],
   ['place-order-to-verify', 'place-order', 'verify-customer-identity', 'MESSAGE_INTERACTION_CANDIDATE'],
   ['verify-to-exists', 'verify-customer-identity', 'customer-exist', 'FLOW_CANDIDATE'],
   ['exists-no-to-create', 'customer-exist', 'create-customer-account', 'CONDITIONAL_FLOW_CANDIDATE'],
@@ -39,6 +41,7 @@ const relationSpecs = [
   ['wednesday-to-forward', 'on-next-wednesday', 'forward-order', 'FLOW_CANDIDATE'],
   ['forward-to-arrange', 'forward-order', 'arrange-delivery', 'FLOW_CANDIDATE'],
   ['arrange-to-deliver', 'arrange-delivery', 'deliver-water', 'FLOW_CANDIDATE'],
+  ['deliver-to-end', 'deliver-water', 'company-end', 'FLOW_CANDIDATE'],
 ] as const;
 
 function textObservations(): ProviderObservation[] {
@@ -48,7 +51,7 @@ function textObservations(): ProviderObservation[] {
     observationKind: 'TEXT_LITERAL_CANDIDATE',
     observedValue: text,
     confidence: 1,
-    notes: 'TEST_ONLY fixture expectation derived from the preserved Quarry-02 source record; not a production OCR claim.',
+    notes: 'TEST_ONLY fixture expectation derived from the reviewed Quarry-02 Mining Site record; not a production OCR claim.',
   }));
 }
 
@@ -59,12 +62,16 @@ function connectorObservations(): ProviderObservation[] {
     observationKind: 'CONNECTOR_STROKE',
     observedValue: { fixtureRelationKey: key },
     confidence: 1,
-    notes: 'TEST_ONLY fixture expectation; v1 does not assert a region-level polyline.',
+    notes: 'TEST_ONLY fixture expectation; this provider does not assert a region-level polyline.',
   }));
 }
 
+function property(propertyPath: string, literalValue: unknown, supportingObservationKeys: string[], notes: string): ProviderPropertyCandidate {
+  return { propertyPath, sourceState: 'SET', literalValue, supportingObservationKeys, confidence: 1, notes };
+}
+
 function occurrences(): ProviderOccurrenceCandidate[] {
-  const participant = (key: string): ProviderOccurrenceCandidate => ({
+  const participant = (key: string, actorKind: string): ProviderOccurrenceCandidate => ({
     providerOccurrenceKey: key,
     anchorKeys: ['whole-image'],
     occurrenceKind: 'PARTICIPANT',
@@ -72,17 +79,19 @@ function occurrences(): ProviderOccurrenceCandidate[] {
     candidateSemanticType: 'ACTOR',
     sourcePlaneKind: 'RESPONSIBILITY_COLLABORATION',
     supportingObservationKeys: [`text:${key}`],
+    propertyCandidates: [property('propertyValues.actorKind', actorKind, [`text:${key}`], 'Role/participant kind is an interpretation candidate from the reviewed source record, not native structured source truth.')],
     confidence: 1,
     notes: 'Fixture occurrence candidate; ACTOR is an inferred semantic candidate, not source truth.',
   });
-  const node = (key: string, candidateSemanticType: string): ProviderOccurrenceCandidate => ({
+  const node = (key: string, candidateSemanticType: string, propertyCandidates: ProviderPropertyCandidate[] = [], extraSupporting: string[] = []): ProviderOccurrenceCandidate => ({
     providerOccurrenceKey: key,
     anchorKeys: ['whole-image'],
     occurrenceKind: 'NODE',
-    literalLabelObservationKey: `text:${key}`,
+    literalLabelObservationKey: labels.some(([labelKey]) => labelKey === key) ? `text:${key}` : undefined,
     candidateSemanticType,
     sourcePlaneKind: 'BUSINESS_GRAPH',
-    supportingObservationKeys: [`text:${key}`],
+    supportingObservationKeys: unique([...(labels.some(([labelKey]) => labelKey === key) ? [`text:${key}`] : []), ...extraSupporting]),
+    ...(propertyCandidates.length ? { propertyCandidates } : {}),
     confidence: 1,
     notes: 'Fixture occurrence candidate; semantic type remains inferred until later review/normalization.',
   });
@@ -98,19 +107,21 @@ function occurrences(): ProviderOccurrenceCandidate[] {
   });
 
   return [
-    participant('customer'),
-    participant('company'),
-    participant('customer-service-assistant'),
-    participant('manager'),
-    participant('worker'),
+    participant('customer', 'EXTERNAL_PARTY'),
+    participant('company', 'ORGANIZATION'),
+    participant('customer-service-assistant', 'HUMAN_ROLE'),
+    participant('manager', 'HUMAN_ROLE'),
+    participant('worker', 'HUMAN_ROLE'),
+    node('customer-start', 'EVENT', [property('propertyValues.eventRole', 'START', ['shape:customer-start'], 'The reviewed source record explicitly describes a visible START marker; this remains a perception-derived candidate for the current fixture.')], ['shape:customer-start']),
     node('place-order', 'ACTION'),
     node('verify-customer-identity', 'ACTION'),
     node('customer-exist', 'DECISION'),
     node('create-customer-account', 'ACTION'),
-    node('on-next-wednesday', 'WAIT'),
+    node('on-next-wednesday', 'WAIT', [property('propertyValues.waitKind', 'CALENDAR_TIME', ['shape:on-next-wednesday'], 'The reviewed source record identifies this as a time-based intermediate event; exact instant/timezone remain unresolved.')], ['shape:on-next-wednesday']),
     node('forward-order', 'ACTION'),
-    node('arrange-delivery', 'SUBPROCESS'),
-    node('deliver-water', 'ACTION'),
+    node('arrange-delivery', 'SUBPROCESS', [property('propertyValues.boundaryMeaning', 'COLLAPSED_SUBPROCESS', ['shape:arrange-delivery'], 'The reviewed source record identifies the visible collapsed subprocess marker; internal subprocess semantics remain unknown.')], ['shape:arrange-delivery']),
+    node('deliver-water', 'ACTION', [property('propertyValues.actor', 'Worker', ['attachment:worker-deliver'], 'The reviewed source record explicitly places Deliver Water in the Worker lane; completion observation remains unresolved.')], ['attachment:worker-deliver']),
+    node('company-end', 'END', [property('propertyValues.eventRole', 'END', ['shape:company-end'], 'The reviewed source record explicitly describes a visible END marker; this remains a perception-derived candidate for the current fixture.')], ['shape:company-end']),
     object('po-create'),
     object('po-to-be-assigned'),
     object('po-to-be-delivered'),
@@ -128,6 +139,8 @@ function occurrences(): ProviderOccurrenceCandidate[] {
   ];
 }
 
+function unique<T>(items: T[]): T[] { return [...new Set(items)]; }
+
 function relations(): ProviderRelationCandidate[] {
   return relationSpecs.map(([key, source, target, role]) => ({
     providerRelationKey: key,
@@ -138,7 +151,7 @@ function relations(): ProviderRelationCandidate[] {
     targetEndpointCandidates: [{ occurrenceCandidateKey: target, anchorKey: 'whole-image', endpointState: 'SET_CANDIDATE', confidence: 1 }],
     directionCandidates: [{ value: 'SOURCE_TO_TARGET', confidence: 1 }],
     roleAlternativeSetKey: `role:${key}`,
-    notes: `TEST_ONLY fixture expectation for ${role}; model/provider preference is not confirmed business truth.`,
+    notes: `TEST_ONLY fixture expectation for ${role}; provider preference is not confirmed business truth.`,
   }));
 }
 
@@ -147,9 +160,9 @@ function noResult(providerId: string, providerVersion: string, code: string, des
     providerId,
     providerVersion,
     providerClass: 'FIXTURE_PROVIDER',
-    modelRef: 'fixture:quarry-02-source-record',
+    modelRef: 'fixture:quarry-02-reviewed-source-record',
     modelVersion: 'source-02.md@b4f9355b2f7039cf292bf38dea2770bbaef2675b',
-    pipelineVersion: 'image-fixture-v0.1',
+    pipelineVersion: 'image-fixture-v0.2',
     evidenceMode: 'FIXTURE_EXPECTATION',
     status: 'NO_RESULT',
     anchors: [],
@@ -163,7 +176,7 @@ function noResult(providerId: string, providerVersion: string, code: string, des
 
 export class ReferenceQuarryPerceptionProvider implements ImagePerceptionProvider {
   readonly providerId = 'REFERENCE_QUARRY_PERCEPTION';
-  readonly providerVersion = '1.0.0-reference';
+  readonly providerVersion = '1.1.0-reference';
 
   perceive(request: ImagePerceptionProviderRequest): ImagePerceptionProviderResult {
     if (request.contentSha256 !== QUARRY_02_VERIFIED_SHA256) {
@@ -177,9 +190,9 @@ export class ReferenceQuarryPerceptionProvider implements ImagePerceptionProvide
       providerId: this.providerId,
       providerVersion: this.providerVersion,
       providerClass: 'FIXTURE_PROVIDER',
-      modelRef: 'fixture:quarry-02-source-record',
+      modelRef: 'fixture:quarry-02-reviewed-source-record',
       modelVersion: 'source-02.md@b4f9355b2f7039cf292bf38dea2770bbaef2675b',
-      pipelineVersion: 'image-fixture-v0.1',
+      pipelineVersion: 'image-fixture-v0.2',
       evidenceMode: 'FIXTURE_EXPECTATION',
       status: 'SUCCEEDED',
       anchors: [{
@@ -187,15 +200,18 @@ export class ReferenceQuarryPerceptionProvider implements ImagePerceptionProvide
         geometryKind: 'WHOLE_IMAGE',
         geometry: { x: 0, y: 0, width: 791, height: 451 },
         visibilityState: 'VISIBLE',
-        notes: 'v1 intentionally uses whole-image evidence because source-02.md does not supply pixel-region annotations.',
+        notes: 'Fixture uses whole-image evidence because the reviewed source record does not supply pixel-region annotations.',
       }],
       observations: [
         ...textObservations(),
         ...connectorObservations(),
+        { providerObservationKey: 'shape:customer-start', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'START_EVENT_LIKE', confidence: 1, notes: 'TEST_ONLY reviewed-source expectation; visible marker interpretation remains INFERRED.' },
         { providerObservationKey: 'shape:customer-exist', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'GATEWAY_LIKE', confidence: 1, notes: 'Fixture expectation; geometry-specific inference is not generalized.' },
-        { providerObservationKey: 'shape:on-next-wednesday', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'INTERMEDIATE_EVENT_LIKE', confidence: 1, notes: 'Fixture expectation only; circle/event geometry is not a universal semantic rule.' },
-        { providerObservationKey: 'shape:arrange-delivery', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'ACTIVITY_WITH_COLLAPSED_MARKER', confidence: 1, notes: 'Fixture expectation only; subprocess semantics remain an interpretation concern.' },
-        { providerObservationKey: 'plane:business-graph', anchorKey: 'whole-image', observationKind: 'PLANE_REGION', observedValue: 'BUSINESS_GRAPH', confidence: 1, notes: 'Fixture expectation from the source record classification.' },
+        { providerObservationKey: 'shape:on-next-wednesday', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'TIME_INTERMEDIATE_EVENT_LIKE', confidence: 1, notes: 'Reviewed-source expectation; exact time expression/timezone remain unresolved.' },
+        { providerObservationKey: 'shape:arrange-delivery', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'ACTIVITY_WITH_COLLAPSED_MARKER', confidence: 1, notes: 'Reviewed-source expectation; internal subprocess semantics remain unresolved.' },
+        { providerObservationKey: 'attachment:worker-deliver', anchorKey: 'whole-image', observationKind: 'SPATIAL_ATTACHMENT', observedValue: { role: 'Worker', activity: 'Deliver Water', relation: 'LANE_RESPONSIBILITY_CANDIDATE' }, confidence: 1, notes: 'Reviewed-source expectation that Deliver Water is placed in the Worker lane; not native structured membership.' },
+        { providerObservationKey: 'shape:company-end', anchorKey: 'whole-image', observationKind: 'SHAPE_CLASS_CANDIDATE', observedValue: 'END_EVENT_LIKE', confidence: 1, notes: 'TEST_ONLY reviewed-source expectation; visible marker interpretation remains INFERRED.' },
+        { providerObservationKey: 'plane:business-graph', anchorKey: 'whole-image', observationKind: 'PLANE_REGION', observedValue: 'BUSINESS_GRAPH', confidence: 1, notes: 'Fixture expectation from the reviewed source record classification.' },
       ],
       occurrenceCandidates: occurrences(),
       alternativeSets: relationSpecs.map(([key, , , role]) => ({
@@ -210,7 +226,10 @@ export class ReferenceQuarryPerceptionProvider implements ImagePerceptionProvide
         modelPreferenceConfidence: 0.95,
       })),
       relationCandidates: relations(),
-      diagnostics: [{ code: 'FIXTURE_PROVIDER_NOT_REAL_VISION', description: 'Output is deterministic conformance evidence derived from the Quarry-02 source record and must not be represented as arbitrary-image perception.' }],
+      diagnostics: [
+        { code: 'FIXTURE_PROVIDER_NOT_REAL_VISION', description: 'Output is deterministic conformance evidence derived from the reviewed Quarry-02 Mining Site source record and must not be represented as arbitrary-image perception.' },
+        { code: 'FIXTURE_SOURCE_RECORD_BYTE_IDENTITY_MISMATCH', description: 'source-02.md records a different historical byte digest than the current quarry-02.png fixture. The reviewed semantic record is used only as secondary fixture expectation evidence; it does not prove byte identity for the current PNG.' },
+      ],
     };
   }
 }
