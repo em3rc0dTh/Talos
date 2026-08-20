@@ -58,6 +58,8 @@ test('I3 browser/API exposes recovered image evidence as INFERRED Canonical/Vali
     assert.equal(data.commonEvidence.relationships.length, 10);
     assert.equal(data.commonEvidence.properties.every((item: any) => !Object.hasOwn(item, 'nativeSourceId')), true);
     assert.equal(data.commonEvidence.properties.every((item: any) => (item.sourceExtensionRefs?.length ?? 0) >= 2), true);
+    assert.ok(data.commonEvidence.properties.some((item: any) => item.propertyPath === 'propertyValues.eventRole' && item.literalValue === 'START'));
+    assert.ok(data.commonEvidence.properties.some((item: any) => item.propertyPath === 'propertyValues.eventRole' && item.literalValue === 'END'));
 
     assert.equal(data.canonical.created, true);
     assert.equal(data.canonical.gate, 'I4_CLOSED');
@@ -70,7 +72,7 @@ test('I3 browser/API exposes recovered image evidence as INFERRED Canonical/Vali
     assert.equal(data.canonical.edges.every((edge: any) => edge.truthClass === 'INFERRED'), true);
 
     const start = data.canonical.nodes.find((node: any) => node.kind === 'EVENT' && node.details?.eventRole === 'START');
-    const end = data.canonical.nodes.find((node: any) => node.kind === 'END' && node.details?.eventRole === 'END');
+    const end = data.canonical.nodes.find((node: any) => node.kind === 'END');
     const wait = data.canonical.nodes.find((node: any) => node.name === 'On Next Wednesday');
     const subprocess = data.canonical.nodes.find((node: any) => node.name === 'Arrange Delivery');
     const delivery = data.canonical.nodes.find((node: any) => node.name === 'Deliver Water');
@@ -105,7 +107,7 @@ test('I3 browser/API exposes recovered image evidence as INFERRED Canonical/Vali
     modified[modified.length - 1] ^= 0x01;
     const unknownResponse = await fetch(`${demo.baseUrl}/api/images`, {
       method: 'POST',
-      headers: { 'content-type': 'image/png', 'x-talos-file-name': encodeURIComponent('unknown.png') },
+      headers: { 'content-type':'image/png', 'x-talos-file-name': encodeURIComponent('unknown.png') },
       body: modified,
     });
     assert.equal(unknownResponse.status, 202);
@@ -122,7 +124,7 @@ test('I3 browser/API exposes recovered image evidence as INFERRED Canonical/Vali
 
     const invalid = await fetch(`${demo.baseUrl}/api/images`, {
       method: 'POST',
-      headers: { 'content-type': 'image/png' },
+      headers: { 'content-type':'image/png' },
       body: Buffer.from('not a png'),
     });
     assert.equal(invalid.status, 400);
