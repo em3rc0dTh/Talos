@@ -37,8 +37,9 @@ test('I2 full image adapter materializes common source evidence and succeeds wit
     assert.ok(result.attempt.result);
     assert.ok(result.commonEvidence);
     assert.equal(result.commonEvidence?.planes.length, 4);
-    assert.equal(result.commonEvidence?.occurrences.length, 18);
-    assert.equal(result.commonEvidence?.relationships.length, 8);
+    assert.equal(result.commonEvidence?.properties.length, 10);
+    assert.equal(result.commonEvidence?.occurrences.length, 20);
+    assert.equal(result.commonEvidence?.relationships.length, 10);
     assert.equal(result.commonEvidence?.classification.artifactClass, 'COLLABORATION_DIAGRAM');
     assert.equal(result.commonEvidence?.classification.truthClass, 'INFERRED');
     assert.equal(result.commonEvidence?.scope.kind, 'COLLABORATION');
@@ -48,11 +49,12 @@ test('I2 full image adapter materializes common source evidence and succeeds wit
     assert.equal(result.attempt.result?.artifactClassificationIds.length, 1);
     assert.equal(repo.listByKind('SourceEvidenceGraph').length, 1);
     assert.equal(repo.listByKind('CandidateSemanticScope').length, 1);
+    assert.equal(repo.listByKind('SourcePropertyEvidenceDescriptor').length, 10);
     assert.equal(repo.listByKind('ProcessRevision').length, 0, 'I2 common evidence must not silently become Canonical');
   });
 });
 
-test('I2 raster occurrences and relationships never fabricate native source IDs or source-asserted semantics', () => {
+test('I2 raster occurrences, relationships and property evidence never fabricate native source IDs or source-asserted semantics', () => {
   withImageStore(({ repo, byteStore, bytes }) => {
     const intake = intakePngUpload(repo, byteStore, bytes, { receivedAt: '2026-08-19T23:31:00.000Z' });
     const result = runImagePerception(repo, intake, new ReferenceQuarryPerceptionProvider(), {
@@ -74,11 +76,51 @@ test('I2 raster occurrences and relationships never fabricate native source IDs 
       assert.equal(relation.sourceEndpointState, 'SET');
       assert.equal(relation.targetEndpointState, 'SET');
     }
+    for (const property of common.properties) {
+      assert.equal('nativeSourceId' in property, false, 'raster property evidence must not fabricate native source identity');
+      assert.equal(property.sourceRepresentationId, intake.representation.id);
+      assert.equal(property.sourceState, 'SET');
+      assert.ok((property.sourceExtensionRefs?.length ?? 0) >= 2, 'raster property evidence must retain perception observation + anchor lineage');
+      assert.ok(common.graph.sourceExtensionRefs.includes(property.id), 'property evidence must remain addressable from the common graph');
+    }
 
     const roles = common.relationships.map((item) => item.candidateRelationshipRole);
     assert.ok(roles.includes('MESSAGE_INTERACTION_CANDIDATE'));
     assert.ok(roles.includes('CONDITIONAL_FLOW_CANDIDATE'));
     assert.equal(repo.listByKind('PerceptionAlternativeDecision').length, 0, 'I2 does not convert model preference into human confirmation');
+  });
+});
+
+test('I2 preserves visible START/END, time class, collapsed boundary and Worker responsibility as property-level INFERRED evidence candidates', () => {
+  withImageStore(({ repo, byteStore, bytes }) => {
+    const intake = intakePngUpload(repo, byteStore, bytes, { receivedAt: '2026-08-19T23:31:30.000Z' });
+    const result = runImagePerception(repo, intake, new ReferenceQuarryPerceptionProvider(), {
+      now: '2026-08-19T23:31:31.000Z',
+      materializeCommonEvidence: true,
+    });
+    const common = result.commonEvidence!;
+    const byPathValue = (path: string, value: unknown) => common.properties.find((item) => item.propertyPath === path && item.literalValue === value);
+
+    const start = byPathValue('propertyValues.eventRole', 'START');
+    const end = byPathValue('propertyValues.eventRole', 'END');
+    const wait = byPathValue('propertyValues.waitKind', 'CALENDAR_TIME');
+    const subprocess = byPathValue('propertyValues.boundaryMeaning', 'COLLAPSED_SUBPROCESS');
+    const worker = byPathValue('propertyValues.actor', 'Worker');
+    assert.ok(start && end && wait && subprocess && worker);
+
+    for (const item of [start!, end!, wait!, subprocess!, worker!]) {
+      assert.equal('nativeSourceId' in item, false);
+      assert.ok(item.sourceExtensionRefs?.some((ref) => result.observations.some((obs) => obs.id === ref)), 'property candidate must trace to perception observation');
+      assert.ok(item.sourceExtensionRefs?.includes(result.anchors[0].id), 'property candidate must trace to visual anchor');
+    }
+
+    const startOccurrence = common.occurrences.find((item) => item.candidateSemanticType === 'EVENT' && item.propertyEvidenceRefs.includes(start!.id));
+    const endOccurrence = common.occurrences.find((item) => item.candidateSemanticType === 'END' && item.propertyEvidenceRefs.includes(end!.id));
+    const waitOccurrence = common.occurrences.find((item) => item.literalLabel === 'On Next Wednesday' && item.propertyEvidenceRefs.includes(wait!.id));
+    const deliveryOccurrence = common.occurrences.find((item) => item.literalLabel === 'Deliver Water' && item.propertyEvidenceRefs.includes(worker!.id));
+    assert.ok(startOccurrence && endOccurrence && waitOccurrence && deliveryOccurrence);
+    assert.equal(common.scope.includedOccurrenceRefs.includes(startOccurrence!.sourceOccurrenceId), true);
+    assert.equal(common.scope.includedOccurrenceRefs.includes(endOccurrence!.sourceOccurrenceId), true);
   });
 });
 
