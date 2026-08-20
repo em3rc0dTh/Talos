@@ -47,8 +47,9 @@ server-backed Workflow history
 ## Requirements
 
 - Git
-- Node.js **22.16.x** (the reference workspace accepts `>=22.16.0 <23`)
-- npm 10.x recommended
+- Node.js **22.16+ on Node 22** or **Node 24.x**
+  - accepted engine range: `>=22.16.0 <23 || >=24.0.0 <25`
+- npm 10/11
 - Internet access on first setup/start
 
 The reference app uses `@temporalio/testing` to start a local Temporal development server. On a machine that does not already have the Temporal test server cached, the first run may download the Temporal CLI/test-server binary.
@@ -57,11 +58,25 @@ Docker and Temporal Cloud credentials are **not required** for this reference ve
 
 ## Run it
 
-From your local TALOS repository:
+From the TALOS repository root:
 
 ```bash
 git pull
 cd build/reference-vertical-slice
+npm ci
+npm run demo
+```
+
+If your PowerShell prompt already ends in:
+
+```text
+...\Talos\build\reference-vertical-slice>
+```
+
+do **not** run `cd build/reference-vertical-slice` again. Just run:
+
+```powershell
+git pull
 npm ci
 npm run demo
 ```
@@ -140,9 +155,9 @@ email Activity is never scheduled
 provider effect count for that request = 0
 ```
 
-## Local runtime files
+## Local runtime files and restart behavior
 
-The app creates only local ignored runtime state under:
+The app creates local ignored runtime state under:
 
 ```text
 build/reference-vertical-slice/.runtime/
@@ -157,11 +172,9 @@ including two physically separate databases:
 
 The first stores immutable TALOS reference artifacts. The second stores only TEST_ONLY provider effects.
 
-To reset the local reference state, stop the app and delete:
+You may stop and restart the demo **without deleting `.runtime`**. The reference bootstrap reuses the successful source interpretation and rehydrates the historical Manager correction as an idempotent review replay instead of creating duplicate semantic history.
 
-```text
-build/reference-vertical-slice/.runtime/
-```
+Deleting `.runtime/` is now only an explicit reset operation—not a restart requirement.
 
 ## Stop it
 
@@ -173,13 +186,17 @@ Ctrl+C
 
 The reference app shuts down the HTTP server, Temporal Worker, reference provider, local Temporal environment and Talos SQLite store.
 
-## Verified gate
+The local Temporal development server may emit low-level cancellation/context-cancelled warnings while its ephemeral process is being torn down. B10 separately verifies that the Worker reaches STOPPED and that the same runtime directory can start successfully again on both Node 22.16 and Node 24.11.
 
-Current GitHub CI evidence:
+## Verified gates
+
+Current GitHub evidence:
 
 ```text
-test/103-B7-B9-TEMPORAL-RUNTIME-CI-RESULT.md      PASS
-test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md PASS
+test/103-B7-B9-TEMPORAL-RUNTIME-CI-RESULT.md             PASS
+test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md      PASS
+test/106-USER-HANDS-ON-APPROVED-RUNTIME-RESULT-v0.1.md   PASS
+test/107-B10-RESTART-REPLAY-SAFETY-RESULT-v0.1.md        PASS
 ```
 
-The tryable-app smoke gate verifies both approved and rejected browser/API paths against a real local Temporal server and Worker.
+The tryable-app gate verifies approved/rejected paths against a real local Temporal server and Worker. The B10 restart matrix verifies the same persisted TALOS runtime directory can close and start again without duplicate semantic history on Node 22.16 and Node 24.11.
