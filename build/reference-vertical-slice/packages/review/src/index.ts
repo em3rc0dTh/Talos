@@ -5,3 +5,5 @@ export * from './diff.ts';
 export * from './freeze.ts';
 export * from './bpmn-confirmation.ts';
 export * from './bpmn-projector.ts';
+export * from './bpmn-roundtrip.ts';
+export * from './talos-bpmn-moddle.ts';

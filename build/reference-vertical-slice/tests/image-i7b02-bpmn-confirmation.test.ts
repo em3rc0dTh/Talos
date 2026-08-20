@@ -36,6 +36,7 @@ test('I7B-02 creates an explicit BPMN review revision pinned to source and canon
   assert.equal(revision.state, 'DRAFT');
   assert.equal(revision.sourceArtifactRefs[0], 'src-artifact-image-01');
   assert.equal(revision.canonicalProcessRevisionId, processRevisionId);
+  assert.equal(revision.canonicalAlignmentStatus, 'ALIGNED_TO_CANONICAL');
   assert.equal(revision.bpmnXmlSha256.length, 64);
 });
 
@@ -47,6 +48,7 @@ test('I7B-02 distinguishes visual-only BPMN-DI edits from semantic edits', () =>
     sourceRoute: base.sourceRoute,
     editMode: 'GRAPH_EDIT',
     canonicalProcessRevisionId: processRevisionId,
+    canonicalAlignmentStatus: 'ALIGNED_TO_CANONICAL',
     bpmnXml: xmlV1.replace('BPMNDiagram id="d1"', 'BPMNDiagram id="d2"'),
     semanticDigest: base.semanticDigest,
     diagramDigest: 'di-layout-v2',
@@ -58,7 +60,7 @@ test('I7B-02 distinguishes visual-only BPMN-DI edits from semantic edits', () =>
     parentBpmnRevisionId: visual.id,
     sourceRoute: base.sourceRoute,
     editMode: 'GRAPH_EDIT',
-    canonicalProcessRevisionId: processRevisionId,
+    canonicalAlignmentStatus: 'REQUIRES_CANONICAL_RECONCILIATION',
     bpmnXml: xmlV1.replace('Receive Order', 'Validate Order'),
     semanticDigest: 'sem-validate-order-v2',
     diagramDigest: visual.diagramDigest,
@@ -67,6 +69,8 @@ test('I7B-02 distinguishes visual-only BPMN-DI edits from semantic edits', () =>
   });
   assert.equal(classifyBpmnChange(base, visual), 'VISUAL_ONLY');
   assert.equal(classifyBpmnChange(visual, semantic), 'SEMANTIC');
+  assert.equal(semantic.canonicalProcessRevisionId, undefined);
+  assert.equal(semantic.canonicalAlignmentStatus, 'REQUIRES_CANONICAL_RECONCILIATION');
 });
 
 test('I7B-02 natural-language correction is proposal-only until explicit authority accepts it', () => {
@@ -76,7 +80,7 @@ test('I7B-02 natural-language correction is proposal-only until explicit authori
     parentBpmnRevisionId: base.id,
     sourceRoute: base.sourceRoute,
     editMode: 'NATURAL_LANGUAGE_PATCH',
-    canonicalProcessRevisionId: processRevisionId,
+    canonicalAlignmentStatus: 'REQUIRES_CANONICAL_RECONCILIATION',
     bpmnXml: xmlV1.replace('</process>', '<userTask id="manager" name="Manager Approval"/></process>'),
     semanticDigest: 'sem-manager-approval-v2',
     diagramDigest: 'di-manager-approval-v2',
@@ -129,7 +133,7 @@ test('I7B-02 automation handoff is blocked until the exact BPMN revision is expl
   assert.deepEqual(authorized, { result: 'AUTHORIZED', authorized: true, diagnosticRefs: [] });
 });
 
-test('I7B-02 any later BPMN semantic revision makes the old confirmation stale', () => {
+test('I7B-02 any later BPMN semantic revision invalidates old canonical authority and therefore old confirmation authority', () => {
   const base = baseRevision();
   const { confirmation } = confirmBusinessProcess(base, {
     canonicalProcessRevisionId: processRevisionId,
@@ -142,7 +146,7 @@ test('I7B-02 any later BPMN semantic revision makes the old confirmation stale',
     parentBpmnRevisionId: base.id,
     sourceRoute: base.sourceRoute,
     editMode: 'XML_EDIT',
-    canonicalProcessRevisionId: processRevisionId,
+    canonicalAlignmentStatus: 'REQUIRES_CANONICAL_RECONCILIATION',
     bpmnXml: xmlV1.replace('Receive Order', 'Validate Order'),
     semanticDigest: 'sem-validate-order-v2',
     diagramDigest: 'di-layout-v2',
@@ -155,7 +159,7 @@ test('I7B-02 any later BPMN semantic revision makes the old confirmation stale',
     confirmation,
   });
   assert.equal(stale.authorized, false);
-  assert.equal(stale.result, 'REJECTED_BPMN_NOT_CONFIRMED');
+  assert.equal(stale.result, 'REJECTED_CANONICAL_RECONCILIATION_REQUIRED');
 });
 
 test('I7B-02 revocation immediately removes automation-handoff authority', () => {
