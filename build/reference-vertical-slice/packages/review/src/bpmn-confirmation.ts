@@ -7,6 +7,7 @@ export type BpmnInputRoute = 'IMAGE_INTERPRETATION' | 'NATIVE_BPMN' | 'TALOS_CAN
 export type BpmnEditMode = 'INITIAL_PROJECTION' | 'NATIVE_BPMN_IMPORT' | 'GRAPH_EDIT' | 'XML_EDIT' | 'NATURAL_LANGUAGE_PATCH';
 export type BpmnRevisionState = 'DRAFT' | 'CONFIRMED' | 'SUPERSEDED';
 export type BpmnChangeClass = 'NO_CHANGE' | 'VISUAL_ONLY' | 'SEMANTIC';
+export type BpmnCanonicalAlignmentStatus = 'ALIGNED_TO_CANONICAL' | 'REQUIRES_CANONICAL_RECONCILIATION';
 
 export interface BpmnProcessRevision {
   id: ReviewId;
@@ -16,7 +17,9 @@ export interface BpmnProcessRevision {
   editMode: BpmnEditMode;
   sourceArtifactRefs: string[];
   sourceRepresentationRefs: string[];
-  canonicalProcessRevisionId: CanonicalId;
+  canonicalProcessRevisionId?: CanonicalId;
+  canonicalAlignmentStatus: BpmnCanonicalAlignmentStatus;
+  canonicalAlignmentAuthorityRef?: string;
   bpmnXml: string;
   bpmnXmlSha256: string;
   /** Digest of normalized BPMN business semantics, excluding BPMN-DI layout. */
@@ -36,7 +39,9 @@ export interface CreateBpmnProcessRevisionInput {
   editMode: BpmnEditMode;
   sourceArtifactRefs?: string[];
   sourceRepresentationRefs?: string[];
-  canonicalProcessRevisionId: CanonicalId;
+  canonicalProcessRevisionId?: CanonicalId;
+  canonicalAlignmentStatus?: BpmnCanonicalAlignmentStatus;
+  canonicalAlignmentAuthorityRef?: string;
   bpmnXml: string;
   semanticDigest: string;
   diagramDigest: string;
@@ -78,6 +83,7 @@ export type AutomationHandoffConfirmationResult =
   | 'AUTHORIZED'
   | 'REJECTED_MISSING_CONFIRMATION'
   | 'REJECTED_BPMN_NOT_CONFIRMED'
+  | 'REJECTED_CANONICAL_RECONCILIATION_REQUIRED'
   | 'REJECTED_STALE_BPMN_REVISION'
   | 'REJECTED_XML_DIGEST_MISMATCH'
   | 'REJECTED_SEMANTIC_DIGEST_MISMATCH'
@@ -95,6 +101,12 @@ function requireText(value: string, field: string): void {
   if (value.trim().length === 0) throw new TypeError(`${field} must not be empty`);
 }
 
+function defaultCanonicalAlignment(input: CreateBpmnProcessRevisionInput): BpmnCanonicalAlignmentStatus {
+  if (input.canonicalAlignmentStatus) return input.canonicalAlignmentStatus;
+  if (input.editMode === 'INITIAL_PROJECTION' && input.canonicalProcessRevisionId) return 'ALIGNED_TO_CANONICAL';
+  return 'REQUIRES_CANONICAL_RECONCILIATION';
+}
+
 export function createBpmnProcessRevision(input: CreateBpmnProcessRevisionInput): BpmnProcessRevision {
   if (!Number.isInteger(input.revisionNumber) || input.revisionNumber < 1) {
     throw new TypeError('revisionNumber must be a positive integer');
@@ -104,6 +116,12 @@ export function createBpmnProcessRevision(input: CreateBpmnProcessRevisionInput)
   requireText(input.diagramDigest, 'diagramDigest');
   requireText(input.createdBy, 'createdBy');
 
+  const canonicalAlignmentStatus = defaultCanonicalAlignment(input);
+  if (canonicalAlignmentStatus === 'ALIGNED_TO_CANONICAL' && !input.canonicalProcessRevisionId) {
+    throw new TypeError('An aligned BPMN revision requires canonicalProcessRevisionId');
+  }
+  if (input.canonicalAlignmentAuthorityRef) requireText(input.canonicalAlignmentAuthorityRef, 'canonicalAlignmentAuthorityRef');
+
   const bpmnXmlSha256 = sha256Utf8(input.bpmnXml);
   const id = createOpaqueId('review', digestDeterministicJson({
     kind: 'BpmnProcessRevision',
@@ -111,7 +129,9 @@ export function createBpmnProcessRevision(input: CreateBpmnProcessRevisionInput)
     ...(input.parentBpmnRevisionId ? { parentBpmnRevisionId: input.parentBpmnRevisionId } : {}),
     sourceRoute: input.sourceRoute,
     editMode: input.editMode,
-    canonicalProcessRevisionId: input.canonicalProcessRevisionId,
+    ...(input.canonicalProcessRevisionId ? { canonicalProcessRevisionId: input.canonicalProcessRevisionId } : {}),
+    canonicalAlignmentStatus,
+    ...(input.canonicalAlignmentAuthorityRef ? { canonicalAlignmentAuthorityRef: input.canonicalAlignmentAuthorityRef } : {}),
     bpmnXmlSha256,
     semanticDigest: input.semanticDigest,
     diagramDigest: input.diagramDigest,
@@ -125,7 +145,9 @@ export function createBpmnProcessRevision(input: CreateBpmnProcessRevisionInput)
     editMode: input.editMode,
     sourceArtifactRefs: [...(input.sourceArtifactRefs ?? [])],
     sourceRepresentationRefs: [...(input.sourceRepresentationRefs ?? [])],
-    canonicalProcessRevisionId: input.canonicalProcessRevisionId,
+    ...(input.canonicalProcessRevisionId ? { canonicalProcessRevisionId: input.canonicalProcessRevisionId } : {}),
+    canonicalAlignmentStatus,
+    ...(input.canonicalAlignmentAuthorityRef ? { canonicalAlignmentAuthorityRef: input.canonicalAlignmentAuthorityRef } : {}),
     bpmnXml: input.bpmnXml,
     bpmnXmlSha256,
     semanticDigest: input.semanticDigest,
@@ -143,6 +165,38 @@ export function classifyBpmnChange(before: BpmnProcessRevision, after: BpmnProce
   return 'NO_CHANGE';
 }
 
+export function alignBpmnRevisionToCanonical(
+  revision: BpmnProcessRevision,
+  input: {
+    canonicalProcessRevisionId: CanonicalId;
+    alignedBy: string;
+    alignedAt: string;
+    authorityRef: string;
+    revisionNumber?: number;
+  },
+): BpmnProcessRevision {
+  if (revision.state !== 'DRAFT') throw new TypeError('Only a DRAFT BPMN revision may be aligned to canonical meaning');
+  requireText(input.alignedBy, 'alignedBy');
+  requireText(input.authorityRef, 'authorityRef');
+  return createBpmnProcessRevision({
+    revisionNumber: input.revisionNumber ?? revision.revisionNumber + 1,
+    parentBpmnRevisionId: revision.id,
+    sourceRoute: revision.sourceRoute,
+    editMode: revision.editMode,
+    sourceArtifactRefs: revision.sourceArtifactRefs,
+    sourceRepresentationRefs: revision.sourceRepresentationRefs,
+    canonicalProcessRevisionId: input.canonicalProcessRevisionId,
+    canonicalAlignmentStatus: 'ALIGNED_TO_CANONICAL',
+    canonicalAlignmentAuthorityRef: input.authorityRef,
+    bpmnXml: revision.bpmnXml,
+    semanticDigest: revision.semanticDigest,
+    diagramDigest: revision.diagramDigest,
+    createdAt: input.alignedAt,
+    createdBy: input.alignedBy,
+    supersedesBpmnRevisionId: revision.id,
+  });
+}
+
 export function proposeNaturalLanguageBpmnCorrection(input: {
   baseRevision: BpmnProcessRevision;
   proposedRevision: BpmnProcessRevision;
@@ -156,6 +210,9 @@ export function proposeNaturalLanguageBpmnCorrection(input: {
   }
   if (input.proposedRevision.editMode !== 'NATURAL_LANGUAGE_PATCH') {
     throw new TypeError('Natural-language proposal must point to a NATURAL_LANGUAGE_PATCH revision');
+  }
+  if (input.proposedRevision.canonicalAlignmentStatus !== 'REQUIRES_CANONICAL_RECONCILIATION') {
+    throw new TypeError('Natural-language semantic correction must require canonical reconciliation before confirmation');
   }
 
   return {
@@ -203,7 +260,10 @@ export function confirmBusinessProcess(
 ): { revision: BpmnProcessRevision; confirmation: BusinessProcessConfirmationRecord } {
   requireText(input.authorityRef, 'authorityRef');
   if (revision.state !== 'DRAFT') throw new TypeError('Only a DRAFT BPMN revision may be confirmed');
-  if (revision.canonicalProcessRevisionId !== input.canonicalProcessRevisionId) {
+  if (revision.canonicalAlignmentStatus !== 'ALIGNED_TO_CANONICAL') {
+    throw new TypeError('BPMN semantic meaning must be reconciled to a canonical ProcessRevision before confirmation');
+  }
+  if (!revision.canonicalProcessRevisionId || revision.canonicalProcessRevisionId !== input.canonicalProcessRevisionId) {
     throw new TypeError('BPMN revision and canonical ProcessRevision must refer to the same business meaning');
   }
 
@@ -250,6 +310,9 @@ export function evaluateAutomationHandoffConfirmation(input: {
   if (!confirmation) return { result: 'REJECTED_MISSING_CONFIRMATION', authorized: false, diagnosticRefs: ['BPMN_CONFIRMATION_REQUIRED'] };
   if (confirmation.status === 'REVOKED') return { result: 'REJECTED_REVOKED_CONFIRMATION', authorized: false, diagnosticRefs: ['BPMN_CONFIRMATION_REVOKED'] };
   if (!confirmation.authorityRef) return { result: 'REJECTED_MISSING_AUTHORITY', authorized: false, diagnosticRefs: ['BPMN_CONFIRMATION_AUTHORITY_REQUIRED'] };
+  if (currentBpmnRevision.canonicalAlignmentStatus !== 'ALIGNED_TO_CANONICAL') {
+    return { result: 'REJECTED_CANONICAL_RECONCILIATION_REQUIRED', authorized: false, diagnosticRefs: ['BPMN_CANONICAL_RECONCILIATION_REQUIRED'] };
+  }
   if (currentBpmnRevision.state !== 'CONFIRMED') return { result: 'REJECTED_BPMN_NOT_CONFIRMED', authorized: false, diagnosticRefs: ['CURRENT_BPMN_REVISION_NOT_CONFIRMED'] };
   if (confirmation.bpmnRevisionId !== currentBpmnRevision.id) return { result: 'REJECTED_STALE_BPMN_REVISION', authorized: false, diagnosticRefs: ['CONFIRMATION_DOES_NOT_PIN_CURRENT_BPMN_REVISION'] };
   if (confirmation.bpmnXmlSha256 !== currentBpmnRevision.bpmnXmlSha256) return { result: 'REJECTED_XML_DIGEST_MISMATCH', authorized: false, diagnosticRefs: ['CONFIRMED_BPMN_XML_DIGEST_MISMATCH'] };
