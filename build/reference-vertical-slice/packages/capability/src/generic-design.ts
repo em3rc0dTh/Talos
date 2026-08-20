@@ -10,7 +10,7 @@ import type {
 } from '../../semantic-core/src/types.ts';
 import type { SemanticFreezeRecord, ScopeFreezeRecord } from '../../review/src/types.ts';
 import type {
-  CapabilityDesignBundle,
+  CapabilityDesignRevision,
   CapabilityFamily,
   CapabilityRequirement,
   CapabilityRequirementFacet,
@@ -18,9 +18,17 @@ import type {
   DesignState,
 } from './types.ts';
 
+export interface CapabilityDesignBundle {
+  designRevision: CapabilityDesignRevision;
+  requirements: CapabilityRequirement[];
+  facets: CapabilityRequirementFacet[];
+  provenanceTraces: CapabilityRequirementProvenanceTrace[];
+  designerRef: string;
+  designerVersion: string;
+}
+
 const DESIGNER_VERSION = 'i5c-generic-capability-designer-v0.1';
 const cap = (seed: string) => createOpaqueId('capability', seed);
-
 const HUMAN_ACTORS = new Set<Actor['kind']>(['HUMAN_ROLE', 'HUMAN_PERSON']);
 
 function claimsFor(process: ProcessRevision, subjectRef: string): SemanticClaim[] {
@@ -48,18 +56,15 @@ function familyFor(process: ProcessRevision, node: ProcessNode): CapabilityFamil
 function operationIntentFor(node: ProcessNode): { value: string; state: DesignState } {
   if (node.kind === 'HUMAN_INTERACTION') {
     const explicit = node.details?.interactionKind;
-    if (typeof explicit === 'string' && explicit.trim().length > 0) {
-      return { value: explicit, state: 'REQUIRED' };
-    }
+    if (typeof explicit === 'string' && explicit.trim().length > 0) return { value: explicit, state: 'REQUIRED' };
     return { value: 'UNRESOLVED_HUMAN_INTERACTION', state: 'UNRESOLVED' };
   }
   return { value: 'PERFORM_ACTION', state: 'REQUIRED' };
 }
 
 function isCapabilitySubject(node: ProcessNode): boolean {
-  // Decisions, waits, subprocess boundaries, states and completion are orchestration/business
-  // semantics. They do not become external capabilities merely because they exist.
-  // ACTION and HUMAN_INTERACTION represent work whose execution nature must be designed.
+  // Decisions, waits, subprocess boundaries, states and completion remain orchestration/business
+  // semantics. ACTION and HUMAN_INTERACTION represent work whose execution nature must be designed.
   return node.kind === 'ACTION' || node.kind === 'HUMAN_INTERACTION';
 }
 
@@ -70,31 +75,17 @@ function validateInputs(
   freeze: SemanticFreezeRecord,
   scopeFreeze: ScopeFreezeRecord,
 ): void {
-  if (freeze.freezeKind !== 'AUTOMATION_DESIGN_HANDOFF') {
-    throw new TypeError('generic capability design requires AUTOMATION_DESIGN_HANDOFF freeze');
-  }
+  if (freeze.freezeKind !== 'AUTOMATION_DESIGN_HANDOFF') throw new TypeError('generic capability design requires AUTOMATION_DESIGN_HANDOFF freeze');
   if (!freeze.authorityRef) throw new TypeError('generic capability design requires an authority-backed semantic freeze');
   if (freeze.processRevisionId !== process.id) throw new TypeError('freeze/process revision mismatch');
   if (!freeze.scopeFreezeRefs.includes(scopeFreeze.id)) throw new TypeError('scope freeze is not pinned by semantic freeze');
-  if (scopeFreeze.semanticFreezeRecordId !== freeze.id || scopeFreeze.disposition !== 'ACCEPTED') {
-    throw new TypeError('generic capability design requires accepted scope freeze');
-  }
+  if (scopeFreeze.semanticFreezeRecordId !== freeze.id || scopeFreeze.disposition !== 'ACCEPTED') throw new TypeError('generic capability design requires accepted scope freeze');
   if (assessment.processRevisionId !== process.id) throw new TypeError('validation/process revision mismatch');
-  if (assessment.assessmentIntent !== 'AUTOMATION_DESIGN_READINESS') {
-    throw new TypeError('generic capability design requires AUTOMATION_DESIGN_READINESS assessment');
-  }
-  if (assessment.executionReadiness !== 'READY_FOR_AUTOMATION_DESIGN') {
-    throw new TypeError('generic capability design requires READY_FOR_AUTOMATION_DESIGN');
-  }
-  if (scope.id !== scopeFreeze.semanticScopeRef || assessment.primaryScopeRef !== scope.id) {
-    throw new TypeError('generic capability design requires the exact frozen validation scope');
-  }
-  if (!scopeFreeze.validationAssessmentRefs.includes(assessment.id)) {
-    throw new TypeError('generic capability design requires the exact validation assessment pinned by scope freeze');
-  }
-  if (scope.kind !== 'PROCESS_REVISION' || !scope.targetRefs.includes(process.id)) {
-    throw new TypeError('i5c generic designer currently requires a frozen PROCESS_REVISION scope');
-  }
+  if (assessment.assessmentIntent !== 'AUTOMATION_DESIGN_READINESS') throw new TypeError('generic capability design requires AUTOMATION_DESIGN_READINESS assessment');
+  if (assessment.executionReadiness !== 'READY_FOR_AUTOMATION_DESIGN') throw new TypeError('generic capability design requires READY_FOR_AUTOMATION_DESIGN');
+  if (scope.id !== scopeFreeze.semanticScopeRef || assessment.primaryScopeRef !== scope.id) throw new TypeError('generic capability design requires the exact frozen validation scope');
+  if (!scopeFreeze.validationAssessmentRefs.includes(assessment.id)) throw new TypeError('generic capability design requires the exact validation assessment pinned by scope freeze');
+  if (scope.kind !== 'PROCESS_REVISION' || !scope.targetRefs.includes(process.id)) throw new TypeError('i5c generic designer currently requires a frozen PROCESS_REVISION scope');
 }
 
 export function designGenericCapabilities(
@@ -116,8 +107,7 @@ export function designGenericCapabilities(
   for (const node of process.nodes.filter(isCapabilitySubject)) {
     const requirementId = cap(`generic-requirement:${designId}:${node.id}`);
     const traceId = cap(`generic-trace:${requirementId}`);
-    const semanticClaims = claimsFor(process, node.id);
-    const semanticClaimRefs = semanticClaims.map((claim) => claim.id);
+    const semanticClaimRefs = claimsFor(process, node.id).map((claim) => claim.id);
     const family = familyFor(process, node);
     const familyState: DesignState = family ? 'REQUIRED' : 'UNRESOLVED';
     const operation = operationIntentFor(node);
@@ -150,27 +140,26 @@ export function designGenericCapabilities(
       semanticSubjectRefs: [node.id],
       validationAssessmentRefs: [assessment.id],
       materiality: 'MATERIAL',
-      notes: node.kind === 'ACTION'
-        ? 'PERFORM_ACTION preserves that business work exists without selecting an execution provider or Temporal primitive.'
-        : undefined,
+      ...(node.kind === 'ACTION'
+        ? { notes: 'PERFORM_ACTION preserves that business work exists without selecting an execution provider or Temporal primitive.' }
+        : {}),
     };
-
-    const actorFacets = node.actorRefs.map((actorRef) => ({
+    const actorFacets: CapabilityRequirementFacet[] = node.actorRefs.map((actorRef) => ({
       id: cap(`generic-facet:${requirementId}:actor:${actorRef}`),
       capabilityRequirementId: requirementId,
       propertyPath: 'actorOrResponsibilityRefs',
-      facetKind: 'ACTOR_RESPONSIBILITY' as const,
+      facetKind: 'ACTOR_RESPONSIBILITY',
       valueRef: actorRef,
-      designBasis: 'SEMANTIC_EXPLICIT' as const,
-      designState: 'REQUIRED' as const,
+      designBasis: 'SEMANTIC_EXPLICIT',
+      designState: 'REQUIRED',
       semanticClaimRefs,
       semanticSubjectRefs: [node.id, actorRef],
       validationAssessmentRefs: [assessment.id],
-      materiality: 'MATERIAL' as const,
+      materiality: 'MATERIAL',
     }));
 
     const unresolved = familyState === 'UNRESOLVED' || operation.state === 'UNRESOLVED';
-    const requirement: CapabilityRequirement = {
+    requirements.push({
       id: requirementId,
       capabilityDesignRevisionId: designId,
       semanticScopeRef: scope.id,
@@ -187,8 +176,9 @@ export function designGenericCapabilities(
       notes: unresolved
         ? 'Business work is frozen, but its execution capability is not sufficiently specified for binding.'
         : 'Capability family/operation are derived from frozen semantics only; no offering or provider is selected here.',
-    };
-    const trace: CapabilityRequirementProvenanceTrace = {
+    });
+    facets.push(familyFacet, operationFacet, ...actorFacets);
+    provenanceTraces.push({
       id: traceId,
       requirementId,
       semanticFreezeRecordId: freeze.id,
@@ -202,11 +192,7 @@ export function designGenericCapabilities(
         : 'FROZEN_ACTION_TO_GENERIC_CAPABILITY_REQUIREMENT',
       designerVersion: DESIGNER_VERSION,
       createdAt,
-    };
-
-    requirements.push(requirement);
-    facets.push(familyFacet, operationFacet, ...actorFacets);
-    provenanceTraces.push(trace);
+    });
   }
 
   const unresolvedRequirementRefs = requirements
