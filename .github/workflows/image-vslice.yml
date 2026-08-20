@@ -140,4 +140,4 @@ jobs:
 
       - name: Run I7B-03 canonical to BPMN projection gate
         working-directory: build/reference-vertical-slice
-        run: node --experimental-strip-types --test ./tests/image-i7b03-bpmn-projection.test.ts
+        run: node --experimental-strip-types --test ./tests/image-i7b03-*.test.ts
