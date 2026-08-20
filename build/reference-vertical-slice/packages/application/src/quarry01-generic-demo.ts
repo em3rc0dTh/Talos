@@ -1,6 +1,6 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import { digestDeterministicJson } from '../../foundation/src/digest.ts';
-import type { SqliteDocumentStore } from '../../persistence-sqlite/src/sqlite-document-store.ts';
+import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type { LocalImageByteStore } from '../../image-perception/src/byte-store.ts';
 import { intakePngUpload,runImagePerception } from '../../image-perception/src/index.ts';
 import { ReferenceQuarry01PerceptionProvider } from '../../image-perception/src/reference-quarry01-provider.ts';
@@ -22,14 +22,14 @@ interface ReviewState{context:ReviewContextBundle;process:ProcessRevision;valida
 const AT='2026-08-20T14:10:00.000Z';
 function node(process:ProcessRevision,name:string){const x=process.nodes.find(n=>n.name===name);if(!x)throw new Error(`missing node ${name}`);return x;}
 function correctionCommand(state:ReviewState,seq:number,edgeId:string,naturalLanguage:string,expression:unknown):ReviewCommand{return{id:createOpaqueId('review',`q01-demo-rule:${seq}:${state.process.id}`),clientRequestKey:`q01-demo-rule-${seq}-${state.process.id}`,reviewWorkspaceDefinitionId:state.context.workspaceDefinition.id,expectedReviewWorkspaceRevisionId:state.context.workspaceRevision.id,expectedReviewBaselineBundleId:state.context.baselineBundle.id,primarySemanticScopeRef:state.validation.assessment.primaryScopeRef,targetSemanticScopeRefs:[state.validation.assessment.primaryScopeRef],actionKind:'CORRECT_PROPERTY',targetSubjectRefs:[edgeId],targetPropertyPath:'conditionRuleRef',proposedValue:{naturalLanguage,expression},rationale:'Explicit TEST_ONLY reviewer-authored branch rule used by the Quarry-01 generic demo.',authorityRef:'reference-image-business-reviewer',requestedBy:'talos-generic-demo',requestedAt:`2026-08-20T14:00:${String(10+seq).padStart(2,'0')}.000Z`};}
-function applyRule(repo:SqliteDocumentStore,state:ReviewState,seq:number,source:string,target:string,naturalLanguage:string,expression:unknown):ReviewState{
+function applyRule(repo:ImmutableDocumentRepository,state:ReviewState,seq:number,source:string,target:string,naturalLanguage:string,expression:unknown):ReviewState{
  const s=node(state.process,source),t=node(state.process,target),edge=state.process.edges.find(e=>e.sourceNodeId===s.id&&e.targetNodeId===t.id);if(!edge)throw new Error(`missing edge ${source}->${target}`);
  const result=applySemanticCorrection(repo,state.context,state.process,state.validation,correctionCommand(state,seq,edge.id,naturalLanguage,expression));if(result.application.result!=='APPLIED'||!result.nextContext||!result.candidateProcessRevision||!result.candidateValidation)throw new Error(`Quarry-01 branch correction failed: ${result.application.result}`);
  return{context:result.nextContext,process:result.candidateProcessRevision,validation:result.candidateValidation};
 }
 function systemResolutions(base:ReturnType<typeof designGenericCapabilities>):GenericRequirementResolution[]{return base.requirements.map((requirement,index)=>({requirementRef:requirement.id,family:'SYSTEM_OPERATION',authorityRef:'reference-execution-architect',decidedBy:'talos-generic-demo',rationale:'TEST_ONLY explicit system-operation selection for the Quarry-01 demo; never inferred from the image label.',offeringCanonicalName:`REFERENCE_Q01_OPERATION_${index+1}`,offeringLifecycleStatus:'TEST_ONLY',implementationKind:'INTERNAL_SERVICE',implementationRef:`reference-q01-operation:${requirement.id}`}));}
 
-export function buildQuarry01GenericDemoDesign(repo:SqliteDocumentStore,byteStore:LocalImageByteStore,bytes:Buffer){
+export function buildQuarry01GenericDemoDesign(repo:ImmutableDocumentRepository,byteStore:LocalImageByteStore,bytes:Buffer){
  const intake=intakePngUpload(repo,byteStore,bytes,{receivedAt:'2026-08-20T14:00:00.000Z',declaredName:'Quarry 01 — Order Process'});
  const perception=runImagePerception(repo,intake,new ReferenceQuarry01PerceptionProvider(),{now:'2026-08-20T14:00:01.000Z',materializeCommonEvidence:true});if(!perception.attempt.result)throw new Error(`Quarry-01 perception result missing; sha=${intake.storage.sha256}; dimensions=${intake.coordinateSpace.width}x${intake.coordinateSpace.height}`);
  const semantic=normalizeAndValidateImageResult(repo,perception.attempt.result.id,{normalizedAt:'2026-08-20T14:00:02.000Z',assessedAt:'2026-08-20T14:00:03.000Z'});
