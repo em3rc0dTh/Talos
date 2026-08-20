@@ -1,5 +1,6 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type { CapabilityReferenceBundle } from '../../capability/src/types.ts';
+import type { CapabilityDesignBundle } from '../../capability/src/generic-design.ts';
 
 const records = (bundle:CapabilityReferenceBundle) => [
   ['CapabilityDesignRevision', bundle.designRevision],
@@ -41,5 +42,23 @@ const records = (bundle:CapabilityReferenceBundle) => [
 export function persistCapabilityReferenceBundle(repo:ImmutableDocumentRepository,bundle:CapabilityReferenceBundle):void{
   for(const [kind,payload] of records(bundle)){
     repo.append({id:(payload as any).id,aggregateKind:kind,schemaVersion:'phase4-reference-v0.2',payload,createdAt:(payload as any).createdAt??(payload as any).assessedAt??(payload as any).decidedAt??bundle.designRevision.createdAt});
+  }
+}
+
+export function persistGenericCapabilityDesign(repo:ImmutableDocumentRepository,bundle:CapabilityDesignBundle):void{
+  const genericRecords = [
+    ['CapabilityDesignRevision', bundle.designRevision],
+    ...bundle.requirements.map(x=>['CapabilityRequirement',x] as const),
+    ...bundle.facets.map(x=>['CapabilityRequirementFacet',x] as const),
+    ...bundle.provenanceTraces.map(x=>['CapabilityRequirementProvenanceTrace',x] as const),
+  ] as const;
+  for(const [kind,payload] of genericRecords){
+    repo.append({
+      id:(payload as any).id,
+      aggregateKind:kind,
+      schemaVersion:'phase4-generic-capability-design-v0.1',
+      payload,
+      createdAt:(payload as any).createdAt??bundle.designRevision.createdAt,
+    });
   }
 }
