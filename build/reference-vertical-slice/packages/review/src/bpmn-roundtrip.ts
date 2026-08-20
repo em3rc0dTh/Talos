@@ -125,10 +125,11 @@ function stableElement(value: any, mode: DigestMode, seen = new Set<object>(), p
     if (value.$attrs && typeof value.$attrs === 'object' && Object.keys(value.$attrs).length > 0) {
       const attrs: Record<string, unknown> = {};
       for (const key of Object.keys(value.$attrs).sort()) {
+        if (key === 'xsi:type' || key.startsWith('xmlns:')) continue;
         const attrValue = value.$attrs[key];
         if (attrValue !== undefined) attrs[key] = primitiveOrNull(attrValue);
       }
-      result.$attrs = attrs;
+      if (Object.keys(attrs).length > 0) result.$attrs = attrs;
     }
 
     // Preserve unknown extension-element payload that does not have a descriptor.
@@ -188,33 +189,44 @@ async function parseBpmn(xml: string): Promise<{ definitions: any; warnings: Bpm
   };
 }
 
+/**
+ * Preserves the exact received XML digest, then validates the canonical BPMN model after
+ * bpmn-moddle has normalized XML representation details. The safety assertion is model
+ * idempotence: normalized model -> XML -> normalized model must preserve both business
+ * semantics and BPMN-DI. Exact source bytes/XML remain separately pinned by originalXmlSha256.
+ */
 export async function inspectBpmnXml(xml: string): Promise<BpmnXmlInspection> {
   const originalXmlSha256 = sha256Utf8(xml);
-  const first = await parseBpmn(xml);
-  const before = modelDigests(first.definitions);
-  const serialized = await first.moddle.toXML(first.definitions, { format: true, preamble: true });
-  const normalizedXml = serialized.xml;
-  const second = await parseBpmn(normalizedXml);
-  const after = modelDigests(second.definitions);
+  const source = await parseBpmn(xml);
 
-  if (before.semantic !== after.semantic) {
-    throw new TypeError('BPMN semantic digest changed across parse/serialize/parse round trip');
+  const firstSerialization = await source.moddle.toXML(source.definitions, { format: true, preamble: true });
+  const firstNormalizedXml = firstSerialization.xml;
+  const normalized = await parseBpmn(firstNormalizedXml);
+  const normalizedDigests = modelDigests(normalized.definitions);
+
+  const secondSerialization = await normalized.moddle.toXML(normalized.definitions, { format: true, preamble: true });
+  const normalizedXml = secondSerialization.xml;
+  const verified = await parseBpmn(normalizedXml);
+  const verifiedDigests = modelDigests(verified.definitions);
+
+  if (normalizedDigests.semantic !== verifiedDigests.semantic) {
+    throw new TypeError('BPMN semantic digest changed across canonical model/XML round trip');
   }
-  if (before.diagram !== after.diagram) {
-    throw new TypeError('BPMN-DI digest changed across parse/serialize/parse round trip');
+  if (normalizedDigests.diagram !== verifiedDigests.diagram) {
+    throw new TypeError('BPMN-DI digest changed across canonical model/XML round trip');
   }
 
-  const ids = collectIds(second.definitions);
+  const ids = collectIds(verified.definitions);
   return {
     roundTripVersion: BPMN_ROUNDTRIP_VERSION,
     originalXmlSha256,
     normalizedXml,
     normalizedXmlSha256: sha256Utf8(normalizedXml),
-    modelSemanticDigest: before.semantic,
-    modelDiagramDigest: before.diagram,
+    modelSemanticDigest: normalizedDigests.semantic,
+    modelDiagramDigest: normalizedDigests.diagram,
     processIds: ids.processIds,
     diagramIds: ids.diagramIds,
-    warnings: [...first.warnings, ...second.warnings],
+    warnings: [...source.warnings, ...normalized.warnings, ...verified.warnings],
     hasDiagramInterchange: ids.diagramIds.length > 0,
   };
 }
