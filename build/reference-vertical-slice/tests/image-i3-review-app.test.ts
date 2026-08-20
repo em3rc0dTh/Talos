@@ -8,7 +8,7 @@ import { QUARRY_02_VERIFIED_SHA256 } from '../packages/image-perception/src/inde
 
 const fixturePath = path.resolve(process.cwd(), '../../brainstorming/mining-site/quarry-02-water-order-delivery/quarry-02.png');
 
-test('I3 browser/API preserves Quarry PNG, returns image evidence, and never claims Canonical/Temporal support', { timeout: 120_000 }, async () => {
+test('I3 browser/API source review remains intact while I4 adds inferred Canonical/Validation and keeps Temporal closed', { timeout: 120_000 }, async () => {
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-image-i3-'));
   const demo = await startReferenceDemo({ port: 0, runtimeDir, injectTransientFailure: false });
   try {
@@ -17,7 +17,7 @@ test('I3 browser/API preserves Quarry PNG, returns image evidence, and never cla
     assert.equal(health.workerState, 'RUNNING');
 
     const html = await fetch(demo.baseUrl).then((response) => response.text());
-    assert.match(html, /Image source → perception evidence/);
+    assert.match(html, /Image source/);
     assert.match(html, /REFERENCE_QUARRY_PERCEPTION/);
     assert.match(html, /I4 Canonical/);
     assert.match(html, /I6 image → Temporal/);
@@ -34,7 +34,7 @@ test('I3 browser/API preserves Quarry PNG, returns image evidence, and never cla
     assert.equal(response.status, 201);
     const data = await response.json() as any;
 
-    assert.equal(data.stage, 'COMMON_EVIDENCE_READY_FOR_REVIEW');
+    assert.equal(data.stage, 'CANONICAL_VALIDATION_READY_FOR_REVIEW');
     assert.equal(data.source.sha256, QUARRY_02_VERIFIED_SHA256);
     assert.equal(data.source.byteIdentityStatus, 'EXACT_VERIFIED');
     assert.equal(data.source.width, 791);
@@ -51,8 +51,21 @@ test('I3 browser/API preserves Quarry PNG, returns image evidence, and never cla
     assert.equal(data.commonEvidence.scope.truthClass, 'INFERRED');
     assert.equal(data.commonEvidence.occurrences.length, 18);
     assert.equal(data.commonEvidence.relationships.length, 8);
-    assert.equal(data.canonical.created, false);
+
+    assert.equal(data.canonical.created, true);
     assert.equal(data.canonical.gate, 'I4_CLOSED');
+    assert.equal(data.canonical.truthDiscipline, 'INFERRED_FROM_VISUAL_PERCEPTION');
+    assert.equal(data.canonical.nodeCount, 8);
+    assert.equal(data.canonical.edgeCount, 8);
+    assert.equal(data.canonical.nodes.every((node: any) => node.truthClass === 'INFERRED'), true);
+    assert.equal(data.canonical.edges.every((edge: any) => edge.truthClass === 'INFERRED'), true);
+    assert.equal(data.validation.semanticVerdict, 'INCOMPLETE');
+    assert.equal(data.validation.executionReadiness, 'INSUFFICIENT_DETAIL');
+    assert.ok(data.validation.findings.some((finding: any) => finding.code === 'SV-CMP-001'));
+    assert.ok(data.validation.findings.some((finding: any) => finding.code === 'SV-SRC-001'));
+
+    assert.equal(data.executionHandoff.frozenFromImage, false);
+    assert.equal(data.executionHandoff.gate, 'I5_CLOSED');
     assert.equal(data.temporal.startedFromImage, false);
     assert.equal(data.temporal.gate, 'I6_CLOSED');
 
@@ -74,6 +87,8 @@ test('I3 browser/API preserves Quarry PNG, returns image evidence, and never cla
     assert.equal(unknown.perception.observationCount, 0);
     assert.equal(unknown.commonEvidence, null);
     assert.equal(unknown.canonical.created, false);
+    assert.equal(unknown.validation, null);
+    assert.equal(unknown.executionHandoff.frozenFromImage, false);
     assert.equal(unknown.temporal.startedFromImage, false);
 
     const invalid = await fetch(`${demo.baseUrl}/api/images`, {
