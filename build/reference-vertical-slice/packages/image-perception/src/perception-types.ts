@@ -1,4 +1,4 @@
-import type { SourceId } from '../../source-intake/src/types.ts';
+import type { SourceId, SourcePlaneKind } from '../../source-intake/src/types.ts';
 import type { ImageCoordinateSpace } from './types.ts';
 
 export type ImageGeometryKind = 'POINT'|'BOX'|'POLYGON'|'POLYLINE'|'MASK'|'WHOLE_IMAGE'|'SOURCE_DEFINED';
@@ -44,6 +44,18 @@ export interface ProviderObservation {
   observedValue?: unknown;
   confidence?: number;
   parentObservationKeys?: string[];
+  notes?: string;
+}
+
+export interface ProviderOccurrenceCandidate {
+  providerOccurrenceKey: string;
+  anchorKeys: string[];
+  occurrenceKind: string;
+  literalLabelObservationKey?: string;
+  candidateSemanticType?: string;
+  sourcePlaneKind: SourcePlaneKind;
+  supportingObservationKeys: string[];
+  confidence?: number;
   notes?: string;
 }
 
@@ -97,6 +109,7 @@ export interface ImagePerceptionProviderResult {
   status: 'SUCCEEDED'|'PARTIAL'|'NO_RESULT';
   anchors: ProviderVisualAnchor[];
   observations: ProviderObservation[];
+  occurrenceCandidates: ProviderOccurrenceCandidate[];
   alternativeSets: ProviderAlternativeSet[];
   relationCandidates: ProviderRelationCandidate[];
   diagnostics: Array<{ code: string; description: string }>;
