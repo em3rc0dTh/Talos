@@ -2,7 +2,7 @@ name: Image vertical slice
 
 on:
   push:
-    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff, image-i5c02-generic-execution-draft, image-i5c03-execution-resolution-v0.1, image-i6-generic-temporal-runtime-v0.1, image-i7a-arbitrary-admission-v0.1, image-i7b01-async-provider-transport-v0.1, image-i7b02-bpmn-confirmation-contract-v0.1, image-i7b03-bpmn-projection-v0.1, image-i7b04-bpmn-roundtrip-v0.1]
+    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff, image-i5c02-generic-execution-draft, image-i5c03-execution-resolution-v0.1, image-i6-generic-temporal-runtime-v0.1, image-i7a-arbitrary-admission-v0.1, image-i7b01-async-provider-transport-v0.1, image-i7b02-bpmn-confirmation-contract-v0.1, image-i7b03-bpmn-projection-v0.1, image-i7b04-bpmn-roundtrip-v0.1, image-i7b05-process-confirmation-workspace-v0.1]
     paths:
       - '.github/workflows/image-vslice.yml'
       - 'build/reference-vertical-slice/packages/image-perception/**'
@@ -44,7 +44,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i7b04:
+  image-i7b05:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -145,3 +145,7 @@ jobs:
       - name: Run I7B-04 BPMN XML and DI round-trip gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i7b04:test
+
+      - name: Run I7B-05 real Process Confirmation workspace gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i7b05:test
