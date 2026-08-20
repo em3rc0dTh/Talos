@@ -180,11 +180,11 @@ export function designGenericExecutionDraft(
       outputDependencyRefs: [],
       executionRequirementRefs: executionRequirementRef ? [executionRequirementRef] : [],
       designState: needsDesign ? 'INCOMPLETE' : 'COMPLETE',
-      notes: node.kind === 'ACTION'
-        ? 'Business ACTION is represented as an unresolved execution slot. It is not Workflow logic or a Temporal Activity.'
+      ...(node.kind === 'ACTION'
+        ? { notes: 'Business ACTION is represented as an unresolved execution slot. It is not Workflow logic or a Temporal Activity.' }
         : node.kind === 'SUBPROCESS'
-          ? 'Business subprocess boundary is preserved without selecting an execution decomposition primitive.'
-          : undefined,
+          ? { notes: 'Business subprocess boundary is preserved without selecting an execution decomposition primitive.' }
+          : {}),
     });
     mappingTraces.push({
       id: exe(`generic-trace:${revisionId}:${node.id}`),
@@ -304,7 +304,13 @@ export function designGenericExecutionDraft(
     plannerVersion: PLANNER_VERSION,
     upstreamPinningIncomplete,
     elements: elements.map((element) => ({ id: element.id, kind: element.kind, subjects: element.semanticSubjectRefs, state: element.designState, requirements: element.executionRequirementRefs })),
-    relations: relations.map((relation) => ({ id: relation.id, kind: relation.relationKind, semanticRelationRefs: relation.semanticRelationRefs, conditionRef: relation.conditionRef, state: relation.relationState })),
+    relations: relations.map((relation) => ({
+      id: relation.id,
+      kind: relation.relationKind,
+      semanticRelationRefs: relation.semanticRelationRefs,
+      ...(relation.conditionRef ? { conditionRef: relation.conditionRef } : {}),
+      state: relation.relationState,
+    })),
     requirements: requirements.map((requirement) => ({ id: requirement.id, targetRef: requirement.targetRef, kind: requirement.requirementKind, state: requirement.resolutionState, evidenceRefs: requirement.evidenceRefs })),
     readiness: planAssessment.readiness,
   });
