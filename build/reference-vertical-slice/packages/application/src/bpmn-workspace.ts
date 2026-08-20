@@ -39,6 +39,7 @@ export interface BpmnWorkspaceEditResult {
   revision: BpmnProcessRevision;
   changeClass: 'NO_CHANGE' | 'VISUAL_ONLY' | 'SEMANTIC';
   requiresCanonicalReconciliation: boolean;
+  hasDiagramInterchange: boolean;
   warnings: readonly { message: string }[];
 }
 
@@ -151,6 +152,7 @@ export class BpmnWorkspaceService {
       revision: result.revision,
       changeClass: result.changeClass,
       requiresCanonicalReconciliation: result.requiresCanonicalReconciliation,
+      hasDiagramInterchange: result.editedInspection.hasDiagramInterchange,
       warnings: result.editedInspection.warnings,
     };
   }
