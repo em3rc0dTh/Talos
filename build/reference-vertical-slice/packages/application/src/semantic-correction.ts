@@ -540,8 +540,8 @@ export function applySemanticCorrection(
       parentProcessRevision: currentProcess.id,
       actionKind: command.actionKind,
       targetSubjectRefs: command.targetSubjectRefs,
-      targetPropertyPath: command.targetPropertyPath,
-      proposedValue: command.proposedValue,
+      ...(command.targetPropertyPath ? { targetPropertyPath: command.targetPropertyPath } : {}),
+      ...(command.proposedValue !== undefined ? { proposedValue: command.proposedValue } : {}),
       authoredClaims: mutation.authoredClaims.map((claim) => claim.id),
     }),
   };
