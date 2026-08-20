@@ -74,6 +74,24 @@ export class BpmnWorkspaceService {
     this.#byteStore = byteStore;
   }
 
+  #storedRevision(revisionId: string): BpmnProcessRevision | undefined {
+    return this.#repo.get<BpmnProcessRevision>(revisionId as OpaqueId)?.payload;
+  }
+
+  #confirmationForRevision(revisionId: string): BusinessProcessConfirmationRecord | undefined {
+    const records = this.#repo.listByKind<BusinessProcessConfirmationRecord>('BusinessProcessConfirmationRecord');
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index]!.payload;
+      if (record.bpmnRevisionId === revisionId && record.status === 'CONFIRMED') return record;
+    }
+    return undefined;
+  }
+
+  #nextWorkspaceRevisionNumber(): number {
+    const revisions = this.#repo.listByKind<BpmnProcessRevision>('BpmnProcessRevision');
+    return revisions.reduce((highest, document) => Math.max(highest, document.payload.revisionNumber), 0) + 1;
+  }
+
   intakeImage(input: {
     pngBytes: Uint8Array;
     declaredName?: string;
@@ -115,6 +133,7 @@ export class BpmnWorkspaceService {
       sourceRepresentationRefs: [sourceRef],
       createdAt: importedAt,
       createdBy: input.initiatedBy,
+      revisionNumber: this.#nextWorkspaceRevisionNumber(),
     });
     appendRevision(this.#repo, revision);
     return {
@@ -128,7 +147,10 @@ export class BpmnWorkspaceService {
   }
 
   getRevision(revisionId: string): BpmnProcessRevision | undefined {
-    return this.#repo.get<BpmnProcessRevision>(revisionId as OpaqueId)?.payload;
+    const stored = this.#storedRevision(revisionId);
+    if (!stored) return undefined;
+    const confirmation = this.#confirmationForRevision(revisionId);
+    return confirmation ? { ...stored, state: 'CONFIRMED' } : stored;
   }
 
   async edit(input: {
@@ -146,6 +168,7 @@ export class BpmnWorkspaceService {
       editMode: input.editMode,
       createdAt: input.editedAt ?? new Date().toISOString(),
       createdBy: input.editedBy,
+      revisionNumber: this.#nextWorkspaceRevisionNumber(),
     });
     appendRevision(this.#repo, result.revision);
     return {
@@ -174,8 +197,11 @@ export class BpmnWorkspaceService {
       authorityRef: input.authorityRef,
       ...(input.rationale ? { rationale: input.rationale } : {}),
     });
-    appendRevision(this.#repo, result.revision);
+
+    // The original BPMN revision remains immutable. Confirmation is an
+    // independent append-only authority record; getRevision() derives the
+    // effective CONFIRMED view from that record instead of rewriting payload.
     appendConfirmation(this.#repo, result.confirmation);
-    return result;
+    return { revision: { ...revision, state: 'CONFIRMED' }, confirmation: result.confirmation };
   }
 }
