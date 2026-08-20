@@ -1,6 +1,7 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type { CapabilityReferenceBundle } from '../../capability/src/types.ts';
 import type { CapabilityDesignBundle } from '../../capability/src/generic-design.ts';
+import type { GenericCapabilityResolutionBundle } from '../../capability/src/generic-resolution.ts';
 
 const records = (bundle:CapabilityReferenceBundle) => [
   ['CapabilityDesignRevision', bundle.designRevision],
@@ -59,6 +60,36 @@ export function persistGenericCapabilityDesign(repo:ImmutableDocumentRepository,
       schemaVersion:'phase4-generic-capability-design-v0.1',
       payload,
       createdAt:(payload as any).createdAt??bundle.designRevision.createdAt,
+    });
+  }
+}
+
+export function persistGenericCapabilityResolution(repo:ImmutableDocumentRepository,bundle:GenericCapabilityResolutionBundle):void{
+  const resolvedRecords:Array<[string,any]> = [
+    ['CapabilityDesignRevision', bundle.designRevision],
+    ...bundle.requirements.map(x=>['CapabilityRequirement',x] as [string,any]),
+    ...bundle.facets.map(x=>['CapabilityRequirementFacet',x] as [string,any]),
+    ...bundle.provenanceTraces.map(x=>['CapabilityRequirementProvenanceTrace',x] as [string,any]),
+    ...bundle.offeringDefinitions.map(x=>['CapabilityOfferingDefinition',x] as [string,any]),
+    ...bundle.offeringRevisions.map(x=>['CapabilityOfferingRevision',x] as [string,any]),
+    ...bundle.offeringSafetyProfiles.map(x=>['CapabilityOfferingSafetyProfile',x] as [string,any]),
+    ...bundle.matchAssessments.map(x=>['CapabilityMatchAssessment',x] as [string,any]),
+    ...bundle.selectionDecisions.map(x=>['CapabilitySelectionDecision',x] as [string,any]),
+    ...bundle.bindingDefinitions.map(x=>['CapabilityBindingDefinition',x] as [string,any]),
+    ...bundle.bindingRevisions.map(x=>['CapabilityBindingRevision',x] as [string,any]),
+    ...bundle.bindingAssessments.map(x=>['CapabilityBindingAssessment',x] as [string,any]),
+    ...bundle.humanDesigns.map(x=>['HumanInteractionDesignRevision',x] as [string,any]),
+    ...bundle.participantRequirements.map(x=>['ParticipantRequirement',x] as [string,any]),
+    ...bundle.humanOutcomeContracts.map(x=>['HumanOutcomeContract',x] as [string,any]),
+    ...bundle.humanOutcomes.map(x=>['HumanOutcome',x] as [string,any]),
+  ];
+  for(const [kind,payload] of resolvedRecords){
+    repo.append({
+      id:payload.id,
+      aggregateKind:kind,
+      schemaVersion:'phase4-generic-capability-resolution-v0.1',
+      payload,
+      createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??bundle.designRevision.createdAt,
     });
   }
 }
