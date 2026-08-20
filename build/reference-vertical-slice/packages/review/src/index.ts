@@ -7,3 +7,5 @@ export * from './bpmn-confirmation.ts';
 export * from './bpmn-projector.ts';
 export * from './bpmn-roundtrip.ts';
 export * from './talos-bpmn-moddle.ts';
+export * from './bpmn-correction-provider.ts';
+export * from './bpmn-xml-diff.ts';
