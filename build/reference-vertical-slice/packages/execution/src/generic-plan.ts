@@ -65,8 +65,8 @@ function validateInputs(
   const design = capability.designRevision;
   if (design.semanticFreezeRecordId !== freeze.id) throw new TypeError('generic ExecutionPlan capability/freeze mismatch');
   if (design.processRevisionId !== process.id) throw new TypeError('generic ExecutionPlan capability/process mismatch');
-  if (!design.scopeFreezeRefs.includes(scopeFreeze.id)) throw new TypeError('generic ExecutionPlan capability design does not pin scope freeze');
-  if (!design.validationAssessmentRefs.includes(assessment.id)) throw new TypeError('generic ExecutionPlan capability design does not pin validation assessment');
+  if (design.scopeFreezeRefs.length !== 1 || design.scopeFreezeRefs[0] !== scopeFreeze.id) throw new TypeError('generic ExecutionPlan capability design must pin the exact scope freeze');
+  if (design.validationAssessmentRefs.length !== 1 || design.validationAssessmentRefs[0] !== assessment.id) throw new TypeError('generic ExecutionPlan capability design must pin the exact validation assessment');
   if (new Set(design.requirementRefs).size !== design.requirementRefs.length) throw new TypeError('generic ExecutionPlan capability requirement refs are not unique');
   if (design.requirementRefs.length !== capability.requirements.length) throw new TypeError('generic ExecutionPlan capability requirement cardinality mismatch');
   for (const requirement of capability.requirements) {
@@ -202,14 +202,17 @@ export function designGenericExecutionDraft(
 
   const relations: ExecutionRelation[] = [];
   for (const edge of process.edges) {
+    const sourceElementRef = elementIdByNode.get(edge.sourceNodeId);
+    const targetElementRef = elementIdByNode.get(edge.targetNodeId);
+    if (!sourceElementRef || !targetElementRef) throw new TypeError(`generic ExecutionPlan relation ${edge.id} references a missing semantic endpoint`);
     const relationId = exe(`generic-relation:${revisionId}:${edge.id}`);
     const complete = relationComplete(process, edge);
     relations.push({
       id: relationId,
       executionPlanRevisionId: revisionId,
       executionRegionRef: regionId,
-      sourceElementRef: elementIdByNode.get(edge.sourceNodeId)!,
-      targetElementRef: elementIdByNode.get(edge.targetNodeId)!,
+      sourceElementRef,
+      targetElementRef,
       relationKind: relationKind(edge),
       semanticRelationRefs: [edge.id],
       ...(edge.conditionRuleRef ? { conditionRef: edge.conditionRuleRef } : {}),
@@ -234,9 +237,16 @@ export function designGenericExecutionDraft(
   const incompleteElementRefs = elements.filter((element) => element.designState !== 'COMPLETE').map((element) => element.id);
   const incompleteRelationRefs = relations.filter((relation) => relation.relationState !== 'COMPLETE').map((relation) => relation.id);
   const unresolvedRequirementRefs = requirements.filter((requirement) => requirement.resolutionState === 'UNRESOLVED').map((requirement) => requirement.id);
-  const scopeReadiness: ExecutionScopeAssessment['readiness'] = unresolvedRequirementRefs.length > 0 || incompleteElementRefs.length > 0 || incompleteRelationRefs.length > 0
-    ? 'NEEDS_EXECUTION_DESIGN_DECISION'
-    : 'READY_FOR_TEMPORAL_MAPPING_DESIGN';
+
+  // Phase-5 entry requires ready capability bindings for executable work. This generic draft
+  // deliberately receives no binding/human-design bundle yet, so any capability requirement
+  // makes upstream pinning incomplete before local execution-design readiness can dominate.
+  const upstreamPinningIncomplete = capability.requirements.length > 0;
+  const scopeReadiness: ExecutionScopeAssessment['readiness'] = upstreamPinningIncomplete
+    ? 'INCOMPLETE_UPSTREAM_PINNING'
+    : unresolvedRequirementRefs.length > 0 || incompleteElementRefs.length > 0 || incompleteRelationRefs.length > 0
+      ? 'NEEDS_EXECUTION_DESIGN_DECISION'
+      : 'READY_FOR_TEMPORAL_MAPPING_DESIGN';
 
   const scopeBinding: ExecutionScopeBinding = {
     id: scopeBindingId,
@@ -276,7 +286,11 @@ export function designGenericExecutionDraft(
     executionScopeAssessmentRefs: [scopeAssessment.id],
     planGlobalFindingRefs: [],
     planGlobalExecutionRequirementRefs: [],
-    readiness: scopeReadiness === 'READY_FOR_TEMPORAL_MAPPING_DESIGN' ? 'READY_FOR_TEMPORAL_MAPPING_DESIGN' : 'NEEDS_EXECUTION_DESIGN_DECISION',
+    readiness: scopeReadiness === 'INCOMPLETE_UPSTREAM_PINNING'
+      ? 'INCOMPLETE_UPSTREAM_PINNING'
+      : scopeReadiness === 'READY_FOR_TEMPORAL_MAPPING_DESIGN'
+        ? 'READY_FOR_TEMPORAL_MAPPING_DESIGN'
+        : 'NEEDS_EXECUTION_DESIGN_DECISION',
     aggregationPolicyVersion: 'execution-plan-aggregate-v0.2',
     assessedAt: createdAt,
   };
@@ -288,6 +302,7 @@ export function designGenericExecutionDraft(
     validationAssessmentRef: assessment.id,
     capabilityDesignRevisionId: capability.designRevision.id,
     plannerVersion: PLANNER_VERSION,
+    upstreamPinningIncomplete,
     elements: elements.map((element) => ({ id: element.id, kind: element.kind, subjects: element.semanticSubjectRefs, state: element.designState, requirements: element.executionRequirementRefs })),
     relations: relations.map((relation) => ({ id: relation.id, kind: relation.relationKind, semanticRelationRefs: relation.semanticRelationRefs, conditionRef: relation.conditionRef, state: relation.relationState })),
     requirements: requirements.map((requirement) => ({ id: requirement.id, targetRef: requirement.targetRef, kind: requirement.requirementKind, state: requirement.resolutionState, evidenceRefs: requirement.evidenceRefs })),
