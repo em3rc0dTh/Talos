@@ -88,13 +88,16 @@ function close(x: ReturnType<typeof setup>) {
   rmSync(x.runtimeDir, { recursive: true, force: true });
 }
 
-test('I5C-02 creates inspectable execution draft but blocks Temporal readiness while work design is unresolved', () => {
+test('I5C-02 creates inspectable execution draft and applies incomplete-upstream-pinning precedence before Temporal readiness', () => {
   const x = setup();
   try {
     assert.equal(x.capability.designRevision.designState, 'NEEDS_DESIGN_DECISION');
-    assert.equal(x.execution.scopeAssessments[0].readiness, 'NEEDS_EXECUTION_DESIGN_DECISION');
-    assert.equal(x.execution.assessment.readiness, 'NEEDS_EXECUTION_DESIGN_DECISION');
-    assert.equal(x.execution.revision.readiness, 'NEEDS_EXECUTION_DESIGN_DECISION');
+    assert.ok(x.capability.requirements.length > 0);
+    assert.deepEqual(x.execution.revision.capabilityBindingRevisionRefs, []);
+    assert.deepEqual(x.execution.revision.humanInteractionDesignRevisionRefs, []);
+    assert.equal(x.execution.scopeAssessments[0].readiness, 'INCOMPLETE_UPSTREAM_PINNING');
+    assert.equal(x.execution.assessment.readiness, 'INCOMPLETE_UPSTREAM_PINNING');
+    assert.equal(x.execution.revision.readiness, 'INCOMPLETE_UPSTREAM_PINNING');
     assert.notEqual(x.execution.revision.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
     assert.ok(x.execution.requirements.some((requirement) => requirement.resolutionState === 'UNRESOLVED'));
     assert.equal(x.execution.regions[0].boundaryState, 'INCOMPLETE');
