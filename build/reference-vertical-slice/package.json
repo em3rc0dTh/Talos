@@ -41,7 +41,7 @@
     "image:i4:test": "node --experimental-strip-types --test ./tests/image-i4-canonical-validation.test.ts",
     "image:i4:verify": "npm run architecture:verify && npm run b2:test && npm run b3:test && npm run image:i0:test && npm run image:i1:test && npm run image:i2:test && npm run image:i3:test && npm run image:i4:test",
     "image:i5a01:test": "node --experimental-strip-types --test ./tests/image-i5a-confirmation.test.ts",
-    "image:i5a02:test": "node --experimental-strip-types --test ./tests/image-i5a-02-semantic-correction.test.ts",
+    "image:i5a02:test": "node --experimental-strip-types --test ./tests/image-i5a-02-*.test.ts",
     "image:i5a:test": "npm run image:i5a01:test && npm run image:i5a02:test",
     "image:i5a02:verify": "npm run architecture:verify && npm run b2:test && npm run b3:test && npm run b4:test && npm run image:i0:test && npm run image:i1:test && npm run image:i2:test && npm run image:i3:test && npm run image:i4:test && npm run image:i5a01:test && npm run image:i5a02:test",
     "image:i5a:verify": "npm run image:i5a02:verify",
