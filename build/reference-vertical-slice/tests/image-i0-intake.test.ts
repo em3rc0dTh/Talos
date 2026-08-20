@@ -11,16 +11,21 @@ import {
   sha256ImageBytes,
 } from '../packages/image-perception/src/index.ts';
 
-const QUARRY_SHA = '6b57667aeee62a7fe47d79a4533787f5922d59e5f52dedede2751e910df755ee';
+// Historical source-02.md declaration. Preserved as source metadata, but it does not
+// override byte verification against the committed PNG itself.
+const DECLARED_SOURCE_SHA = '6b57667aeee62a7fe47d79a4533787f5922d59e5f52dedede2751e910df755ee';
+const VERIFIED_FIXTURE_SHA = '219584f07852ac7a473018272e935f02c819b1c2fb4aedebd2fff4cd63aa8da9';
 const fixturePath = path.resolve(
   process.cwd(),
   '../../brainstorming/mining-site/quarry-02-water-order-delivery/quarry-02.png',
 );
 
-test('I0 Quarry-02 bytes match the source record and PNG coordinate space', () => {
+test('I0 Quarry-02 preserves declared metadata separately from verified byte identity', () => {
   const bytes = readFileSync(fixturePath);
+  const verified = sha256ImageBytes(bytes);
   assert.equal(bytes.byteLength, 31_989);
-  assert.equal(sha256ImageBytes(bytes), QUARRY_SHA);
+  assert.equal(verified, VERIFIED_FIXTURE_SHA);
+  assert.notEqual(verified, DECLARED_SOURCE_SHA, 'historical declared digest must not override verified bytes');
   assert.deepEqual(parsePngDimensions(bytes), { width: 791, height: 451 });
 });
 
@@ -37,6 +42,7 @@ test('I0 preserves exact PNG bytes and durable source provenance', () => {
       receivedAt: '2026-08-19T23:10:00.000Z',
       initiatedBy: 'reference-user',
       declaredName: 'Quarry 02 — Aqua Distilled Water Order & Delivery',
+      declaredDescription: `Historical source record declared SHA-256 ${DECLARED_SOURCE_SHA}; exact uploaded bytes are verified independently.`,
     });
 
     assert.equal(result.session.channel, 'FILE_UPLOAD');
@@ -44,21 +50,21 @@ test('I0 preserves exact PNG bytes and durable source provenance', () => {
     assert.equal(result.capture.captureMethod, 'DIRECT_UPLOAD');
     assert.equal(result.representation.representationKind, 'NATIVE_DIGITAL');
     assert.equal(result.representation.byteIdentityStatus, 'EXACT_VERIFIED');
-    assert.equal(result.representation.contentHash, QUARRY_SHA);
-    assert.equal(result.storage.sha256, QUARRY_SHA);
+    assert.equal(result.representation.contentHash, VERIFIED_FIXTURE_SHA);
+    assert.equal(result.storage.sha256, VERIFIED_FIXTURE_SHA);
     assert.equal(result.storage.mediaType, 'image/png');
     assert.equal(result.coordinateSpace.width, 791);
     assert.equal(result.coordinateSpace.height, 451);
     assert.equal(result.coordinateSpace.coordinateBasis, 'PIXEL');
 
-    const roundTrip = byteStore.readPng(QUARRY_SHA);
+    const roundTrip = byteStore.readPng(VERIFIED_FIXTURE_SHA);
     assert.ok(roundTrip.equals(bytes), 'stored image bytes must round-trip byte-identically');
 
     repo.close();
     const reopened = new SqliteDocumentStore(dbPath);
     try {
       const persisted = reopened.get(result.representation.id);
-      assert.equal((persisted?.payload as any).contentHash, QUARRY_SHA);
+      assert.equal((persisted?.payload as any).contentHash, VERIFIED_FIXTURE_SHA);
       assert.equal(reopened.listByKind('ImageCoordinateSpace').length, 1);
     } finally {
       reopened.close();
@@ -86,7 +92,7 @@ test('I0 storage deduplication does not collapse separate upload/source identiti
     assert.notEqual(first.capture.id, second.capture.id);
     assert.notEqual(first.representation.id, second.representation.id);
     assert.equal(repo.listByKind('SourceRepresentation').length, 2);
-    assert.equal(byteStore.readPng(QUARRY_SHA).byteLength, bytes.byteLength);
+    assert.equal(byteStore.readPng(VERIFIED_FIXTURE_SHA).byteLength, bytes.byteLength);
   } finally {
     repo.close();
     rmSync(runtimeDir, { recursive: true, force: true });
