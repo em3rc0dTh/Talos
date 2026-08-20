@@ -49,6 +49,8 @@
     "image:i5b00:verify": "npm run architecture:verify && npm run b2:test && npm run b3:test && npm run b4:test && npm run image:i0:test && npm run image:i1:test && npm run image:i2:test && npm run image:i3:test && npm run image:i4:test && npm run image:i5a01:test && npm run image:i5a02:test && npm run image:i5b00:test",
     "image:i5c01:test": "node --experimental-strip-types --test ./tests/image-i5c01-generic-capability.test.ts",
     "image:i5c01:verify": "npm run image:i5b00:verify && npm run image:i5c01:test",
+    "image:i5c02:test": "node --experimental-strip-types --test ./tests/image-i5c02-generic-execution-draft.test.ts",
+    "image:i5c02:verify": "npm run image:i5c01:verify && npm run image:i5c02:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
