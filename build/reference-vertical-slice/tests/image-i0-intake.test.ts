@@ -19,6 +19,7 @@ const fixturePath = path.resolve(
 
 test('I0 Quarry-02 bytes match the source record and PNG coordinate space', () => {
   const bytes = readFileSync(fixturePath);
+  assert.equal(bytes.byteLength, 31_989);
   assert.equal(sha256ImageBytes(bytes), QUARRY_SHA);
   assert.deepEqual(parsePngDimensions(bytes), { width: 791, height: 451 });
 });
