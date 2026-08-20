@@ -53,6 +53,8 @@
     "image:i5c02:verify": "npm run image:i5c01:verify && npm run image:i5c02:test",
     "image:i5c03:test": "node --experimental-strip-types --test ./tests/image-i5c03-capability-resolution.test.ts",
     "image:i5c03:verify": "npm run image:i5c02:verify && npm run image:i5c03:test",
+    "image:i6:test": "node --experimental-strip-types --test ./tests/image-i6-generic-temporal-runtime.test.ts",
+    "image:i6:verify": "npm run image:i5c03:verify && npm run image:i6:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
