@@ -56,16 +56,40 @@ EXECUTION PLAN IS READY FOR TEMPORAL MAPPING
 It supports immutable scope/plan assessments such as:
 
 ```text
-NEEDS_EXECUTION_DESIGN_DECISION
+INCOMPLETE_UPSTREAM_PINNING
 BLOCKED_BY_UPSTREAM_INCOMPATIBILITY
+NEEDS_EXECUTION_DESIGN_DECISION
+```
+
+Therefore Talos may create an inspectable execution-design draft while material upstream capability/execution design remains incomplete, but that draft must carry the correct blocker and must never be marked `READY_FOR_TEMPORAL_MAPPING_DESIGN` until upstream and local material requirements are resolved.
+
+# Readiness precedence applied by I5C-02
+
+Phase-5 entry requires ready capability bindings for executable work. I5C-01 deliberately stops before offering/match/selection/binding and Quarry-02 still has capability requirements.
+
+Therefore the first applicable v0.2 readiness state is:
+
+```text
 INCOMPLETE_UPSTREAM_PINNING
 ```
 
-Therefore the corrected I5C-02 rule is:
+not merely:
 
-> Talos may create an inspectable execution-design draft while material capability/execution decisions remain unresolved, but that draft must carry explicit blockers and must never be marked `READY_FOR_TEMPORAL_MAPPING_DESIGN` until its material requirements are resolved.
+```text
+NEEDS_EXECUTION_DESIGN_DECISION
+```
 
-This is safer and more useful for the product experience because the user can inspect what Talos currently intends to coordinate without mistaking the draft for an executable Temporal design.
+The distinction matters:
+
+```text
+missing required upstream capability/human binding pins
+  → INCOMPLETE_UPSTREAM_PINNING
+
+upstream pins complete, but local execution choices unresolved
+  → NEEDS_EXECUTION_DESIGN_DECISION
+```
+
+This follows the contract aggregation precedence instead of flattening both conditions into one generic blocker.
 
 # I5C-02 input authority
 
@@ -79,7 +103,6 @@ SemanticFreezeRecord
 ScopeFreezeRecord
 CapabilityDesignRevision
 CapabilityRequirement[]
-CapabilityRequirementFacet[] / provenance context
 ```
 
 Required coherence:
@@ -87,11 +110,11 @@ Required coherence:
 ```text
 same ProcessRevision
 same semantic freeze
-same accepted scope freeze
-same frozen semantic scope
-same pinned ValidationAssessment
-same capability design revision
-all capability requirements owned by that exact design
+exact accepted scope freeze
+exact frozen semantic scope
+exact pinned ValidationAssessment
+exact capability design revision
+exact capability requirement set
 ```
 
 Substitution is rejected.
@@ -142,7 +165,7 @@ No `CapabilityUseOccurrence` is created without a pinned `CapabilityBindingRevis
 
 ## HUMAN_INTERACTION
 
-Explicit human semantics may be represented as `HUMAN_COORDINATION`, but remain `INCOMPLETE` without the required accepted human interaction design/binding. No Signal/Update/Form primitive is selected here.
+Explicit human semantics may be represented as `HUMAN_COORDINATION`, but remain `INCOMPLETE` without required accepted human interaction design/binding. No Signal/Update/Form primitive is selected here.
 
 ## SUBPROCESS
 
@@ -195,7 +218,7 @@ with an unresolved execution coordination requirement rather than being coerced 
 
 # Quarry-02 expected draft state
 
-The process is semantically valid and frozen, but its capability design still contains unresolved execution-family decisions.
+The process is semantically valid and frozen, but capability design has not yet produced the Phase-5 binding pins required for executable work.
 
 Expected I5C-02 state:
 
@@ -213,14 +236,16 @@ capabilityBindingRevisionRefs[]       EMPTY
 humanInteractionDesignRevisionRefs[]  EMPTY
 
 ExecutionScopeAssessment.readiness
-  = NEEDS_EXECUTION_DESIGN_DECISION
+  = INCOMPLETE_UPSTREAM_PINNING
 
 ExecutionPlanAssessment.readiness
-  = NEEDS_EXECUTION_DESIGN_DECISION
+  = INCOMPLETE_UPSTREAM_PINNING
 
 ExecutionPlanRevision.readiness
-  = NEEDS_EXECUTION_DESIGN_DECISION
+  = INCOMPLETE_UPSTREAM_PINNING
 ```
+
+Local unresolved execution requirements are still preserved inside the draft; they simply do not outrank the earlier missing-upstream-pin blocker.
 
 Therefore:
 
@@ -228,6 +253,7 @@ Therefore:
 DRAFT EXISTS                         ✅
 USER CAN INSPECT STRUCTURE           ✅
 UNRESOLVED WORK IS VISIBLE           ✅
+UPSTREAM BINDING WORK IS VISIBLE     ✅
 TEMPORAL MAPPING AUTHORIZED          ❌
 ```
 
@@ -245,7 +271,7 @@ DeploymentRevision
 WorkflowExecutionObservation
 ```
 
-And it must not smuggle in:
+And it must not select:
 
 ```text
 Task Queue
@@ -253,8 +279,8 @@ worker
 Temporal SDK
 retry policy
 timeout policy
-Activity selection
-Child Workflow selection
+Activity
+Child Workflow
 provider credentials
 environment values
 ```
@@ -279,9 +305,9 @@ exact BusinessRule bindings
 explicit subprocess boundary blocker
   ↓
 ExecutionPlanAssessment
-  = NEEDS_EXECUTION_DESIGN_DECISION
+  = INCOMPLETE_UPSTREAM_PINNING
   ↓
 NO Temporal artifacts
 ```
 
-Only after this gate closes do we decide the next product step. I6 remains closed.
+Only after this gate closes do we decide whether the next work belongs in capability resolution/binding, execution-design resolution, or a later Temporal opening. I6 remains closed.
