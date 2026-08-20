@@ -1,6 +1,7 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type { ReferenceExecutionBundle } from '../../execution/src/types.ts';
 import type { GenericExecutionDraftBundle } from '../../execution/src/generic-plan.ts';
+import type { GenericResolvedExecutionBundle } from '../../execution/src/generic-resolved-plan.ts';
 import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
 import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
 import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
@@ -34,4 +35,24 @@ export function persistGenericExecutionDraft(repo:ImmutableDocumentRepository,ex
     ['ExecutionPlanAssessment',execution.assessment],
   ];
   for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-execution-draft-v0.1');
+}
+
+export function persistGenericResolvedExecutionPlan(repo:ImmutableDocumentRepository,execution:GenericResolvedExecutionBundle):void{
+  const at=execution.revision.createdAt;
+  const records:Array<[string,any]>=[
+    ['ExecutionPlanDefinition',execution.definition],
+    ['ExecutionPlanRevision',execution.revision],
+    ...execution.scopeBindings.map(x=>['ExecutionScopeBinding',x] as [string,any]),
+    ...execution.regions.map(x=>['ExecutionRegion',x] as [string,any]),
+    ...execution.elements.map(x=>['ExecutionElement',x] as [string,any]),
+    ...execution.relations.map(x=>['ExecutionRelation',x] as [string,any]),
+    ...execution.capabilityUses.map(x=>['CapabilityUseOccurrence',x] as [string,any]),
+    ...execution.dataDependencies.map(x=>['ExecutionDataDependency',x] as [string,any]),
+    ...execution.requirements.map(x=>['ExecutionRequirement',x] as [string,any]),
+    ...execution.mappingTraces.map(x=>['ExecutionSemanticMappingTrace',x] as [string,any]),
+    ...execution.scopeAssessments.map(x=>['ExecutionScopeAssessment',x] as [string,any]),
+    ['ExecutionPlanAssessment',execution.assessment],
+    ...execution.coordinationResolutions.map(x=>['ExecutionCoordinationResolution',x] as [string,any]),
+  ];
+  for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-resolved-execution-v0.1');
 }
