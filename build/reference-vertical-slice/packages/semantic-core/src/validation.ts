@@ -1,7 +1,7 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import type { AssessmentIntent,AssessmentScope,ClarificationPlan,ClarificationQuestion,ExecutionReadiness,ProcessNode,ProcessRevision,ReadinessDecision,SemanticVerdict,ValidationAssessment,ValidationBundle,ValidationFinding,ValidationId } from './types.ts';
 
-export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.2';
+export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.3';
 export const SEMANTIC_RULESET_VERSION='semantic-validation-v0.2';
 export const READINESS_RULE_VERSION='semantic-validation-readiness-v0.2';
 
@@ -9,11 +9,61 @@ interface FindingDraft { code:string; family:string; title:string; description:s
 function sourceProps(node:ProcessNode):Record<string,unknown>{return (node.details?.sourceProperties as Record<string,unknown>|undefined)??{};}
 function stateOf(value:unknown):string|undefined{return value&&typeof value==='object'&&'state' in value?String((value as any).state):undefined;}
 function valueOf(value:unknown):unknown{return value&&typeof value==='object'&&'value' in value?(value as any).value:value;}
+function meaningful(value:unknown):boolean{
+  if(value===undefined||value===null)return false;
+  if(typeof value==='string')return value.trim().length>0&&value!=='UNKNOWN'&&value!=='SOURCE_DEFINED';
+  if(value&&typeof value==='object'&&'state'in(value as any))return stateOf(value)==='SET'&&meaningful(valueOf(value));
+  return true;
+}
+function acceptedBusinessClaim(revision:ProcessRevision,paths:string[]):boolean{
+  const wanted=new Set(paths);
+  return revision.semanticClaims.some(claim=>claim.perspective==='BUSINESS_INTENT'&&wanted.has(claim.propertyPath)&&(claim.truthClass==='SOURCE_TRUTH'||claim.truthClass==='CONFIRMED')&&meaningful(claim.value));
+}
+function controlIncoming(revision:ProcessRevision,nodeId:string){return revision.edges.filter(edge=>edge.targetNodeId===nodeId&&edge.kind!=='MESSAGE');}
+function controlOutgoing(revision:ProcessRevision,nodeId:string){return revision.edges.filter(edge=>edge.sourceNodeId===nodeId&&edge.kind!=='MESSAGE');}
+function explicitEntryEstablished(revision:ProcessRevision):boolean{
+  if(acceptedBusinessClaim(revision,['entrySemantics','process.entrySemantics','details.entrySemantics','triggerSemantics']))return true;
+  return revision.nodes.some(node=>{
+    if(node.kind!=='EVENT'||controlIncoming(revision,node.id).length>0)return false;
+    const props=sourceProps(node);
+    const marker=node.details?.entrySemantics??node.details?.eventRole??props['propertyValues.entrySemantics']??props['propertyValues.eventRole']??props['propertyValues.triggerKind'];
+    // A source-normalized EVENT with no control-flow predecessor is an explicit entry candidate.
+    // It is stronger than merely choosing the first zero-incoming ACTION/DECISION by graph shape.
+    return marker===undefined||meaningful(marker);
+  });
+}
+function correlationEstablished(revision:ProcessRevision):boolean{
+  if(acceptedBusinessClaim(revision,['correlationIdentity','correlationKey','process.correlationIdentity','details.correlationIdentity','message.correlationIdentity']))return true;
+  return revision.nodes.some(node=>meaningful(node.details?.correlationIdentity)||meaningful(node.details?.correlationKey));
+}
+function subprocessInternalsEstablished(node:ProcessNode):boolean{
+  const props=sourceProps(node);
+  return meaningful(node.details?.internalSemantics)
+    || meaningful(node.details?.internalDefinitionRef)
+    || meaningful(node.details?.internalDefinition)
+    || meaningful(props['propertyValues.internalSemantics'])
+    || meaningful(props['propertyValues.internalDefinition']);
+}
+function humanCompletionEstablished(node:ProcessNode):boolean{
+  const props=sourceProps(node);
+  return meaningful(node.details?.completionObservation)
+    || meaningful(node.details?.completionSemantics)
+    || meaningful(node.details?.outcomeObservation)
+    || meaningful(props['propertyValues.completionObservation'])
+    || (node.kind==='HUMAN_INTERACTION'&&meaningful(node.details?.outcomes));
+}
+function humanExecutionCandidate(revision:ProcessRevision,node:ProcessNode):boolean{
+  const actorMap=new Map(revision.actors.map(actor=>[actor.id,actor]));
+  if(node.actorRefs.some(ref=>{const actor=actorMap.get(ref);return actor?.kind==='HUMAN_ROLE'||actor?.kind==='HUMAN_PERSON';}))return true;
+  const mode=String(node.details?.executionMode??node.details?.workMode??'');
+  return ['PHYSICAL_HUMAN','PHYSICAL_WORK','HUMAN'].includes(mode);
+}
 
 function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):FindingDraft[]{
   const out:FindingDraft[]=[];
+  const automation=intent==='AUTOMATION_DESIGN_READINESS';
   for(const conflict of revision.conflictRecords){
-    if(conflict.resolutionStatus==='UNRESOLVED')out.push({code:'SV-CNF-001',family:'SOURCE_CONFLICT',title:'Unresolved source conflict',description:`Conflicting claims remain unresolved for ${conflict.propertyPath}.`,targetRefs:[conflict.subjectRef],severity:'ERROR',blockerClass:intent==='AUTOMATION_DESIGN_READINESS'?'AUTOMATION_DESIGN':'SEMANTIC_UNDERSTANDING',resolutionRoute:'BUSINESS_OWNER_DECISION',questionCandidate:true});
+    if(conflict.resolutionStatus==='UNRESOLVED')out.push({code:'SV-CNF-001',family:'SOURCE_CONFLICT',title:'Unresolved source conflict',description:`Conflicting claims remain unresolved for ${conflict.propertyPath}.`,targetRefs:[conflict.subjectRef],severity:'ERROR',blockerClass:automation?'AUTOMATION_DESIGN':'SEMANTIC_UNDERSTANDING',resolutionRoute:'BUSINESS_OWNER_DECISION',questionCandidate:true});
   }
   for(const extension of revision.sourceExtensions){
     if(extension.extensionType==='INCOMPLETE_RELATIONSHIP'){
@@ -21,6 +71,11 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       out.push({code:'SV-CFL-002',family:'CONTROL_FLOW',title:'Branch target unresolved',description:'The source establishes a relationship/branch intent but its target is unresolved. TALOS preserves the branch without fabricating a ProcessEdge.',targetRefs:[String(payload.canonicalSourceRef??extension.id)],evidenceRefs:[...extension.sourceElementRefs],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true});
     }
   }
+
+  if(automation&&revision.nodes.length>0&&!explicitEntryEstablished(revision)){
+    out.push({code:'SV-STR-001',family:'STRUCTURE',title:'Entry semantics unresolved',description:'No explicit business entry/trigger semantics establish how one process instance begins. A zero-incoming work node is not treated as a business start by graph shape alone.',targetRefs:[revision.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'BUSINESS_OWNER_DECISION',questionCandidate:true});
+  }
+
   for(const node of revision.nodes){
     const props=sourceProps(node);
     const actorProperty=props['propertyValues.actor']??props.actor;
@@ -30,15 +85,20 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
     if(node.kind==='HUMAN_INTERACTION'&&node.actorRefs.length===0&&stateOf(actorProperty)!=='NOT_APPLICABLE'){
       if(!out.some(f=>f.code==='SV-ACT-001'&&f.targetRefs.includes(node.id)))out.push({code:'SV-ACT-001',family:'ACTOR_RESPONSIBILITY',title:'Actor or owner missing',description:`Human interaction ${node.name??node.id} has no responsible actor.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
     }
+    if(automation&&humanExecutionCandidate(revision,node)&&!humanCompletionEstablished(node)){
+      out.push({code:'SV-HUM-001',family:'HUMAN_INTERACTION',title:'Human completion observation unresolved',description:`${node.name??node.id} is assigned to human/physical work, but the business semantics do not establish how completion is observed or accepted.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'BUSINESS_OWNER_DECISION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+    }
     if(node.kind==='WAIT'){
-      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??'');
-      const timezone=props.timezone??props['propertyValues.timezone'];
-      const expression=props.expression??props['propertyValues.expression'];
-      if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||stateOf(expression)==='UNKNOWN')){
-        out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
-      }
-      if((waitKind==='EXTERNAL_EVENT'||waitKind==='MESSAGE'||waitKind==='HUMAN_RESPONSE'||waitKind==='CONDITION')&&!node.details?.resumeSemantics){
-        out.push({code:'SV-EVT-001',family:'EVENT_WAIT',title:'Wait resume semantics incomplete',description:`${node.name??'WAIT'} lacks complete resume semantics.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??'');
+      const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
+      const expression=node.details?.expression??node.details?.timeExpression??props.expression??props['propertyValues.expression'];
+      const resume=node.details?.resumeSemantics??valueOf(props['propertyValues.resumeCondition'])??valueOf(props['propertyValues.eventDescriptor']);
+      if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
+        out.push({code:'SV-EVT-001',family:'EVENT_WAIT',title:'Wait resume semantics incomplete',description:`${node.name??'WAIT'} is accepted as a WAIT, but its business resume class is not established (calendar/time, external event, human response, or condition).`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }else if(['SCHEDULE','DEADLINE','CALENDAR_TIME','TIME'].includes(waitKind)&&(!meaningful(timezone)||!meaningful(expression))){
+        out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time expression and timezone/calendar context.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }else if(['EXTERNAL_EVENT','MESSAGE','HUMAN_RESPONSE','CONDITION'].includes(waitKind)&&!meaningful(resume)){
+        out.push({code:'SV-EVT-001',family:'EVENT_WAIT',title:'Wait resume semantics incomplete',description:`${node.name??'WAIT'} lacks complete business resume semantics.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
     }
     if(node.kind==='JOIN'){
@@ -48,16 +108,27 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
     if(node.kind==='SUBPROCESS'){
       const mode=String(node.details?.subprocessMode??valueOf(props.boundaryMeaning)??valueOf(props['propertyValues.boundaryMeaning'])??'');
       if(!mode||mode==='UNKNOWN'||mode==='SOURCE_DEFINED')out.push({code:'SV-SUB-002',family:'SUBPROCESS_SCOPE',title:'Subprocess boundary meaning unresolved',description:`Subprocess ${node.name??node.id} does not establish a sufficient boundary meaning.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      else if(automation&&['COLLAPSED_SUBPROCESS','COLLAPSED','EMBEDDED_COLLAPSED'].includes(mode)&&!subprocessInternalsEstablished(node)){
+        out.push({code:'SV-SUB-001',family:'SUBPROCESS_SCOPE',title:'Subprocess internal semantics missing',description:`Subprocess ${node.name??node.id} has an accepted collapsed boundary, but the business semantics inside that boundary remain unavailable. Boundary meaning alone is insufficient for automation design.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'ADDITIONAL_SOURCE_REQUIRED',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }
     }
   }
+
   const outgoing=new Map<string,typeof revision.edges>();
   for(const edge of revision.edges){const list=outgoing.get(edge.sourceNodeId)??[];list.push(edge);outgoing.set(edge.sourceNodeId,list);}
   for(const node of revision.nodes.filter(n=>n.kind==='DECISION')){
     for(const edge of outgoing.get(node.id)??[]){if(edge.kind==='CONDITIONAL'&&!edge.conditionRuleRef)out.push({code:'SV-CFL-001',family:'DECISION_RULE',title:'Branch condition unresolved',description:`Conditional branch from ${node.name??node.id} has no structured business rule.`,targetRefs:[edge.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:edge.provenanceRefs});}
   }
-  if(intent==='AUTOMATION_DESIGN_READINESS'&&revision.nodes.length>0&&!revision.nodes.some(n=>n.kind==='END')){
+
+  const messageEdges=revision.edges.filter(edge=>edge.kind==='MESSAGE');
+  if(automation&&messageEdges.length>0&&!correlationEstablished(revision)){
+    out.push({code:'SV-COR-001',family:'COLLABORATION_CORRELATION',title:'Correlation identity unresolved',description:'The process contains cross-boundary message interaction, but no accepted stable business correlation identity is defined for relating that interaction to the correct process instance.',targetRefs:messageEdges.map(edge=>edge.id),severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'BUSINESS_OWNER_DECISION',questionCandidate:true,provenanceRefs:messageEdges.flatMap(edge=>edge.provenanceRefs)});
+  }
+
+  if(automation&&revision.nodes.length>0&&!revision.nodes.some(n=>n.kind==='END')){
     out.push({code:'SV-CMP-001',family:'COMPLETION',title:'Success completion unproven',description:'The semantic scope has no explicit process outcome/end state; last visible work is not treated as success.',targetRefs:[revision.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true});
   }
+
   const inferredMaterial=revision.semanticClaims.filter(c=>c.truthClass==='INFERRED'&&c.perspective==='BUSINESS_INTENT');
   for(const claim of inferredMaterial)out.push({code:'SV-SRC-001',family:'SOURCE_UNCERTAINTY',title:'Material inferred meaning needs confirmation',description:`The business-intent interpretation for ${claim.propertyPath} is inferred and requires confirmation before automation design.`,targetRefs:[claim.subjectRef],evidenceRefs:claim.evidenceFragmentRefs,severity:'WARNING',blockerClass:'SOURCE_ACCEPTANCE',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:claim.provenanceLinkRefs});
   return out;
@@ -75,16 +146,25 @@ function readinessFor(findings:ValidationFinding[],revision:ProcessRevision,inte
 }
 function verdictFor(findings:ValidationFinding[],revision:ProcessRevision):SemanticVerdict{
   if(findings.some(f=>f.code==='SV-CNF-001'))return'CONFLICTED';
-  if(findings.some(f=>f.blockerClass==='SEMANTIC_UNDERSTANDING'||f.blockerClass==='AUTOMATION_DESIGN'))return'INCOMPLETE';
+  // Frozen v0.2 keeps semantic coherence separate from automation readiness.
+  // Missing trigger/correlation/wait/subprocess-internal/human-observation/completion semantics can block
+  // automation design while the business model remains coherent and therefore VALID_WITH_FINDINGS.
+  const semanticIncompleteCodes=new Set(['SV-STR-002','SV-STR-003','SV-STR-004','SV-CFL-001','SV-CFL-002','SV-CFL-003','SV-CFL-004','SV-ACT-001','SV-SUB-002','SV-SRC-002']);
+  if(findings.some(f=>semanticIncompleteCodes.has(f.code)||f.blockerClass==='SEMANTIC_UNDERSTANDING'))return'INCOMPLETE';
   return findings.length?'VALID_WITH_FINDINGS':'VALID';
 }
 function questionText(f:ValidationFinding):string{
   switch(f.code){
+    case'SV-STR-001':return'What exact business event starts one process instance?';
     case'SV-CFL-002':return'What happens on this unresolved branch?';
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
-    case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';
+    case'SV-HUM-001':return'How is completion of this human or physical work observed and accepted by the process?';
+    case'SV-EVT-001':return'What business condition, event, response, or time contract causes this wait to resume?';
+    case'SV-EVT-002':return'What exact business time expression and timezone/calendar context determine when this wait resumes?';
+    case'SV-COR-001':return'What stable business identifier correlates this message interaction to the correct process instance?';
     case'SV-CON-001':return'What synchronization rule determines when this join may continue?';
     case'SV-CMP-001':return'What explicit business outcome completes this process scope?';
+    case'SV-SUB-001':return'What business work and outcomes exist inside this collapsed subprocess?';
     default:return`Please clarify: ${f.title}.`;
   }
 }
@@ -92,7 +172,7 @@ function questionText(f:ValidationFinding):string{
 export function validateProcessRevision(revision:ProcessRevision,intent:AssessmentIntent='AUTOMATION_DESIGN_READINESS',options:{assessedAt?:string;supersedesAssessmentId?:ValidationId}={}):ValidationBundle{
   const assessedAt=options.assessedAt??new Date().toISOString();
   const scope:AssessmentScope={id:createOpaqueId('validation',`scope:${revision.id}:${intent}`),kind:'PROCESS_REVISION',targetRefs:[revision.id],intendedUse:intent};
-  const assessmentId=createOpaqueId('validation',`assessment:${revision.id}:${intent}:${SEMANTIC_RULESET_VERSION}`);
+  const assessmentId=createOpaqueId('validation',`assessment:${revision.id}:${intent}:${SEMANTIC_RULESET_VERSION}:${SEMANTIC_VALIDATOR_VERSION}`);
   const drafts=collectFindings(revision,intent);
   const findings:ValidationFinding[]=drafts.map((d,index)=>({id:createOpaqueId('validation',`finding:${assessmentId}:${d.code}:${index}:${d.targetRefs.join('|')}`),assessmentId,code:d.code,family:d.family,title:d.title,description:d.description,scopeRef:scope.id,targetRefs:d.targetRefs,evidenceRefs:d.evidenceRefs??[],provenanceRefs:d.provenanceRefs??[],severity:d.severity,blockerClass:d.blockerClass,resolutionRoute:d.resolutionRoute,...(d.deferredGate?{deferredGate:d.deferredGate}:{}),...(d.questionCandidate?{questionCandidate:true}:{}),relatedFindingRefs:[],createdAt:assessedAt}));
   const readiness=readinessFor(findings,revision,intent);
