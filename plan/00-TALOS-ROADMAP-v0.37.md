@@ -1,6 +1,6 @@
 # TALOS — Gated Roadmap v0.37
 
-Status: **ACTIVE PLAN — I5B CLOSED / I5C GENERIC HANDOFF ACTIVE**  
+Status: **ACTIVE PLAN — I5C-01 CLOSED / I5C-02 OPENING REVIEW NEXT**  
 Date: **2026-08-20**  
 Supersedes `00-TALOS-ROADMAP-v0.36.md` for active planning. Historical roadmap versions remain preserved.
 
@@ -35,8 +35,8 @@ I5A-01 explicit semantic claim confirmation          ✅ CLOSED
 I5A-02 semantic correction / addition                ✅ CLOSED
 I5B semantic freeze                                  ✅ CLOSED
 I5C-00 downstream reference-builder compatibility    ✅ CLOSED — NO-GO FOR REUSE
-I5C-01 generic capability design                     🟡 IMPLEMENTATION / CI GATE
-I5C-02 generic ExecutionPlan                         ⛔ CLOSED
+I5C-01 generic capability design                     ✅ CLOSED
+I5C-02 generic ExecutionPlan                         🟡 OPENING REVIEW NEXT
 I6 generic image → real Temporal execution           ⛔ CLOSED
 ```
 
@@ -48,6 +48,7 @@ test/115-IMAGE-I5A-01-SEMANTIC-CONFIRMATION-RESULT-v0.1.md
 test/116-IMAGE-I5A-02-SEMANTIC-CORRECTION-RESULT-v0.1.md
 test/117-IMAGE-I5B-SEMANTIC-FREEZE-RESULT-v0.1.md
 test/118-IMAGE-I5C-00-DOWNSTREAM-HANDOFF-AUDIT-v0.1.md
+test/119-IMAGE-I5C-01-GENERIC-CAPABILITY-RESULT-v0.1.md
 ```
 
 # Current image state
@@ -73,39 +74,18 @@ READY_FOR_AUTOMATION_DESIGN
   ↓
 EXACT AUTHORITY-BACKED SEMANTIC FREEZE
   ↓
-        ✅ I5B CLOSED
-  ↓
 GENERIC CAPABILITY DESIGN
   ↓
-        🟡 I5C-01
+NEEDS_DESIGN_DECISION where execution family is not established
+  ↓
+        ✅ I5C-01 CLOSED
+  ↓
+I5C-02 GENERIC EXECUTION PLAN OPENING REVIEW
 ```
 
 # I5B closure law
 
-The successful image freeze proves:
-
-```text
-ReviewWorkspaceRevision exact
-ReviewBaselineBundle exact
-ProcessRevision exact
-ValidationAssessment exact
-authorityRef required
-ScopeFreezeRecord accepted
-backward image/review lineage recoverable
-```
-
-and creates none of:
-
-```text
-CapabilityDesignRevision
-ExecutionPlanRevision
-TemporalMappingRevision
-RuntimePolicyRevision
-DeploymentRevision
-WorkflowExecutionObservation
-```
-
-Therefore:
+The successful image freeze requires exact workspace/baseline/process/assessment identity plus explicit authority and accepted scope freeze. It preserves backward image/review lineage and creates no capability, execution, Temporal, policy, deployment, or runtime artifact.
 
 ```text
 READY ≠ FROZEN
@@ -116,7 +96,7 @@ FROZEN ≠ TEMPORAL
 
 # I5C-00 audit result
 
-The Phase-4 / Phase-5 contracts remain valid, but the existing implementation functions are explicitly reference-bound:
+The existing Phase-4 / Phase-5 reference implementations remain intentionally bound to the original approval/email fixture:
 
 ```text
 designReferenceCapabilities
@@ -133,21 +113,19 @@ designReferenceTemporalMapping
 
 Quarry-02 must not pass through those functions.
 
-# I5C-01 design law
+# I5C-01 closed design law
 
-I5C-01 introduces a separate generic capability-design path against the same frozen Phase-4 contracts.
-
-Input authority:
+The new generic path consumes only:
 
 ```text
 exact ProcessRevision
 + exact PROCESS_REVISION AssessmentScope
 + exact pinned AUTOMATION_DESIGN_READINESS ValidationAssessment
-+ exact SemanticFreezeRecord
++ exact authority-backed SemanticFreezeRecord
 + exact accepted ScopeFreezeRecord
 ```
 
-Output boundary:
+It creates only:
 
 ```text
 CapabilityDesignRevision
@@ -156,79 +134,87 @@ CapabilityRequirementFacet[]
 CapabilityRequirementProvenanceTrace[]
 ```
 
-Forbidden output at I5C-01:
+and creates no offering, match, selection, binding, form, ExecutionPlan, TemporalMapping, RuntimePolicy, DeploymentRevision, or runtime execution artifact.
+
+Generic classification v0.1:
 
 ```text
-Offering
-Match
-Selection
-Binding
-Form
-ExecutionPlan
-TemporalMapping
-RuntimePolicy
-Deployment
-Runtime execution
-```
-
-Generic classification rule v0.1:
-
-```text
-DECISION / WAIT / SUBPROCESS / STATE / END / EVENT / JOIN / PARALLEL_SPLIT
-  → no external capability merely because the semantic node exists
-
 ACTION
-  → preserve required business work
+  → business work must be implemented
   → operationIntent = PERFORM_ACTION
   → family derived only from explicit accepted actor semantics
-  → otherwise family/state remains UNRESOLVED
+  → otherwise SOURCE_DEFINED / UNRESOLVED
 
 HUMAN_INTERACTION
   → HUMAN_INTERACTION family is semantic
   → interaction intent remains unresolved unless explicitly frozen
+
+DECISION / WAIT / SUBPROCESS / STATE / END / EVENT / JOIN / PARALLEL_SPLIT
+  → no external capability merely because the semantic node exists
 ```
 
-No lexical inference such as:
+No action-label lexical inference is allowed:
 
 ```text
-"Deliver Water" → Activity
-"Forward Order" → email
-"Create Customer Account" → API
-"Arrange Delivery" → Child Workflow
+"Deliver Water" → Activity              ❌
+"Forward Order" → email                 ❌
+"Create Customer Account" → API         ❌
+"Arrange Delivery" → Child Workflow     ❌
 ```
 
-is permitted.
+# Quarry-02 capability state
 
-# Quarry-02 expected I5C-01 state
-
-The image contains business ACTION work but does not yet carry enough accepted execution-design meaning to select providers or runtime mechanisms for all work.
-
-The safe expected state is therefore:
+The accepted process contains frozen business work but does not establish an execution family for every action. The correct I5C-01 result is therefore:
 
 ```text
 CapabilityDesignRevision.designState = NEEDS_DESIGN_DECISION
 ```
 
-with unresolved capability requirements where execution family is not explicitly established.
+This preserves the boundary:
 
-This is progress, not failure: Talos has preserved exactly where business semantics end and automation design must begin.
+```text
+BUSINESS WORK EXISTS
+        ≠
+WE KNOW HOW IT SHOULD EXECUTE
+```
+
+# I5C-02 opening review question
+
+A generic ExecutionPlan must not become a mechanism for bypassing unresolved capability design.
+
+Pressure-test before implementation:
+
+```text
+1. Can an ExecutionPlan be created while material CapabilityRequirements remain UNRESOLVED? It must not.
+2. Does every executable work element pin either resolved capability/human design or an explicitly accepted pure-coordination classification?
+3. Are DECISION / WAIT / END representable as coordination without inventing external capability?
+4. Is SUBPROCESS preserved as business decomposition unless explicit execution-boundary authority exists?
+5. Are conditional BusinessRule bindings preserved exactly into execution relations?
+6. Can generic ACTION ever silently become Workflow logic? It must not.
+7. Can generic ACTION ever silently become Temporal Activity? It must not.
+8. Is execution readiness computed from the generic capability design instead of inherited from semantic readiness?
+9. Does the ExecutionPlan retain exact freeze / capability-design / semantic lineage?
+10. Does I5C-02 still create zero TemporalMapping / RuntimePolicy / Deployment / execution artifacts?
+```
 
 # Immediate next
 
 ```text
-I5C-01 — GENERIC CAPABILITY DESIGN CI GATE
+I5C-02 — GENERIC EXECUTION PLAN OPENING REVIEW
 
-freeze
-  ↓
-source/process-agnostic capability derivation
-  ↓
-no reference approval/email leakage
-  ↓
-exact lineage
-  ↓
-no downstream artifact creation
-  ↓
-GO / NO-GO
+frozen ProcessRevision
+        +
+generic CapabilityDesignRevision
+        ↓
+unresolved-work gate
+        ↓
+coordination-vs-capability classification audit
+        ↓
+conditional-rule preservation audit
+        ↓
+lineage audit
+        ↓
+GO / NO-GO for generic ExecutionPlan implementation
 ```
 
-Only after I5C-01 closes may I5C-02 generic ExecutionPlan design open. I6 remains closed.
+I6 remains closed.
