@@ -6,7 +6,11 @@
   "engines": {
     "node": ">=22.16.0 <23 || >=24.0.0 <25"
   },
-  "workspaces": ["packages/*", "apps/*", "workers/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "workers/*"
+  ],
   "scripts": {
     "b0:verify": "node ./scripts/verify-b0.mjs",
     "architecture:verify": "node ./scripts/verify-architecture.mjs",
@@ -53,5 +57,7 @@
     "@temporalio/worker": "1.22.0",
     "@temporalio/workflow": "1.22.0"
   },
-  "devDependencies": {"@temporalio/testing": "1.22.0"}
+  "devDependencies": {
+    "@temporalio/testing": "1.22.0"
+  }
 }
