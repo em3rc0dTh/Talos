@@ -237,7 +237,10 @@ interface CorrectionMutation {
 }
 
 function applyCorrectionMutation(current: ProcessRevision, command: ReviewCommand, at: string): CorrectionMutation | undefined {
-  const nodes = current.nodes.map((item) => ({ ...item, details: item.details ? { ...item.details } : undefined }));
+  const nodes = current.nodes.map((item) => ({
+    ...item,
+    ...(item.details ? { details: { ...item.details } } : {}),
+  }));
   const edges = current.edges.map((item) => ({ ...item }));
   const rules = current.rules.map((item) => ({ ...item }));
   const authoredClaims: SemanticClaim[] = [];
