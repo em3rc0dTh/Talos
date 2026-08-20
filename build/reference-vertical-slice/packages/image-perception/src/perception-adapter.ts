@@ -15,6 +15,7 @@ import type {
   SourceOccurrenceDescriptor,
   SourcePlaneDescriptor,
   SourcePlaneKind,
+  SourcePropertyEvidenceDescriptor,
   SourceRelationshipDescriptor,
 } from '../../source-intake/src/types.ts';
 import type { ImageIntakeBundle } from './types.ts';
@@ -30,6 +31,7 @@ import type {
 
 export interface ImageCommonEvidenceBundle {
   planes: SourcePlaneDescriptor[];
+  properties: SourcePropertyEvidenceDescriptor[];
   occurrences: SourceOccurrenceDescriptor[];
   relationships: SourceRelationshipDescriptor[];
   classification: ArtifactClassification;
@@ -146,6 +148,34 @@ function materializeCommonEvidence(
     occurrenceIdByKey.set(candidate.providerOccurrenceKey, createOpaqueId('source', `image-occurrence:${attemptId}:${candidate.providerOccurrenceKey}`));
   }
 
+  const properties: SourcePropertyEvidenceDescriptor[] = [];
+  const propertyRefsByOccurrenceKey = new Map<string, SourceId[]>();
+  const propertyExtensionRefsByOccurrenceKey = new Map<string, SourceId[]>();
+  for (const candidate of providerResult.occurrenceCandidates) {
+    const refs: SourceId[] = [];
+    const extensionRefs: SourceId[] = [];
+    for (const [index, property] of (candidate.propertyCandidates ?? []).entries()) {
+      const sourceExtensionRefs = unique([
+        ...property.supportingObservationKeys.map((key) => observationIdByKey.get(key)).filter((id): id is SourceId => Boolean(id)),
+        ...candidate.anchorKeys.map((key) => anchorIdByKey.get(key)).filter((id): id is SourceId => Boolean(id)),
+      ]);
+      const descriptor: SourcePropertyEvidenceDescriptor = {
+        id: createOpaqueId('source', `image-property:${attemptId}:${candidate.providerOccurrenceKey}:${index}:${property.propertyPath}`),
+        sourceRepresentationId: intake.representation.id,
+        propertyPath: property.propertyPath,
+        ...(property.sourceState ? { sourceState: property.sourceState } : {}),
+        ...(property.literalValue !== undefined ? { literalValue: property.literalValue } : {}),
+        sourceExtensionRefs,
+      };
+      appendRecord(repo, 'SourcePropertyEvidenceDescriptor', descriptor, now, descriptor.id);
+      properties.push(descriptor);
+      refs.push(descriptor.id);
+      extensionRefs.push(descriptor.id, ...sourceExtensionRefs);
+    }
+    propertyRefsByOccurrenceKey.set(candidate.providerOccurrenceKey, refs);
+    propertyExtensionRefsByOccurrenceKey.set(candidate.providerOccurrenceKey, unique(extensionRefs));
+  }
+
   const occurrences: SourceOccurrenceDescriptor[] = providerResult.occurrenceCandidates.map((candidate) => {
     const labelObservation = candidate.literalLabelObservationKey
       ? observationByKey.get(candidate.literalLabelObservationKey)
@@ -154,6 +184,7 @@ function materializeCommonEvidence(
     const sourceExtensionRefs = unique([
       ...candidate.supportingObservationKeys.map((key) => observationIdByKey.get(key)).filter((id): id is SourceId => Boolean(id)),
       ...candidate.anchorKeys.map((key) => anchorIdByKey.get(key)).filter((id): id is SourceId => Boolean(id)),
+      ...(propertyExtensionRefsByOccurrenceKey.get(candidate.providerOccurrenceKey) ?? []),
     ]);
     const descriptor: SourceOccurrenceDescriptor = {
       sourceOccurrenceId: occurrenceIdByKey.get(candidate.providerOccurrenceKey)!,
@@ -161,7 +192,7 @@ function materializeCommonEvidence(
       ...(literalLabel ? { literalLabel } : {}),
       ...(candidate.candidateSemanticType ? { candidateSemanticType: candidate.candidateSemanticType } : {}),
       sourcePlaneRef: planeIdByKind.get(candidate.sourcePlaneKind)!,
-      propertyEvidenceRefs: [],
+      propertyEvidenceRefs: propertyRefsByOccurrenceKey.get(candidate.providerOccurrenceKey) ?? [],
       sourceExtensionRefs,
     };
     appendRecord(repo, 'SourceOccurrenceDescriptor', descriptor, now, descriptor.sourceOccurrenceId);
@@ -224,6 +255,7 @@ function materializeCommonEvidence(
     ...observations.map((item) => item.id),
     ...alternativeSets.map((item) => item.id),
     ...relationCandidates.map((item) => item.id),
+    ...properties.map((item) => item.id),
   ]);
   const graph: SourceEvidenceGraph = {
     id: createOpaqueId('source', `image-evidence-graph:${attemptId}`),
@@ -241,6 +273,7 @@ function materializeCommonEvidence(
       representationDigest: intake.representation.contentHash,
       occurrenceIds: occurrences.map((item) => item.sourceOccurrenceId),
       relationshipOccurrenceIds: relationships.map((item) => item.sourceOccurrenceId),
+      propertyEvidenceIds: properties.map((item) => item.id),
       perceptionExtensionRefs,
     }),
   };
@@ -283,7 +316,7 @@ function materializeCommonEvidence(
   };
   appendRecord(repo, 'CandidateSemanticScope', scope, now, scope.id);
 
-  return { planes, occurrences, relationships, classification, graph, scope };
+  return { planes, properties, occurrences, relationships, classification, graph, scope };
 }
 
 export function runImagePerception(
@@ -306,7 +339,7 @@ export function runImagePerception(
     sourceRepresentationId: intake.representation.id,
     adapterId: 'ImagePerceptionAdapter',
     adapterVersion,
-    mappingRegistryVersion: 'image-perception-materialization-v0.1',
+    mappingRegistryVersion: 'image-perception-materialization-v0.2',
     canonicalModelVersion: 'v0.1',
     extractionMode: 'VISUAL_PERCEPTION',
     inputFingerprint,
