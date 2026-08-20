@@ -7,6 +7,7 @@ on:
       - '.github/workflows/image-vslice.yml'
       - 'build/reference-vertical-slice/packages/image-perception/**'
       - 'build/reference-vertical-slice/tests/image-*.test.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/**'
       - 'build/reference-vertical-slice/architecture/module-boundaries.json'
       - 'build/reference-vertical-slice/package.json'
       - 'build/reference-vertical-slice/package-lock.json'
@@ -23,9 +24,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i2:
+  image-i3:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,3 +61,7 @@ jobs:
       - name: Run I2 common source-evidence gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i2:test
+
+      - name: Run I3 browser image review gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i3:test
