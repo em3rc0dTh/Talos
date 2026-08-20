@@ -2,13 +2,14 @@ name: Image vertical slice
 
 on:
   push:
-    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff]
+    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1, image-i5a02-semantic-correction-v0.1, image-i5b00-freeze-hardening-v0.1, image-i5c-generic-handoff, image-i5c02-generic-execution-draft]
     paths:
       - '.github/workflows/image-vslice.yml'
       - 'build/reference-vertical-slice/packages/image-perception/**'
       - 'build/reference-vertical-slice/packages/application/**'
       - 'build/reference-vertical-slice/packages/review/**'
       - 'build/reference-vertical-slice/packages/capability/**'
+      - 'build/reference-vertical-slice/packages/execution/**'
       - 'build/reference-vertical-slice/tests/image-*.test.ts'
       - 'build/reference-vertical-slice/tests/b4-freeze-hardening.test.ts'
       - 'build/reference-vertical-slice/tests/helpers/**'
@@ -23,6 +24,7 @@ on:
       - 'build/reference-vertical-slice/packages/application/**'
       - 'build/reference-vertical-slice/packages/review/**'
       - 'build/reference-vertical-slice/packages/capability/**'
+      - 'build/reference-vertical-slice/packages/execution/**'
       - 'build/reference-vertical-slice/tests/image-*.test.ts'
       - 'build/reference-vertical-slice/tests/b4-freeze-hardening.test.ts'
       - 'build/reference-vertical-slice/tests/helpers/**'
@@ -34,7 +36,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i5c01:
+  image-i5c02:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -103,3 +105,7 @@ jobs:
       - name: Run I5C-01 generic capability design gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i5c01:test
+
+      - name: Run I5C-02 generic ExecutionPlan draft gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i5c02:test
