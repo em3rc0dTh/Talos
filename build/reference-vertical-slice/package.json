@@ -32,6 +32,8 @@
     "b10:restart:test": "node --experimental-strip-types --test ./tests/b10-restart-safe-bootstrap.test.ts",
     "image:i0:test": "node --experimental-strip-types --test ./tests/image-i0-intake.test.ts",
     "image:i0:verify": "npm run architecture:verify && npm run image:i0:test",
+    "image:i1:test": "node --experimental-strip-types --test ./tests/image-i1-perception.test.ts",
+    "image:i1:verify": "npm run architecture:verify && npm run image:i0:test && npm run image:i1:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
