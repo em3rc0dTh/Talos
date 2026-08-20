@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i0:
+  image-i1:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -48,3 +48,7 @@ jobs:
       - name: Run I0 exact image intake gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i0:test
+
+      - name: Run I1 provider/perception gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i1:test
