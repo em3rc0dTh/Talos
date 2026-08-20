@@ -111,7 +111,7 @@ test('I5A-01 explicit confirmation creates reviewer-authored evidence and a new 
     assert.ok(result.candidateValidation);
     assert.ok(result.nextContext);
     assert.equal(result.candidateProcessRevision!.parentRevisionIds[0], prepared.semantic.normalization.processRevision.id);
-    assert.equal(result.candidateProcessRevision!.derivationKind, 'REINTERPRETATION');
+    assert.equal(result.candidateProcessRevision!.derivationKind, 'HUMAN_CONFIRMATION');
     assert.notEqual(result.candidateProcessRevision!.id, prepared.semantic.normalization.processRevision.id);
     assert.equal(result.confirmedClaims.length, allInferred.length);
     assert.equal(result.confirmations.length, allInferred.length);
