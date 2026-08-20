@@ -56,6 +56,7 @@
     "image:i6:test": "node --experimental-strip-types --test ./tests/image-i6-generic-temporal-runtime.test.ts",
     "image:i6:verify": "npm run image:i5c03:verify && npm run image:i6:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
+    "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
