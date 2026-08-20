@@ -2,7 +2,7 @@ name: Image vertical slice
 
 on:
   push:
-    branches: [image-vslice-v0.1, image-i4-canonical-v0.1]
+    branches: [image-vslice-v0.1, image-i4-canonical-v0.1, image-i5a-confirmation-v0.1]
     paths:
       - '.github/workflows/image-vslice.yml'
       - 'build/reference-vertical-slice/packages/image-perception/**'
@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  image-i4:
+  image-i5a:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -56,6 +56,10 @@ jobs:
         working-directory: build/reference-vertical-slice
         run: npm run b3:test
 
+      - name: Regress frozen B4 review implementation
+        working-directory: build/reference-vertical-slice
+        run: npm run b4:test
+
       - name: Run I0 exact image intake gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i0:test
@@ -75,3 +79,7 @@ jobs:
       - name: Run I4 canonical + validation gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i4:test
+
+      - name: Run I5A source-agnostic confirmation gate
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i5a:test
