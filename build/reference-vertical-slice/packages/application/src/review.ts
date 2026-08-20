@@ -55,5 +55,32 @@ export function applyActorCorrection(repo:ImmutableDocumentRepository,current:Re
 
 export interface FreezeResult { commandApplication:ReviewCommandApplication; freezeApplication:SemanticFreezeApplication; freezeRecord?:SemanticFreezeRecord; scopeRecords:ScopeFreezeRecord[]; outcomes:ScopeFreezeOutcome[]; }
 export function applyFreezeCommand(repo:ImmutableDocumentRepository,current:ReviewContextBundle,command:ReviewCommand,payload:FreezeRequestPayload,scopeRequests:ScopeFreezeRequest[],assessments:ValidationAssessment[]):FreezeResult{
-  const at=command.requestedAt;append(repo,command.id,'ReviewCommand',command,at);append(repo,payload.id,'FreezeRequestPayload',payload,at);for(const req of scopeRequests)append(repo,req.id,'ScopeFreezeRequest',req,at);const commandApplication:ReviewCommandApplication={id:createOpaqueId('review',`review-app:${command.id}:freeze-eval`),reviewCommandId:command.id,result:'APPLIED',appliedAt:at,diagnosticRefs:[]};append(repo,commandApplication.id,'ReviewCommandApplication',commandApplication,at);const evaluated=evaluateFreeze(command,commandApplication.id,payload,scopeRequests,current.workspaceRevision,current.baselineBundle,current.scopeBinding,assessments,at);for(const o of evaluated.outcomes)append(repo,o.id,'ScopeFreezeOutcome',o,at);for(const r of evaluated.scopeRecords)append(repo,r.id,'ScopeFreezeRecord',r,at);if(evaluated.freezeRecord)append(repo,evaluated.freezeRecord.id,'SemanticFreezeRecord',evaluated.freezeRecord,at);append(repo,evaluated.application.id,'SemanticFreezeApplication',evaluated.application,at);return{commandApplication,freezeApplication:evaluated.application,freezeRecord:evaluated.freezeRecord,scopeRecords:evaluated.scopeRecords,outcomes:evaluated.outcomes};
+  const at=command.requestedAt;
+  append(repo,command.id,'ReviewCommand',command,at);
+  append(repo,payload.id,'FreezeRequestPayload',payload,at);
+  for(const req of scopeRequests)append(repo,req.id,'ScopeFreezeRequest',req,at);
+
+  const commandApplicationId=createOpaqueId('review',`review-app:${command.id}:freeze-eval`);
+  const evaluated=evaluateFreeze(command,commandApplicationId,payload,scopeRequests,current.workspaceRevision,current.baselineBundle,current.scopeBinding,assessments,at);
+  const commandResult:ReviewCommandApplication['result']=evaluated.application.result==='REJECTED_STALE'
+    ?'REJECTED_STALE'
+    :evaluated.application.result==='REJECTED_AUTHORITY'
+      ?'REJECTED_AUTHORITY'
+      :evaluated.application.result==='REJECTED_INVALID_SCOPE_SET'
+        ?'REJECTED_INVALID'
+        :'APPLIED';
+  const diagnostics=commandResult==='REJECTED_STALE'
+    ?['STALE_REVIEW_BASELINE']
+    :commandResult==='REJECTED_AUTHORITY'
+      ?['SEMANTIC_FREEZE_REQUIRES_AUTHORITY']
+      :commandResult==='REJECTED_INVALID'
+        ?['INVALID_FREEZE_REQUEST_GRAPH']
+        :[];
+  const commandApplication:ReviewCommandApplication={id:commandApplicationId,reviewCommandId:command.id,result:commandResult,appliedAt:at,diagnosticRefs:diagnostics};
+  append(repo,commandApplication.id,'ReviewCommandApplication',commandApplication,at);
+  for(const o of evaluated.outcomes)append(repo,o.id,'ScopeFreezeOutcome',o,at);
+  for(const r of evaluated.scopeRecords)append(repo,r.id,'ScopeFreezeRecord',r,at);
+  if(evaluated.freezeRecord)append(repo,evaluated.freezeRecord.id,'SemanticFreezeRecord',evaluated.freezeRecord,at);
+  append(repo,evaluated.application.id,'SemanticFreezeApplication',evaluated.application,at);
+  return{commandApplication,freezeApplication:evaluated.application,freezeRecord:evaluated.freezeRecord,scopeRecords:evaluated.scopeRecords,outcomes:evaluated.outcomes};
 }
