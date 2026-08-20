@@ -6,7 +6,11 @@
   "engines": {
     "node": ">=22.16.0 <23 || >=24.0.0 <25"
   },
-  "workspaces": ["packages/*","apps/*","workers/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "workers/*"
+  ],
   "scripts": {
     "b0:verify": "node ./scripts/verify-b0.mjs",
     "architecture:verify": "node ./scripts/verify-architecture.mjs",
@@ -64,6 +68,14 @@
     "b9:verify": "npm run b8:verify && npm run b9:test",
     "test": "npm run b9:verify"
   },
-  "dependencies": {"@temporalio/activity":"1.22.0","@temporalio/client":"1.22.0","@temporalio/common":"1.22.0","@temporalio/worker":"1.22.0","@temporalio/workflow":"1.22.0"},
-  "devDependencies": {"@temporalio/testing":"1.22.0"}
+  "dependencies": {
+    "@temporalio/activity": "1.22.0",
+    "@temporalio/client": "1.22.0",
+    "@temporalio/common": "1.22.0",
+    "@temporalio/worker": "1.22.0",
+    "@temporalio/workflow": "1.22.0"
+  },
+  "devDependencies": {
+    "@temporalio/testing": "1.22.0"
+  }
 }
