@@ -14,7 +14,7 @@ import {
   submitReferenceReviewDecision,
 } from '../../../workers/reference-temporal-worker/src/workflow.ts';
 import { deriveReferenceEmailIdempotencyKey } from '../../../packages/reference-email-sink/src/reference-email-sink.ts';
-import { referenceDemoHtml } from './ui.ts';
+import { referenceDemoHtmlI4 } from './image-i4-ui.ts';
 import { createImageApi } from './image-api.ts';
 
 export interface StartReferenceDemoOptions {
@@ -191,7 +191,7 @@ export async function startReferenceDemo(options: StartReferenceDemoOptions = {}
             'content-type': 'text/html; charset=utf-8',
             'cache-control': 'no-store',
           });
-          response.end(referenceDemoHtml);
+          response.end(referenceDemoHtmlI4);
           return;
         }
 
