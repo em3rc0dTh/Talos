@@ -51,10 +51,11 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
 /**
  * Evaluate one semantic freeze request against one exact immutable review baseline.
  *
- * Authority, baseline identity and validation identity are independent gates.
- * A ready assessment for the same semantic scope is not sufficient unless it is
- * the exact assessment pinned by the current ReviewWorkspaceRevision and it
- * assesses the exact ProcessRevision being frozen.
+ * Baseline identity, request-graph identity, validation identity and freeze
+ * authority are independent gates. A ready assessment for the same semantic
+ * scope is not sufficient unless it is the exact assessment pinned by the
+ * current ReviewWorkspaceRevision and it assesses the exact ProcessRevision
+ * being frozen.
  */
 export function evaluateFreeze(
   command: ReviewCommand,
@@ -67,14 +68,6 @@ export function evaluateFreeze(
   assessments: ValidationAssessment[],
   evaluatedAt: string,
 ): FreezeEvaluationResult {
-  if (!command.authorityRef) {
-    return {
-      application: application(command, applicationId, payload, 'REJECTED_AUTHORITY', evaluatedAt),
-      scopeRecords: [],
-      outcomes: [],
-    };
-  }
-
   const staleBaseline = command.expectedReviewWorkspaceRevisionId !== workspaceRevision.id
     || command.expectedReviewBaselineBundleId !== baseline.id
     || baseline.reviewWorkspaceRevisionId !== workspaceRevision.id
@@ -169,6 +162,17 @@ export function evaluateFreeze(
   if (outcomes.some((outcome) => outcome.requestedDisposition === 'ACCEPTED' && outcome.eligibilityResult === 'INELIGIBLE_VALIDATION')) {
     return {
       application: application(command, applicationId, payload, 'REJECTED_VALIDATION_GATE', evaluatedAt, outcomes.map((outcome) => outcome.id)),
+      scopeRecords: [],
+      outcomes,
+    };
+  }
+
+  // Authority is required before any semantic freeze may be created. Validation
+  // may reject an already-ineligible baseline first so readiness and authority
+  // remain distinct diagnostics rather than one masking the other.
+  if (!command.authorityRef) {
+    return {
+      application: application(command, applicationId, payload, 'REJECTED_AUTHORITY', evaluatedAt, outcomes.map((outcome) => outcome.id)),
       scopeRecords: [],
       outcomes,
     };
