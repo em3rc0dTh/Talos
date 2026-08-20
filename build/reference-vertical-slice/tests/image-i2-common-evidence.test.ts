@@ -66,18 +66,32 @@ test('I2 raster occurrences and relationships never fabricate native source IDs 
       assert.equal('sourceAssertedType' in occurrence, false, 'fixture/provider interpretation is not source-asserted type');
       assert.ok(occurrence.sourceExtensionRefs.length > 0, 'perceived occurrence must retain perception lineage');
     }
+    const allowedCommonRoles = new Set([
+      'SEQUENCE_CANDIDATE',
+      'MESSAGE_CANDIDATE',
+      'CONTROL_FLOW_CANDIDATE',
+      'OBJECT_DATA_FLOW',
+      'ANNOTATION_RELATIONSHIP',
+      'ASSIGNMENT_RELATIONSHIP',
+      'SOURCE_DEFINED',
+    ]);
     for (const relation of common.relationships) {
       assert.equal('nativeSourceId' in relation, false);
       assert.equal('sourceAssertedRole' in relation, false, 'provider role preference is not source-asserted relationship role');
       assert.ok(relation.candidateRelationshipRole);
+      assert.ok(allowedCommonRoles.has(relation.candidateRelationshipRole!), `non-frozen common relationship role leaked: ${relation.candidateRelationshipRole}`);
       assert.ok(relation.sourceExtensionRefs.length >= 3, 'relationship must retain candidate/observation/anchor lineage');
       assert.equal(relation.sourceEndpointState, 'SET');
       assert.equal(relation.targetEndpointState, 'SET');
     }
 
     const roles = common.relationships.map((item) => item.candidateRelationshipRole);
-    assert.ok(roles.includes('MESSAGE_INTERACTION_CANDIDATE'));
-    assert.ok(roles.includes('CONDITIONAL_FLOW_CANDIDATE'));
+    assert.ok(roles.includes('MESSAGE_CANDIDATE'));
+    assert.ok(roles.includes('SEQUENCE_CANDIDATE'));
+    assert.ok(roles.includes('CONTROL_FLOW_CANDIDATE'));
+    assert.equal(roles.includes('MESSAGE_INTERACTION_CANDIDATE'), false);
+    assert.equal(roles.includes('CONDITIONAL_FLOW_CANDIDATE'), false);
+    assert.equal(roles.includes('FLOW_CANDIDATE'), false);
     assert.equal(repo.listByKind('PerceptionAlternativeDecision').length, 0, 'I2 does not convert model preference into human confirmation');
   });
 });
