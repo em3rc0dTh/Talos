@@ -1,11 +1,12 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type { ReferenceExecutionBundle } from '../../execution/src/types.ts';
+import type { GenericExecutionDraftBundle } from '../../execution/src/generic-plan.ts';
 import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
 import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
 import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
 
-function append(repo:ImmutableDocumentRepository,kind:string,payload:any,fallbackAt:string):void{
-  repo.append({id:payload.id,aggregateKind:kind,schemaVersion:'phase5-reference-v0.2',payload,createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??fallbackAt});
+function append(repo:ImmutableDocumentRepository,kind:string,payload:any,fallbackAt:string,schemaVersion='phase5-reference-v0.2'):void{
+  repo.append({id:payload.id,aggregateKind:kind,schemaVersion,payload,createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??fallbackAt});
 }
 export function persistReferenceExecutionDesign(repo:ImmutableDocumentRepository,execution:ReferenceExecutionBundle,mapping:ReferenceTemporalMappingBundle,policy:ReferenceRuntimePolicyBundle,deployment:ReferenceDeploymentBundle):void{
   const at=execution.revision.createdAt;
@@ -16,4 +17,21 @@ export function persistReferenceExecutionDesign(repo:ImmutableDocumentRepository
     ['DeploymentDefinition',deployment.definition],['DeploymentRevision',deployment.revision],['DeploymentTargetProfile',deployment.targetProfile],['TemporalNamespaceResolutionContract',deployment.namespaceResolution],['TemporalNamespaceBinding',deployment.namespaceBinding],['ReferenceDeploymentNamingIntent',deployment.namingIntent],...deployment.requirements.map(x=>['DeploymentRequirement',x] as [string,any]),['DeploymentAssessment',deployment.assessment]
   ];
   for(const [kind,payload] of records)append(repo,kind,payload,at);
+}
+
+export function persistGenericExecutionDraft(repo:ImmutableDocumentRepository,execution:GenericExecutionDraftBundle):void{
+  const at=execution.revision.createdAt;
+  const records:Array<[string,any]>=[
+    ['ExecutionPlanDefinition',execution.definition],
+    ['ExecutionPlanRevision',execution.revision],
+    ...execution.scopeBindings.map(x=>['ExecutionScopeBinding',x] as [string,any]),
+    ...execution.regions.map(x=>['ExecutionRegion',x] as [string,any]),
+    ...execution.elements.map(x=>['ExecutionElement',x] as [string,any]),
+    ...execution.relations.map(x=>['ExecutionRelation',x] as [string,any]),
+    ...execution.requirements.map(x=>['ExecutionRequirement',x] as [string,any]),
+    ...execution.mappingTraces.map(x=>['ExecutionSemanticMappingTrace',x] as [string,any]),
+    ...execution.scopeAssessments.map(x=>['ExecutionScopeAssessment',x] as [string,any]),
+    ['ExecutionPlanAssessment',execution.assessment],
+  ];
+  for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-execution-draft-v0.1');
 }
