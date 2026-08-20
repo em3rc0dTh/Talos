@@ -32,6 +32,8 @@
     "image:i1:verify": "npm run architecture:verify && npm run image:i0:test && npm run image:i1:test",
     "image:i2:test": "node --experimental-strip-types --test ./tests/image-i2-common-evidence.test.ts",
     "image:i2:verify": "npm run architecture:verify && npm run b2:test && npm run image:i0:test && npm run image:i1:test && npm run image:i2:test",
+    "image:i3:test": "node --experimental-strip-types --test ./tests/image-i3-review-app.test.ts",
+    "image:i3:verify": "npm run architecture:verify && npm run b2:test && npm run image:i0:test && npm run image:i1:test && npm run image:i2:test && npm run image:i3:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
