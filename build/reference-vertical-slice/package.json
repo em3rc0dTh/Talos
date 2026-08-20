@@ -82,6 +82,7 @@
     "@temporalio/common": "1.22.0",
     "@temporalio/worker": "1.22.0",
     "@temporalio/workflow": "1.22.0",
+    "bpmn-js": "18.24.0",
     "bpmn-moddle": "10.1.0"
   },
   "devDependencies": {
