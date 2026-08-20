@@ -96,6 +96,10 @@ function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>)
   const details: Record<string, unknown> = {};
   if (Object.keys(props).length) details.sourceProperties = props;
   if (sourceState(props['propertyValues.actor']) === 'UNKNOWN') details.responsibilityState = 'UNKNOWN';
+  if (kind === 'EVENT') {
+    const eventRole = unbox(props['propertyValues.eventRole']);
+    if (eventRole) details.eventRole = eventRole;
+  }
   if (kind === 'DECISION') {
     const routingMode = unbox(props['propertyValues.decisionMode']);
     if (routingMode) details.routingMode = routingMode;
@@ -103,6 +107,10 @@ function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>)
   if (kind === 'WAIT') {
     const waitKind = unbox(props['propertyValues.waitKind']);
     if (waitKind) details.waitKind = waitKind;
+    const expression = unbox(props['propertyValues.expression']);
+    const timezone = unbox(props['propertyValues.timezone']);
+    if (expression) details.expression = expression;
+    if (timezone) details.timezone = timezone;
     const resume = unbox(props['propertyValues.resumeCondition']) ?? unbox(props['propertyValues.eventDescriptor']);
     if (resume) details.resumeSemantics = resume;
   }
@@ -115,6 +123,8 @@ function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>)
   if (kind === 'SUBPROCESS') {
     const mode = unbox(props['propertyValues.boundaryMeaning']);
     if (mode) details.subprocessMode = mode;
+    const internals = unbox(props['propertyValues.internalSemantics']);
+    if (internals) details.internalSemantics = internals;
   }
   return details;
 }
@@ -193,6 +203,7 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
   const edges: ProcessEdge[] = [];
   const extensions: SourceSemanticExtension[] = [];
   const canonicalByDescriptor = new Map<string, CanonicalId>();
+  const propsByCanonical = new Map<string, Record<string, unknown>>();
 
   const propertiesFor = (descriptor: SourceOccurrenceDescriptor): Record<string, unknown> => {
     const props: Record<string, unknown> = {};
@@ -224,6 +235,13 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
     return claim;
   };
 
+  const emitPropertyClaims = (canonicalId: string, props: Record<string, unknown>, fragment: EvidenceFragment, sourceOccurrenceId: ProvenanceId) => {
+    for (const [path, value] of Object.entries(props)) {
+      const propertyPath = path.startsWith('propertyValues.') ? `details.${path.slice('propertyValues.'.length)}` : path;
+      makeClaim(canonicalId, propertyPath, value, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, propertyPath));
+    }
+  };
+
   for (const descriptor of elementDescriptors) {
     const fragmentKind = descriptor.occurrenceKind === 'OBJECT_NODE' ? 'OBJECT_OCCURRENCE' : descriptor.occurrenceKind === 'ANNOTATION' ? 'ANNOTATION' : profile.nodeFragmentKind ?? 'SOURCE_ELEMENT';
     const fragment = makeFragment(descriptor, fragmentKind);
@@ -233,22 +251,42 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
     occurrences.push({ id: sourceOccurrenceId, sourceArtifactId: artifact.id, evidenceFragmentId: fragment.id, occurrenceKind: occurrenceKind(descriptor.occurrenceKind), ...(descriptor.literalLabel ? { displayLabel: descriptor.literalLabel } : {}), ...(descriptor.sourceAssertedType ? { sourceAssertedType: descriptor.sourceAssertedType } : {}), ...(descriptor.candidateSemanticType ? { candidateSemanticType: descriptor.candidateSemanticType } : {}), sourceContextRefs: [], canonicalRef: canonicalId });
 
     const props = propertiesFor(descriptor);
+    propsByCanonical.set(String(canonicalId), props);
     const baseLink = makeLink(canonicalId, fragment, sourceOccurrenceId);
     makeClaim(canonicalId, 'kind', descriptor.candidateSemanticType ?? descriptor.sourceAssertedType ?? descriptor.occurrenceKind, fragment, baseLink);
     if (descriptor.literalLabel !== undefined) makeClaim(canonicalId, 'name', descriptor.literalLabel, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, 'name'));
 
-    if (descriptor.candidateSemanticType === 'ACTOR') { actors.push({ id: canonicalId, kind: actorKind(props), name: descriptor.literalLabel ?? 'Unknown actor', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] }); continue; }
-    if (descriptor.candidateSemanticType === 'DATA_OBJECT') { dataObjects.push({ id: canonicalId, name: descriptor.literalLabel ?? 'Unnamed data object', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] }); continue; }
-    if (descriptor.candidateSemanticType === 'BUSINESS_RULE') { rules.push({ id: canonicalId, naturalLanguage: descriptor.literalLabel ?? '', inputs: [], truthClass: profile.defaultTruthClass, unresolvedTerms: [], provenanceRefs: [baseLink.id] }); continue; }
+    if (descriptor.candidateSemanticType === 'ACTOR') {
+      actors.push({ id: canonicalId, kind: actorKind(props), name: descriptor.literalLabel ?? 'Unknown actor', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] });
+      emitPropertyClaims(canonicalId, props, fragment, sourceOccurrenceId);
+      continue;
+    }
+    if (descriptor.candidateSemanticType === 'DATA_OBJECT') {
+      dataObjects.push({ id: canonicalId, name: descriptor.literalLabel ?? 'Unnamed data object', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] });
+      emitPropertyClaims(canonicalId, props, fragment, sourceOccurrenceId);
+      continue;
+    }
+    if (descriptor.candidateSemanticType === 'BUSINESS_RULE') {
+      rules.push({ id: canonicalId, naturalLanguage: descriptor.literalLabel ?? '', inputs: [], truthClass: profile.defaultTruthClass, unresolvedTerms: [], provenanceRefs: [baseLink.id] });
+      emitPropertyClaims(canonicalId, props, fragment, sourceOccurrenceId);
+      continue;
+    }
 
     const kind = nodeKind(descriptor.candidateSemanticType);
     if (!kind) continue;
     const details = buildNodeDetails(kind, props);
     nodes.push({ id: canonicalId, kind, ...(descriptor.literalLabel ? { name: descriptor.literalLabel } : {}), actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], ...(Object.keys(details).length ? { details } : {}), truthClass: profile.defaultTruthClass, provenanceRefs: [baseLink.id], sourceExtensionRefs: [] });
-    for (const [path, value] of Object.entries(props)) {
-      const propertyPath = path.startsWith('propertyValues.') ? `details.${path.slice('propertyValues.'.length)}` : path;
-      makeClaim(canonicalId, propertyPath, value, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, propertyPath));
-    }
+    emitPropertyClaims(canonicalId, props, fragment, sourceOccurrenceId);
+  }
+
+  // Resolve responsibility only when common evidence identifies exactly one canonical Actor by name.
+  // Ambiguity remains unresolved rather than being guessed from lane order or labels.
+  for (const node of nodes) {
+    const props = propsByCanonical.get(String(node.id)) ?? {};
+    const actorName = unbox(props['propertyValues.actor']);
+    if (typeof actorName !== 'string' || actorName.trim().length === 0) continue;
+    const matches = actors.filter((actor) => actor.name === actorName.trim());
+    if (matches.length === 1) node.actorRefs = [matches[0].id];
   }
 
   const mapRelationshipRole = profile.mapRelationshipRole ?? defaultRelationshipKind;
