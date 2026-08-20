@@ -7,7 +7,7 @@
     {"name":"canvas-source","root":"packages/canvas-source","allowedInternalImports":["foundation","source-intake"],"allowedExternalPackages":["zod"]},
     {"name":"image-perception","root":"packages/image-perception","allowedInternalImports":["foundation","source-intake"],"allowedExternalPackages":["zod"]},
     {"name":"semantic-core","root":"packages/semantic-core","allowedInternalImports":["foundation"],"allowedExternalPackages":["zod"]},
-    {"name":"review","root":"packages/review","allowedInternalImports":["foundation","semantic-core","canvas-source"],"allowedExternalPackages":["zod"]},
+    {"name":"review","root":"packages/review","allowedInternalImports":["foundation","semantic-core","canvas-source"],"allowedExternalPackages":["bpmn-moddle","zod"]},
     {"name":"capability","root":"packages/capability","allowedInternalImports":["foundation","semantic-core","review"],"allowedExternalPackages":["zod"]},
     {"name":"execution","root":"packages/execution","allowedInternalImports":["foundation","semantic-core","review","capability"],"allowedExternalPackages":["zod"]},
     {"name":"temporal-design","root":"packages/temporal-design","allowedInternalImports":["foundation","execution"],"allowedExternalPackages":["zod"]},
