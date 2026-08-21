@@ -23,6 +23,8 @@ export interface WorkspaceServerOptions {
   bpmnCorrectionEndpoint?: string;
   bpmnCorrectionTimeoutMs?: number;
   bpmnCorrectionHeaders?: Readonly<Record<string, string>>;
+  /** Internal compatibility switch. The historical I7B-05 entrypoint defaults false. */
+  productMode?: boolean;
 }
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -96,10 +98,7 @@ function serveBpmnJs(pathname: string, res: http.ServerResponse): boolean {
 function publicReconciliation(result: NativeBpmnCanonicalReconciliationResult | undefined): unknown {
   if (!result) return undefined;
   if (result.status === 'BLOCKED') {
-    return {
-      status: result.status,
-      diagnostics: result.diagnostics,
-    };
+    return { status: result.status, diagnostics: result.diagnostics };
   }
   return {
     status: result.status,
@@ -114,8 +113,16 @@ function publicBinding(binding: ReconciledBinding | undefined): unknown {
   return binding ? publicReconciliation(binding) : undefined;
 }
 
+/**
+ * Historical I7B-05 server contract.
+ *
+ * By default this keeps native BPMN import/edit separate from canonical
+ * reconciliation exactly as I7B-05 proved. I7B-08 is exposed through the
+ * explicit product entrypoint below, rather than silently changing history.
+ */
 export async function startProcessConfirmationWorkspace(options: WorkspaceServerOptions = {}) {
   const host = options.host ?? '127.0.0.1';
+  const productMode = options.productMode === true;
   const runtimeDir = options.runtimeDir ?? mkdtempSync(path.join(os.tmpdir(), 'talos-bpmn-workspace-'));
   const ownsDir = !options.runtimeDir;
   const repo = new SqliteDocumentStore(path.join(runtimeDir, 'talos-workspace.sqlite'));
@@ -125,7 +132,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
   const bindings = new Map<string, ReconciledBinding>();
 
   const correctionEndpoint = options.bpmnCorrectionEndpoint ?? process.env.TALOS_BPMN_CORRECTION_PROVIDER_URL;
-  const correctionService: NaturalLanguageBpmnCorrectionService | undefined = correctionEndpoint
+  const correctionService: NaturalLanguageBpmnCorrectionService | undefined = productMode && correctionEndpoint
     ? createHttpBpmnCorrectionService(repo, {
         endpoint: correctionEndpoint,
         ...(options.bpmnCorrectionTimeoutMs ? { timeoutMs: options.bpmnCorrectionTimeoutMs } : {}),
@@ -155,6 +162,21 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
       }
 
       if (req.method === 'GET' && url.pathname === '/api/workspace/status') {
+        if (!productMode) {
+          json(res, 200, {
+            status: 'READY_FOR_PROCESS_INPUT',
+            inputRoutes: ['IMAGE_PNG', 'NATIVE_BPMN'],
+            nativeBpmn: { parse: true, render: true, graphEdit: true, xmlEdit: true },
+            image: {
+              exactSourceIntake: true,
+              liveVisionInterpretation: false,
+              reason: 'I7C_REAL_ARBITRARY_IMAGE_VISION_NOT_CONFIGURED',
+            },
+            confirmation: { automatic: false, requiresCanonicalAlignment: true },
+            execution: { automatic: false, separateAutomationDesignGate: true },
+          });
+          return;
+        }
         json(res, 200, {
           status: 'READY_FOR_PROCESS_INPUT',
           inputRoutes: ['IMAGE_PNG', 'NATIVE_BPMN'],
@@ -175,10 +197,8 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
             proposalOnly: true,
             automaticApplyAuthorized: false,
           },
-          confirmation: {
-            automatic: false,
-            requiresCanonicalAlignment: true,
-          },
+          confirmation: { automatic: false, requiresCanonicalAlignment: true },
+          execution: { automatic: false, separateAutomationDesignGate: true },
           automationDesign: {
             semanticFreezeGate: true,
             requiresIndependentAuthority: true,
@@ -208,6 +228,10 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           declaredName: typeof input.fileName === 'string' ? input.fileName : 'uploaded-process.bpmn',
           initiatedBy,
         });
+        if (!productMode) {
+          json(res, 201, imported);
+          return;
+        }
         const reconciliation = await reconcileRevision(imported.revision.id, initiatedBy);
         const revision = reconciliation.status === 'RECONCILED'
           ? reconciliation.alignedBpmnRevision
@@ -233,6 +257,10 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           editMode,
           editedBy,
         });
+        if (!productMode) {
+          json(res, 201, edited);
+          return;
+        }
 
         let revision = edited.revision;
         let reconciliation: unknown = publicBinding(baseBinding);
@@ -244,11 +272,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           bindings.set(revision.id, baseBinding);
         }
 
-        json(res, 201, {
-          ...edited,
-          revision,
-          reconciliation,
-        });
+        json(res, 201, { ...edited, revision, reconciliation });
         return;
       }
 
@@ -265,7 +289,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
         return;
       }
 
-      if (req.method === 'POST' && url.pathname === '/api/bpmn/correction/propose') {
+      if (productMode && req.method === 'POST' && url.pathname === '/api/bpmn/correction/propose') {
         if (!correctionService) {
           json(res, 409, {
             error: 'Natural-language BPMN correction provider is not configured',
@@ -284,10 +308,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
             ...result,
             status: 'PROPOSED',
             serviceStatus: result.status,
-            diff: {
-              ...result.diff,
-              unifiedDiff: result.diff.unifiedPreview,
-            },
+            diff: { ...result.diff, unifiedDiff: result.diff.unifiedPreview },
           });
         } else {
           json(res, 200, result);
@@ -295,7 +316,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
         return;
       }
 
-      if (req.method === 'POST' && url.pathname === '/api/bpmn/correction/decide') {
+      if (productMode && req.method === 'POST' && url.pathname === '/api/bpmn/correction/decide') {
         if (!correctionService) {
           json(res, 409, {
             error: 'Natural-language BPMN correction provider is not configured',
@@ -332,7 +353,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
         return;
       }
 
-      if (req.method === 'POST' && url.pathname === '/api/bpmn/automation-design-approval') {
+      if (productMode && req.method === 'POST' && url.pathname === '/api/bpmn/automation-design-approval') {
         const input = await jsonBody(req);
         const revisionId = text(input.revisionId, 'revisionId');
         const confirmationId = text(input.confirmationId, 'confirmationId');
@@ -434,10 +455,15 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
   };
 }
 
+/** Product entrypoint added by I7B-08. */
+export function startTalosProcessConfirmationProduct(options: Omit<WorkspaceServerOptions, 'productMode'> = {}) {
+  return startProcessConfirmationWorkspace({ ...options, productMode: true });
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  startProcessConfirmationWorkspace({ port: Number(process.env.PORT ?? 4318) })
+  startTalosProcessConfirmationProduct({ port: Number(process.env.PORT ?? 4318) })
     .then((app) => {
-      console.log(`Talos Process Confirmation workspace ready at ${app.baseUrl}`);
+      console.log(`Talos Process Confirmation product ready at ${app.baseUrl}`);
       const stop = async () => { await app.close(); process.exit(0); };
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
