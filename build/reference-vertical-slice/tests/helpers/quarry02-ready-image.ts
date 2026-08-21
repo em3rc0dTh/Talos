@@ -153,6 +153,19 @@ export function buildReadyQuarry02ImageReview(repo: SqliteDocumentStore, byteSto
     },
   }));
 
+  const wait = byName(current.process, 'On Next Wednesday');
+  current = applyCorrection(repo, current, correctionCommand(current, 5, {
+    actionKind: 'CORRECT_PROPERTY',
+    targetSubjectRefs: [wait.id],
+    targetPropertyPath: 'details.waitSemantics',
+    proposedValue: {
+      waitKind: 'SCHEDULE',
+      expression: 'NEXT_WEDNESDAY',
+      timezone: 'America/Lima',
+    },
+    rationale: 'Business reviewer explicitly defines the schedule semantics and timezone; the image label alone does not authorize a timer.',
+  }));
+
   if (current.validation.assessment.executionReadiness !== 'READY_FOR_AUTOMATION_DESIGN') {
     throw new Error(`fixture did not reach ready state: ${current.validation.assessment.executionReadiness}`);
   }

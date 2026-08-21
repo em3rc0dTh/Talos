@@ -37,6 +37,31 @@ export interface SubprocessExecutionResolution {
   rationale: string;
 }
 
+/**
+ * Explicit execution-design treatment for a frozen semantic relation whose
+ * business kind does not itself determine an executable coordination kind.
+ * This never rewrites the canonical ProcessEdge.
+ */
+export interface RelationExecutionResolution {
+  semanticRelationRef: string;
+  executionRelationKind: 'SEQUENCE' | 'WAIT_RESUME';
+  authorityRef: string;
+  decidedBy: string;
+  rationale: string;
+}
+
+export interface ExecutionRelationResolutionRecord {
+  id: ExecutionId;
+  executionPlanRevisionId: ExecutionId;
+  semanticRelationRef: string;
+  sourceSemanticRelationKind: ProcessEdge['kind'];
+  resolvedExecutionRelationKind: 'SEQUENCE' | 'WAIT_RESUME';
+  authorityRef: string;
+  decidedBy: string;
+  rationale: string;
+  createdAt: string;
+}
+
 export interface ExecutionCoordinationResolutionRecord {
   id: ExecutionId;
   executionPlanRevisionId: ExecutionId;
@@ -62,6 +87,7 @@ export interface GenericResolvedExecutionBundle {
   scopeAssessments: ExecutionScopeAssessment[];
   assessment: ExecutionPlanAssessment;
   coordinationResolutions: ExecutionCoordinationResolutionRecord[];
+  relationResolutions: ExecutionRelationResolutionRecord[];
   plannerVersion: string;
 }
 
@@ -142,6 +168,7 @@ export function designGenericResolvedExecutionPlan(
   subprocessResolutions: SubprocessExecutionResolution[],
   createdAt: string,
   parentExecutionPlanRevisionRef?: ExecutionId,
+  relationResolutions: RelationExecutionResolution[] = [],
 ): GenericResolvedExecutionBundle {
   validateInputs(process, scope, assessment, freeze, scopeFreeze, capability);
   const subprocessBySubject = new Map(subprocessResolutions.map((item) => [item.semanticSubjectRef, item]));
@@ -150,6 +177,14 @@ export function designGenericResolvedExecutionPlan(
     if (!resolution.authorityRef.trim() || !resolution.decidedBy.trim() || !resolution.rationale.trim()) throw new TypeError('subprocess execution resolution requires authority, decision owner and rationale');
     const node = process.nodes.find((item) => item.id === resolution.semanticSubjectRef);
     if (!node || node.kind !== 'SUBPROCESS') throw new TypeError(`subprocess resolution targets non-subprocess ${resolution.semanticSubjectRef}`);
+  }
+  const relationResolutionBySemanticRef = new Map(relationResolutions.map((item) => [item.semanticRelationRef, item]));
+  if (relationResolutionBySemanticRef.size !== relationResolutions.length) throw new TypeError('duplicate execution relation resolution');
+  for (const resolution of relationResolutions) {
+    if (!resolution.authorityRef.trim() || !resolution.decidedBy.trim() || !resolution.rationale.trim()) throw new TypeError('execution relation resolution requires authority, decision owner and rationale');
+    const edge = process.edges.find((item) => item.id === resolution.semanticRelationRef);
+    if (!edge) throw new TypeError(`execution relation resolution targets missing semantic relation ${resolution.semanticRelationRef}`);
+    if (relationKind(edge) !== 'SOURCE_DEFINED') throw new TypeError(`execution relation resolution may only resolve a semantically preserved relation with no direct execution kind: ${resolution.semanticRelationRef}`);
   }
 
   const definitionId = exe(`generic-resolved-plan-definition:${process.processDefinitionId}`);
@@ -164,6 +199,13 @@ export function designGenericResolvedExecutionPlan(
       decidedBy: item.decidedBy,
       rationale: item.rationale,
     })).sort((a, b) => a.semanticSubjectRef.localeCompare(b.semanticSubjectRef)),
+    relationResolutions: relationResolutions.map((item) => ({
+      semanticRelationRef: item.semanticRelationRef,
+      executionRelationKind: item.executionRelationKind,
+      authorityRef: item.authorityRef,
+      decidedBy: item.decidedBy,
+      rationale: item.rationale,
+    })).sort((a, b) => a.semanticRelationRef.localeCompare(b.semanticRelationRef)),
   });
   const revisionId = exe(`generic-resolved-plan-revision:${freeze.id}:${capability.designRevision.id}:${resolutionDigest}`);
   const scopeBindingId = exe(`generic-resolved-scope:${revisionId}:${scope.id}`);
@@ -174,6 +216,7 @@ export function designGenericResolvedExecutionPlan(
   const capabilityUses: CapabilityUseOccurrence[] = [];
   const mappingTraces: ExecutionSemanticMappingTrace[] = [];
   const coordinationResolutions: ExecutionCoordinationResolutionRecord[] = [];
+  const relationResolutionRecords: ExecutionRelationResolutionRecord[] = [];
 
   for (const node of process.nodes) {
     const elementId = elementIdByNode.get(node.id)!;
@@ -275,14 +318,29 @@ export function designGenericResolvedExecutionPlan(
     const targetElementRef = elementIdByNode.get(edge.targetNodeId);
     if (!sourceElementRef || !targetElementRef) throw new TypeError(`resolved ExecutionPlan relation ${edge.id} references missing endpoint`);
     const relationId = exe(`generic-resolved-relation:${revisionId}:${edge.id}`);
-    const complete = relationComplete(process, edge);
+    const baseRelationKind = relationKind(edge);
+    const explicitResolution = relationResolutionBySemanticRef.get(edge.id);
+    const complete = relationComplete(process, edge) || Boolean(explicitResolution);
+    if (explicitResolution) {
+      relationResolutionRecords.push({
+        id: exe(`generic-relation-resolution:${revisionId}:${edge.id}`),
+        executionPlanRevisionId: revisionId,
+        semanticRelationRef: edge.id,
+        sourceSemanticRelationKind: edge.kind,
+        resolvedExecutionRelationKind: explicitResolution.executionRelationKind,
+        authorityRef: explicitResolution.authorityRef,
+        decidedBy: explicitResolution.decidedBy,
+        rationale: explicitResolution.rationale,
+        createdAt,
+      });
+    }
     relations.push({
       id: relationId,
       executionPlanRevisionId: revisionId,
       executionRegionRef: regionId,
       sourceElementRef,
       targetElementRef,
-      relationKind: relationKind(edge),
+      relationKind: explicitResolution?.executionRelationKind ?? baseRelationKind,
       semanticRelationRefs: [edge.id],
       ...(edge.conditionRuleRef ? { conditionRef: edge.conditionRuleRef } : {}),
       relationState: complete ? 'COMPLETE' : 'INCOMPLETE',
@@ -353,6 +411,7 @@ export function designGenericResolvedExecutionPlan(
     bindingRefs: capability.bindingRevisions.map((item) => item.id).sort(),
     humanDesignRefs: capability.humanDesigns.map((item) => item.id).sort(),
     coordinationResolutions: coordinationResolutions.map((item) => ({ id: item.id, subject: item.semanticSubjectRef, kind: item.resolutionKind, authorityRef: item.authorityRef })),
+    relationResolutions: relationResolutionRecords.map((item) => ({ id: item.id, semanticRelationRef: item.semanticRelationRef, sourceKind: item.sourceSemanticRelationKind, resolvedKind: item.resolvedExecutionRelationKind, authorityRef: item.authorityRef })),
     elements: elements.map((item) => ({ id: item.id, kind: item.kind, subjects: item.semanticSubjectRefs, capabilityUses: item.capabilityUseRefs, state: item.designState })),
     relations: relations.map((item) => ({ id: item.id, kind: item.relationKind, semanticRelationRefs: item.semanticRelationRefs, ...(item.conditionRef ? { conditionRef: item.conditionRef } : {}), state: item.relationState })),
     requirements: requirements.map((item) => ({ id: item.id, targetRef: item.targetRef, state: item.resolutionState, evidenceRefs: item.evidenceRefs })),
@@ -407,6 +466,7 @@ export function designGenericResolvedExecutionPlan(
     scopeAssessments: [scopeAssessment],
     assessment: planAssessment,
     coordinationResolutions,
+    relationResolutions: relationResolutionRecords,
     plannerVersion: PLANNER_VERSION,
   };
 }

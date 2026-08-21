@@ -1,9 +1,9 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import type { AssessmentIntent,AssessmentScope,ClarificationPlan,ClarificationQuestion,ExecutionReadiness,ProcessNode,ProcessRevision,ReadinessDecision,SemanticVerdict,ValidationAssessment,ValidationBundle,ValidationFinding,ValidationId } from './types.ts';
 
-export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.2';
-export const SEMANTIC_RULESET_VERSION='semantic-validation-v0.2';
-export const READINESS_RULE_VERSION='semantic-validation-readiness-v0.2';
+export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.3';
+export const SEMANTIC_RULESET_VERSION='semantic-validation-v0.3';
+export const READINESS_RULE_VERSION='semantic-validation-readiness-v0.3';
 
 interface FindingDraft { code:string; family:string; title:string; description:string; targetRefs:string[]; evidenceRefs?:string[]; provenanceRefs?:any[]; severity:'INFO'|'WARNING'|'ERROR'|'CRITICAL'; blockerClass:'NONE'|'SEMANTIC_UNDERSTANDING'|'AUTOMATION_DESIGN'|'SOURCE_ACCEPTANCE'; resolutionRoute:ValidationFinding['resolutionRoute']; questionCandidate?:boolean; deferredGate?:string; }
 function sourceProps(node:ProcessNode):Record<string,unknown>{return (node.details?.sourceProperties as Record<string,unknown>|undefined)??{};}
@@ -31,10 +31,13 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       if(!out.some(f=>f.code==='SV-ACT-001'&&f.targetRefs.includes(node.id)))out.push({code:'SV-ACT-001',family:'ACTOR_RESPONSIBILITY',title:'Actor or owner missing',description:`Human interaction ${node.name??node.id} has no responsible actor.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
     }
     if(node.kind==='WAIT'){
-      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??'');
-      const timezone=props.timezone??props['propertyValues.timezone'];
-      const expression=props.expression??props['propertyValues.expression'];
-      if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||stateOf(expression)==='UNKNOWN')){
+      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??'');
+      const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
+      const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
+      if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
+        out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }
+      if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
         out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
       if((waitKind==='EXTERNAL_EVENT'||waitKind==='MESSAGE'||waitKind==='HUMAN_RESPONSE'||waitKind==='CONDITION')&&!node.details?.resumeSemantics){
@@ -83,7 +86,9 @@ function questionText(f:ValidationFinding):string{
     case'SV-CFL-001':return'What exact business condition selects this branch?';
     case'SV-CFL-002':return'What happens on this unresolved branch?';
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
+    case'SV-EVT-001':return'What exact event, message, response, or condition resumes this wait?';
     case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';
+    case'SV-EVT-003':return'What kind of wait is this: schedule, deadline, message, event, human response, or condition?';
     case'SV-CON-001':return'What synchronization rule determines when this join may continue?';
     case'SV-CMP-001':return'What explicit business outcome completes this process scope?';
     default:return`Please clarify: ${f.title}.`;
