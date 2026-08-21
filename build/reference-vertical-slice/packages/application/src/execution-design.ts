@@ -53,6 +53,7 @@ export function persistGenericResolvedExecutionPlan(repo:ImmutableDocumentReposi
     ...execution.scopeAssessments.map(x=>['ExecutionScopeAssessment',x] as [string,any]),
     ['ExecutionPlanAssessment',execution.assessment],
     ...execution.coordinationResolutions.map(x=>['ExecutionCoordinationResolution',x] as [string,any]),
+    ...execution.relationResolutions.map(x=>['ExecutionRelationResolution',x] as [string,any]),
   ];
   for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-resolved-execution-v0.1');
 }

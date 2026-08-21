@@ -138,6 +138,8 @@ test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-r
     const resolved = resolveGenericCapabilities(x.base, systemResolutions(x), AT);
     const subprocess = x.current.process.nodes.find((node) => node.kind === 'SUBPROCESS');
     assert.ok(subprocess);
+    const messageRelation = x.current.process.edges.find((edge) => edge.kind === 'MESSAGE');
+    assert.ok(messageRelation, 'Quarry-02 message interaction must remain canonical MESSAGE');
     const plan = designGenericResolvedExecutionPlan(
       x.current.process,
       x.current.validation.scope,
@@ -153,6 +155,14 @@ test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-r
         rationale: 'Keep the collapsed business subprocess as inline coordination; do not infer Child Workflow.',
       }],
       AT,
+      undefined,
+      [{
+        semanticRelationRef: messageRelation!.id,
+        executionRelationKind: 'SEQUENCE',
+        authorityRef: 'reference-execution-architect',
+        decidedBy: 'talos-reference-design',
+        rationale: 'Preserve the canonical MESSAGE business relationship while explicitly designing its in-workflow execution ordering as sequence coordination.',
+      }],
     );
 
     assert.deepEqual(new Set(plan.revision.capabilityBindingRevisionRefs), new Set(resolved.bindingRevisions.map((binding) => binding.id)));
@@ -173,6 +183,12 @@ test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-r
     const subprocessElement = plan.elements.find((element) => element.semanticSubjectRefs.includes(subprocess!.id));
     assert.equal(subprocessElement?.designState, 'COMPLETE');
     assert.equal(plan.coordinationResolutions[0].resolutionKind, 'INLINE_COORDINATION');
+    assert.equal(plan.relationResolutions.length, 1);
+    assert.equal(plan.relationResolutions[0].semanticRelationRef, messageRelation!.id);
+    assert.equal(plan.relationResolutions[0].sourceSemanticRelationKind, 'MESSAGE');
+    assert.equal(plan.relationResolutions[0].resolvedExecutionRelationKind, 'SEQUENCE');
+    assert.equal(plan.relationResolutions[0].authorityRef, 'reference-execution-architect');
+    assert.equal(x.current.process.edges.find((edge) => edge.id === messageRelation!.id)?.kind, 'MESSAGE', 'execution design must never rewrite canonical MESSAGE truth');
     assert.equal(JSON.stringify(plan).includes('CHILD_WORKFLOW'), false);
 
     assert.deepEqual(plan.requirements, [], 'Temporal mapping readiness requires zero unresolved execution requirements');
@@ -190,6 +206,7 @@ test('I5C-03 persistence keeps resolved capability/execution artifacts independe
   try {
     const resolved = resolveGenericCapabilities(x.base, systemResolutions(x), AT);
     const subprocess = x.current.process.nodes.find((node) => node.kind === 'SUBPROCESS')!;
+    const messageRelation = x.current.process.edges.find((edge) => edge.kind === 'MESSAGE')!;
     const plan = designGenericResolvedExecutionPlan(
       x.current.process,
       x.current.validation.scope,
@@ -199,6 +216,8 @@ test('I5C-03 persistence keeps resolved capability/execution artifacts independe
       resolved,
       [{ semanticSubjectRef: subprocess.id, boundaryKind: 'INLINE_COORDINATION', authorityRef: 'reference-execution-architect', decidedBy: 'talos-reference-design', rationale: 'Explicit inline execution design.' }],
       AT,
+      undefined,
+      [{ semanticRelationRef: messageRelation.id, executionRelationKind: 'SEQUENCE', authorityRef: 'reference-execution-architect', decidedBy: 'talos-reference-design', rationale: 'Explicit execution ordering for the frozen MESSAGE relation.' }],
     );
     persistGenericCapabilityResolution(x.repo, resolved);
     persistGenericResolvedExecutionPlan(x.repo, plan);
@@ -207,6 +226,7 @@ test('I5C-03 persistence keeps resolved capability/execution artifacts independe
     assert.equal(x.repo.listByKind('CapabilityBindingRevision').length, resolved.bindingRevisions.length);
     assert.equal(x.repo.listByKind('CapabilityUseOccurrence').length, plan.capabilityUses.length);
     assert.equal(x.repo.listByKind('ExecutionCoordinationResolution').length, 1);
+    assert.equal(x.repo.listByKind('ExecutionRelationResolution').length, 1);
     for (const forbidden of ['TemporalMappingRevision', 'RuntimePolicyRevision', 'DeploymentRevision', 'WorkflowExecutionObservation']) {
       assert.equal(x.repo.listByKind(forbidden).length, 0, `${forbidden} must remain unopened in I5C-03`);
     }
