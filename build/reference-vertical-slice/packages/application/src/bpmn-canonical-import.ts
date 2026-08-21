@@ -1,16 +1,12 @@
-import { BpmnModdle } from 'bpmn-moddle';
-import { digestDeterministicJson } from '../../foundation/src/digest.ts';
 import { createOpaqueId, type OpaqueId } from '../../foundation/src/ids.ts';
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import {
   alignBpmnRevisionToCanonical,
-  inspectBpmnXml,
-  talosBpmnModdleDescriptor,
+  buildBpmnCanonicalSourceView,
+  type BpmnCanonicalSourceNode,
   type BpmnProcessRevision,
 } from '../../review/src/index.ts';
-import {
-  validateProcessRevision,
-} from '../../semantic-core/src/validation.ts';
+import { validateProcessRevision } from '../../semantic-core/src/validation.ts';
 import type {
   Actor,
   BusinessRule,
@@ -29,8 +25,6 @@ import { initializeReview, type InitializedReview } from './review.ts';
 export const NATIVE_BPMN_CANONICAL_ADAPTER_VERSION = 'talos-native-bpmn-canonical-adapter-v0.1';
 const CANONICAL_SCHEMA = 'talos-native-bpmn-canonical-v0.1';
 const BPMN_WORKSPACE_SCHEMA = 'talos-bpmn-workspace-v0.1';
-
-type AnyRecord = Record<string, any>;
 
 export interface NativeBpmnCanonicalDiagnostic {
   code:
@@ -63,43 +57,16 @@ export type NativeBpmnCanonicalReconciliationResult =
       diagnostics: NativeBpmnCanonicalDiagnostic[];
     };
 
-function createModdle(): BpmnModdle {
-  return new BpmnModdle({ talos: talosBpmnModdleDescriptor as any });
-}
-
 function canonical(seed: string): CanonicalId {
   return createOpaqueId('canonical', seed);
 }
 
-function sourceType(element: AnyRecord): string {
-  return typeof element.$type === 'string' ? element.$type : 'UNKNOWN';
-}
-
-function sourceId(element: AnyRecord): string {
-  return typeof element.id === 'string' && element.id ? element.id : sourceType(element);
-}
-
-function normalizedName(element: AnyRecord): string | undefined {
-  const name = typeof element.name === 'string' ? element.name.trim() : '';
-  return name || undefined;
-}
-
-function flattenLanes(process: AnyRecord): AnyRecord[] {
-  const out: AnyRecord[] = [];
-  const visitLane = (lane: AnyRecord) => {
-    out.push(lane);
-    const childLaneSet = lane.childLaneSet;
-    for (const child of childLaneSet?.lanes ?? []) visitLane(child);
-  };
-  for (const laneSet of process.laneSets ?? []) {
-    for (const lane of laneSet.lanes ?? []) visitLane(lane);
-  }
-  return out;
-}
-
-function nodeKind(element: AnyRecord, incoming: number, outgoing: number): { kind?: ProcessNodeKind; details?: Record<string, unknown>; diagnostic?: NativeBpmnCanonicalDiagnostic } {
-  const type = sourceType(element);
-  switch (type) {
+function nodeKind(element: BpmnCanonicalSourceNode): {
+  kind?: ProcessNodeKind;
+  details?: Record<string, unknown>;
+  diagnostic?: NativeBpmnCanonicalDiagnostic;
+} {
+  switch (element.type) {
     case 'bpmn:StartEvent':
       return { kind: 'EVENT' };
     case 'bpmn:EndEvent':
@@ -117,15 +84,15 @@ function nodeKind(element: AnyRecord, incoming: number, outgoing: number): { kin
     case 'bpmn:ExclusiveGateway':
       return { kind: 'DECISION' };
     case 'bpmn:ParallelGateway': {
-      const diverges = outgoing > 1;
-      const converges = incoming > 1;
+      const diverges = element.outgoingCount > 1;
+      const converges = element.incomingCount > 1;
       if (diverges && converges) {
         return {
           diagnostic: {
             code: 'UNSUPPORTED_PARALLEL_GATEWAY_SHAPE',
             message: 'A single BPMN parallel gateway that both joins and splits requires an explicit Talos expansion before automation design.',
-            bpmnElementId: sourceId(element),
-            bpmnType: type,
+            bpmnElementId: element.id,
+            bpmnType: element.type,
           },
         };
       }
@@ -135,8 +102,8 @@ function nodeKind(element: AnyRecord, incoming: number, outgoing: number): { kin
         diagnostic: {
           code: 'UNSUPPORTED_PARALLEL_GATEWAY_SHAPE',
           message: 'Parallel gateway direction cannot be established from its BPMN flow structure.',
-          bpmnElementId: sourceId(element),
-          bpmnType: type,
+          bpmnElementId: element.id,
+          bpmnType: element.type,
         },
       };
     }
@@ -148,15 +115,22 @@ function nodeKind(element: AnyRecord, incoming: number, outgoing: number): { kin
       return {
         diagnostic: {
           code: 'UNSUPPORTED_BPMN_ELEMENT',
-          message: `Native BPMN element ${type} is preserved but is not yet mapped by ${NATIVE_BPMN_CANONICAL_ADAPTER_VERSION}.`,
-          bpmnElementId: sourceId(element),
-          bpmnType: type,
+          message: `Native BPMN element ${element.type} is preserved but is not yet mapped by ${NATIVE_BPMN_CANONICAL_ADAPTER_VERSION}.`,
+          bpmnElementId: element.id,
+          bpmnType: element.type,
         },
       };
   }
 }
 
-function appendDocument<T>(repo: ImmutableDocumentRepository, id: OpaqueId, kind: string, payload: T, createdAt: string, parentId?: OpaqueId): void {
+function appendDocument<T>(
+  repo: ImmutableDocumentRepository,
+  id: OpaqueId,
+  kind: string,
+  payload: T,
+  createdAt: string,
+  parentId?: OpaqueId,
+): void {
   repo.append({
     id,
     aggregateKind: kind,
@@ -173,7 +147,7 @@ function appendAlignedBpmn(repo: ImmutableDocumentRepository, revision: BpmnProc
     aggregateKind: 'BpmnProcessRevision',
     schemaVersion: BPMN_WORKSPACE_SCHEMA,
     payload: revision,
-    parentId: revision.parentBpmnRevisionId as OpaqueId,
+    ...(revision.parentBpmnRevisionId ? { parentId: revision.parentBpmnRevisionId as OpaqueId } : {}),
     createdAt: revision.createdAt,
   });
 }
@@ -223,82 +197,66 @@ export class NativeBpmnCanonicalReconciliationService {
       };
     }
 
-    const inspected = await inspectBpmnXml(sourceRevision.bpmnXml);
-    if (inspected.modelSemanticDigest !== sourceRevision.semanticDigest) {
+    const sourceView = await buildBpmnCanonicalSourceView(sourceRevision.bpmnXml);
+    if (sourceView.semanticDigest !== sourceRevision.semanticDigest) {
       throw new TypeError('Native BPMN revision semantic digest does not match its current XML');
     }
-
-    const moddle = createModdle();
-    const parsed = await moddle.fromXML(sourceRevision.bpmnXml);
-    const definitions = parsed.rootElement as AnyRecord;
-    const processes = (definitions.rootElements ?? []).filter((element: AnyRecord) => element.$type === 'bpmn:Process');
-    if (processes.length !== 1) {
+    if (sourceView.processes.length !== 1) {
       return {
         status: 'BLOCKED',
         sourceBpmnRevision: sourceRevision,
         diagnostics: [{
           code: 'MULTIPLE_PROCESS_SCOPES_UNSUPPORTED',
-          message: `Native BPMN reconciliation currently requires exactly one bpmn:Process; received ${processes.length}.`,
+          message: `Native BPMN reconciliation currently requires exactly one bpmn:Process; received ${sourceView.processes.length}.`,
         }],
       };
     }
 
-    const process = processes[0] as AnyRecord;
-    const flowElements: AnyRecord[] = process.flowElements ?? [];
-    const sequenceFlows = flowElements.filter((element) => element.$type === 'bpmn:SequenceFlow');
-    const flowNodes = flowElements.filter((element) => element.$type !== 'bpmn:SequenceFlow');
-    const incomingCount = new Map<string, number>();
-    const outgoingCount = new Map<string, number>();
-    for (const flow of sequenceFlows) {
-      const source = sourceId(flow.sourceRef ?? {});
-      const target = sourceId(flow.targetRef ?? {});
-      outgoingCount.set(source, (outgoingCount.get(source) ?? 0) + 1);
-      incomingCount.set(target, (incomingCount.get(target) ?? 0) + 1);
-    }
-
+    const process = sourceView.processes[0]!;
     const diagnostics: NativeBpmnCanonicalDiagnostic[] = [];
     const semanticDigest = sourceRevision.semanticDigest;
     const nodeIdByBpmnId = new Map<string, CanonicalId>();
     const actorIdsByNode = new Map<string, CanonicalId[]>();
     const actors: Actor[] = [];
 
-    for (const lane of flattenLanes(process)) {
-      const laneId = sourceId(lane);
-      const actorId = canonical(`native-bpmn:${semanticDigest}:lane:${laneId}`);
+    for (const lane of process.lanes) {
+      const actorId = canonical(`native-bpmn:${semanticDigest}:lane:${lane.id}`);
       actors.push({
         id: actorId,
         kind: 'UNKNOWN',
-        name: normalizedName(lane) ?? laneId,
-        sourceReferences: [laneId],
+        name: lane.name ?? lane.id,
+        sourceReferences: [lane.id],
         provenanceRefs: [],
       });
-      for (const flowNode of lane.flowNodeRef ?? []) {
-        const id = sourceId(flowNode);
-        const current = actorIdsByNode.get(id) ?? [];
+      for (const flowNodeId of lane.flowNodeIds) {
+        const current = actorIdsByNode.get(flowNodeId) ?? [];
         if (!current.includes(actorId)) current.push(actorId);
-        actorIdsByNode.set(id, current);
+        actorIdsByNode.set(flowNodeId, current);
       }
     }
 
     const nodes: ProcessNode[] = [];
-    for (const element of flowNodes) {
-      const bpmnId = sourceId(element);
-      const mapping = nodeKind(element, incomingCount.get(bpmnId) ?? 0, outgoingCount.get(bpmnId) ?? 0);
+    for (const element of process.nodes) {
+      const mapping = nodeKind(element);
       if (!mapping.kind) {
         diagnostics.push(mapping.diagnostic!);
         continue;
       }
-      const id = canonical(`native-bpmn:${semanticDigest}:node:${bpmnId}`);
-      nodeIdByBpmnId.set(bpmnId, id);
+      const id = canonical(`native-bpmn:${semanticDigest}:node:${element.id}`);
+      nodeIdByBpmnId.set(element.id, id);
       nodes.push({
         id,
         kind: mapping.kind,
-        ...(normalizedName(element) ? { name: normalizedName(element) } : {}),
-        actorRefs: [...(actorIdsByNode.get(bpmnId) ?? [])],
+        ...(element.name ? { name: element.name } : {}),
+        actorRefs: [...(actorIdsByNode.get(element.id) ?? [])],
         inputRefs: [],
         outputRefs: [],
         ruleRefs: [],
-        ...(mapping.details ? { details: { ...mapping.details, bpmnElementId: bpmnId, bpmnType: sourceType(element) } } : { details: { bpmnElementId: bpmnId, bpmnType: sourceType(element) } }),
+        details: {
+          ...(mapping.details ?? {}),
+          bpmnElementId: element.id,
+          bpmnType: element.type,
+        },
         truthClass: 'SOURCE_TRUTH',
         provenanceRefs: [],
         sourceExtensionRefs: [],
@@ -312,47 +270,35 @@ export class NativeBpmnCanonicalReconciliationService {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const rules: BusinessRule[] = [];
     const edges: ProcessEdge[] = [];
-    for (const flow of sequenceFlows) {
-      const bpmnFlowId = sourceId(flow);
-      const sourceBpmnId = sourceId(flow.sourceRef ?? {});
-      const targetBpmnId = sourceId(flow.targetRef ?? {});
-      const sourceNodeId = nodeIdByBpmnId.get(sourceBpmnId);
-      const targetNodeId = nodeIdByBpmnId.get(targetBpmnId);
+    for (const flow of process.flows) {
+      const sourceNodeId = nodeIdByBpmnId.get(flow.sourceId);
+      const targetNodeId = nodeIdByBpmnId.get(flow.targetId);
       if (!sourceNodeId || !targetNodeId) {
         diagnostics.push({
           code: 'FLOW_ENDPOINT_UNSUPPORTED',
-          message: `Sequence flow ${bpmnFlowId} references a BPMN element that was not canonically mapped.`,
-          bpmnElementId: bpmnFlowId,
+          message: `Sequence flow ${flow.id} references a BPMN element that was not canonically mapped.`,
+          bpmnElementId: flow.id,
           bpmnType: 'bpmn:SequenceFlow',
         });
         continue;
       }
 
       const sourceNode = nodeById.get(sourceNodeId)!;
-      const sourceElement = flow.sourceRef as AnyRecord;
-      const isDefault = sourceElement?.default && sourceId(sourceElement.default) === bpmnFlowId;
-      const conditionBody = typeof flow.conditionExpression?.body === 'string'
-        ? flow.conditionExpression.body.trim()
-        : typeof flow.conditionExpression === 'string'
-          ? flow.conditionExpression.trim()
-          : '';
       let kind: ProcessEdgeKind = 'SEQUENCE';
       let conditionRuleRef: CanonicalId | undefined;
 
-      if (isDefault) {
+      if (flow.isDefault) {
         kind = 'DEFAULT';
       } else if (sourceNode.kind === 'DECISION') {
         kind = 'CONDITIONAL';
-        if (conditionBody) {
-          conditionRuleRef = canonical(`native-bpmn:${semanticDigest}:rule:${bpmnFlowId}`);
+        if (flow.conditionBody) {
+          conditionRuleRef = canonical(`native-bpmn:${semanticDigest}:rule:${flow.id}`);
           rules.push({
             id: conditionRuleRef,
-            naturalLanguage: conditionBody,
+            naturalLanguage: flow.conditionBody,
             expression: {
-              body: conditionBody,
-              ...(typeof flow.conditionExpression?.language === 'string' && flow.conditionExpression.language
-                ? { language: flow.conditionExpression.language }
-                : {}),
+              body: flow.conditionBody,
+              ...(flow.conditionLanguage ? { language: flow.conditionLanguage } : {}),
             },
             inputs: [],
             truthClass: 'SOURCE_TRUTH',
@@ -366,12 +312,12 @@ export class NativeBpmnCanonicalReconciliationService {
       }
 
       edges.push({
-        id: canonical(`native-bpmn:${semanticDigest}:edge:${bpmnFlowId}`),
+        id: canonical(`native-bpmn:${semanticDigest}:edge:${flow.id}`),
         sourceNodeId,
         targetNodeId,
         kind,
         ...(conditionRuleRef ? { conditionRuleRef } : {}),
-        ...(normalizedName(flow) ? { label: normalizedName(flow) } : {}),
+        ...(flow.name ? { label: flow.name } : {}),
         truthClass: 'SOURCE_TRUTH',
         provenanceRefs: [],
         sourceExtensionRefs: [],
@@ -383,11 +329,11 @@ export class NativeBpmnCanonicalReconciliationService {
     }
 
     const reconciledAt = input.reconciledAt ?? new Date().toISOString();
-    const processDefinitionId = canonical(`native-bpmn:${semanticDigest}:process-definition:${sourceId(process)}`);
+    const processDefinitionId = canonical(`native-bpmn:${semanticDigest}:process-definition:${process.id}`);
     const processRevisionId = canonical(`native-bpmn:${semanticDigest}:process-revision:v1`);
     const processDefinition: ProcessDefinition = {
       id: processDefinitionId,
-      canonicalName: normalizedName(process) ?? sourceId(process),
+      canonicalName: process.name ?? process.id,
       lifecycleStatus: 'ACTIVE',
       revisionIds: [processRevisionId],
     };
@@ -410,6 +356,7 @@ export class NativeBpmnCanonicalReconciliationService {
       annotations: [{
         kind: 'NATIVE_BPMN_CANONICALIZATION',
         adapterVersion: NATIVE_BPMN_CANONICAL_ADAPTER_VERSION,
+        sourceViewVersion: sourceView.version,
         sourceBpmnRevisionId: sourceRevision.id,
         sourceBpmnXmlSha256: sourceRevision.bpmnXmlSha256,
         sourceSemanticDigest: sourceRevision.semanticDigest,
