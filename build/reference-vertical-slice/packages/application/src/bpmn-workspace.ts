@@ -188,7 +188,7 @@ export class BpmnWorkspaceService {
     authorityRef: string;
     alignedAt?: string;
   }): BpmnProcessRevision {
-    const revision = this.getRevision(input.revisionId);
+    const revision = this.#storedRevision(input.revisionId);
     if (!revision) throw new TypeError('BPMN workspace revision not found');
     const aligned = alignBpmnRevisionToCanonical(revision, {
       canonicalProcessRevisionId: input.canonicalProcessRevisionId,
