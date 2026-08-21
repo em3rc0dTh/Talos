@@ -132,7 +132,7 @@ test('I5C-03 rejects missing authority and incomplete human design instead of si
   }
 });
 
-test('I5C-03 resolved ExecutionPlan pins bindings and creates CapabilityUseOccurrence, but Quarry-02 remains mapping-blocked by incomplete WAIT truth', () => {
+test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-ready only after explicit reviewer-authored WAIT truth', () => {
   const x = setup();
   try {
     const resolved = resolveGenericCapabilities(x.base, systemResolutions(x), AT);
@@ -158,16 +158,19 @@ test('I5C-03 resolved ExecutionPlan pins bindings and creates CapabilityUseOccur
     assert.deepEqual(new Set(plan.revision.capabilityBindingRevisionRefs), new Set(resolved.bindingRevisions.map((binding) => binding.id)));
     assert.equal(plan.capabilityUses.length, resolved.requirements.length);
     assert(plan.elements.filter((element) => element.kind === 'CAPABILITY_INVOCATION').length >= resolved.requirements.length);
-    assert.equal(plan.revision.readiness, 'NEEDS_EXECUTION_DESIGN_DECISION');
-    assert.equal(plan.assessment.readiness, 'NEEDS_EXECUTION_DESIGN_DECISION');
+    assert.equal(plan.revision.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
+    assert.equal(plan.assessment.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
 
     const waitNode = x.current.process.nodes.find((node) => node.kind === 'WAIT');
     assert.ok(waitNode);
+    assert.equal(waitNode?.details?.waitKind, 'SCHEDULE');
+    assert.equal(waitNode?.details?.expression, 'NEXT_WEDNESDAY');
+    assert.equal(waitNode?.details?.timezone, 'America/Lima');
     const waitElement = plan.elements.find((element) => element.semanticSubjectRefs.includes(waitNode!.id));
     assert.equal(waitElement?.kind, 'WAIT_COORDINATION');
-    assert.equal(waitElement?.designState, 'INCOMPLETE');
+    assert.equal(waitElement?.designState, 'COMPLETE');
     const waitRequirement = plan.requirements.find((requirement) => requirement.targetRef === waitElement?.id);
-    assert.match(waitRequirement?.description ?? '', /lacks complete structured resume semantics/i);
+    assert.equal(waitRequirement, undefined, 'complete reviewer-authored WAIT semantics must not leave a synthetic execution requirement');
 
     const subprocessElement = plan.elements.find((element) => element.semanticSubjectRefs.includes(subprocess!.id));
     assert.equal(subprocessElement?.designState, 'COMPLETE');
