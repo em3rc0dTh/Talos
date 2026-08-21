@@ -83,7 +83,7 @@
     "image:i7c05:verify": "npm run image:i7c04:verify && npm run image:i7c05:test",
     "image:i7c06:test": "node --experimental-strip-types --test ./tests/image-i7c06-*.test.ts",
     "image:i7c06:verify": "npm run image:i7c05:verify && npm run image:i7c06:test",
-    "image:edge:test": "npm run image:i8-01:test",
+    "image:edge:test": "npm run image:i8-01:test && npm run image:i8-02:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
