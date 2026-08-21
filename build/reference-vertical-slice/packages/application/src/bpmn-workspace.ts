@@ -3,6 +3,7 @@ import type { OpaqueId } from '../../foundation/src/ids.ts';
 import { LocalImageByteStore } from '../../image-perception/src/byte-store.ts';
 import { intakePngUpload } from '../../image-perception/src/intake.ts';
 import {
+  alignBpmnRevisionToCanonical,
   confirmBusinessProcess,
   createBpmnRoundTripEdit,
   createNativeBpmnImportRevision,
@@ -178,6 +179,26 @@ export class BpmnWorkspaceService {
       hasDiagramInterchange: result.editedInspection.hasDiagramInterchange,
       warnings: result.editedInspection.warnings,
     };
+  }
+
+  realignToCanonical(input: {
+    revisionId: string;
+    canonicalProcessRevisionId: CanonicalId;
+    alignedBy: string;
+    authorityRef: string;
+    alignedAt?: string;
+  }): BpmnProcessRevision {
+    const revision = this.#storedRevision(input.revisionId);
+    if (!revision) throw new TypeError('BPMN workspace revision not found');
+    const aligned = alignBpmnRevisionToCanonical(revision, {
+      canonicalProcessRevisionId: input.canonicalProcessRevisionId,
+      alignedBy: input.alignedBy,
+      alignedAt: input.alignedAt ?? new Date().toISOString(),
+      authorityRef: input.authorityRef,
+      revisionNumber: this.#nextWorkspaceRevisionNumber(),
+    });
+    appendRevision(this.#repo, aligned);
+    return aligned;
   }
 
   confirm(input: {

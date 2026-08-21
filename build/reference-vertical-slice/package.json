@@ -100,7 +100,7 @@
     "test": "npm run b9:verify",
     "image:i8-01:test": "node --experimental-strip-types --test ./tests/image-i8-01-*.test.ts",
     "image:i8-01:verify": "npm run image:i7c06:verify && npm run image:i8-01:test",
-    "image:i8-02:test": "node --experimental-strip-types --test ./tests/image-i8-02-*.test.ts",
+    "image:i8-02:test": "node --experimental-strip-types --test ./tests/image-i8-02*.test.ts",
     "image:i8-02:verify": "npm run image:i8-01:verify && npm run image:i8-02:test"
   },
   "dependencies": {
