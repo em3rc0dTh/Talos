@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startProcessConfirmationWorkspace } from '../apps/reference-api/src/workspace-server.ts';
+import { startTalosProcessConfirmationProduct } from '../apps/reference-api/src/workspace-server.ts';
 
 const simpleBpmn = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_Browser" targetNamespace="https://talos.local/i7b08/browser">
@@ -39,7 +39,7 @@ async function post(baseUrl: string, pathname: string, payload: Record<string, u
 }
 
 test('I7B-08 browser product surface runs native BPMN → reconcile → confirm → automation-design freeze without deployment authority', async () => {
-  const app = await startProcessConfirmationWorkspace({ port: 0 });
+  const app = await startTalosProcessConfirmationProduct({ port: 0 });
   try {
     const page = await fetch(app.baseUrl);
     assert.equal(page.status, 200);
@@ -107,7 +107,7 @@ test('I7B-08 browser product surface runs native BPMN → reconcile → confirm 
 });
 
 test('I7B-08 Process Confirmation may succeed while the separate automation-design gate remains blocked by exact semantic validation', async () => {
-  const app = await startProcessConfirmationWorkspace({ port: 0 });
+  const app = await startTalosProcessConfirmationProduct({ port: 0 });
   try {
     const imported = await post(app.baseUrl, '/api/input/bpmn', {
       fileName: 'unresolved-decision.bpmn',
