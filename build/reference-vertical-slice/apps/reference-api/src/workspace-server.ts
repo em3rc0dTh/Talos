@@ -12,8 +12,12 @@ import {
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   createHttpBpmnCorrectionService,
+  decideGuidedSemanticResolution,
   initializeReview,
+  proposeGuidedSemanticResolution,
   type BpmnCanonicalReconciliationResult,
+  type GuidedResolutionAnswer,
+  type GuidedResolutionProposal,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
 import {
@@ -141,6 +145,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
   const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
   const structuredReconciler = new BpmnCanonicalReconciliationService(repo);
   const bindings = new Map<string, ReconciledBinding>();
+  const guidedResolutionProposals = new Map<string, GuidedResolutionProposal>();
 
   const imageRuntime = productMode
     ? resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env)
@@ -436,6 +441,120 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           ...(rationale ? { rationale } : {}),
         });
         json(res, 201, result);
+        return;
+      }
+
+      if (productMode && req.method === 'POST' && url.pathname === '/api/semantic-resolution/propose') {
+        const input = await jsonBody(req);
+        const revisionId = text(input.revisionId, 'revisionId');
+        const binding = bindings.get(revisionId);
+        if (!binding) throw new TypeError('Canonical reconciliation context not found for this BPMN revision');
+        if (!Array.isArray(input.answers)) throw new TypeError('answers must be an array');
+        const answeredBy = typeof input.answeredBy === 'string' ? input.answeredBy : 'browser-user';
+        const proposal = proposeGuidedSemanticResolution({
+          processRevision: binding.processRevision,
+          validation: binding.validation,
+          answers: input.answers as GuidedResolutionAnswer[],
+          authority: {
+            answeredBy,
+            authorityRef: text(input.authorityRef, 'authorityRef'),
+            rationale: text(input.rationale, 'rationale'),
+            answeredAt: new Date().toISOString(),
+          },
+        });
+        guidedResolutionProposals.set(proposal.id, proposal);
+        json(res, 201, {
+          proposal,
+          questions: binding.validation.questions,
+          createsCanonicalRevision: false,
+          confirmsProcess: false,
+          authorizesAutomationDesign: false,
+          authorizesExecution: false,
+        });
+        return;
+      }
+
+      if (productMode && req.method === 'POST' && url.pathname === '/api/semantic-resolution/decide') {
+        const input = await jsonBody(req);
+        const revisionId = text(input.revisionId, 'revisionId');
+        const proposalId = text(input.proposalId, 'proposalId');
+        const binding = bindings.get(revisionId);
+        if (!binding) throw new TypeError('Canonical reconciliation context not found for this BPMN revision');
+        const proposal = guidedResolutionProposals.get(proposalId);
+        if (!proposal) throw new TypeError('Guided semantic-resolution proposal not found');
+        const decision = text(input.decision, 'decision');
+        if (decision !== 'ACCEPT' && decision !== 'REJECT') throw new TypeError('decision must be ACCEPT or REJECT');
+        const decidedBy = typeof input.decidedBy === 'string' ? input.decidedBy : 'browser-user';
+        const decidedAt = new Date().toISOString();
+        const result = decideGuidedSemanticResolution({
+          proposal,
+          processRevision: binding.processRevision,
+          validation: binding.validation,
+          decision,
+          decidedBy,
+          authorityRef: text(input.authorityRef, 'authorityRef'),
+          rationale: text(input.rationale, 'rationale'),
+          decidedAt,
+        });
+        guidedResolutionProposals.delete(proposalId);
+
+        if (result.decision === 'REJECT') {
+          json(res, 200, {
+            decision: result,
+            createsCanonicalRevision: false,
+            currentRevisionId: revisionId,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
+
+        repo.append({
+          id: result.resolvedRevision.id as OpaqueId,
+          aggregateKind: 'ProcessRevision',
+          schemaVersion: 'talos-guided-semantic-resolution-v0.1',
+          payload: result.resolvedRevision,
+          parentId: binding.processRevision.id as OpaqueId,
+          createdAt: result.resolvedRevision.createdAt,
+        });
+        repo.append({
+          id: result.validation.assessment.id as OpaqueId,
+          aggregateKind: 'ValidationAssessment',
+          schemaVersion: 'talos-guided-semantic-resolution-v0.1',
+          payload: result.validation.assessment,
+          parentId: result.resolvedRevision.id as OpaqueId,
+          createdAt: result.validation.assessment.assessedAt,
+        });
+        const alignedRevision = workspace.realignToCanonical({
+          revisionId,
+          canonicalProcessRevisionId: result.resolvedRevision.id,
+          alignedBy: decidedBy,
+          authorityRef: text(input.authorityRef, 'authorityRef'),
+          alignedAt: decidedAt,
+        });
+        const review = initializeReview(repo, result.resolvedRevision, result.validation, {
+          createdBy: decidedBy,
+          sourceRepresentationRefs: binding.review.context.baselineBundle.sourceRepresentationRefs,
+          adapterResultContextRefs: binding.review.context.baselineBundle.adapterResultContextRefs,
+        });
+        const resolvedBinding: ReconciledBinding = {
+          ...binding,
+          sourceBpmnRevision: binding.alignedBpmnRevision,
+          alignedBpmnRevision: alignedRevision,
+          processRevision: result.resolvedRevision,
+          validation: result.validation,
+          review,
+        };
+        bindings.set(alignedRevision.id, resolvedBinding);
+        json(res, 201, {
+          decision: result,
+          revision: alignedRevision,
+          reconciliation: publicBinding(resolvedBinding),
+          requiresProcessReconfirmation: true,
+          confirmation: null,
+          authorizesAutomationDesign: false,
+          authorizesExecution: false,
+        });
         return;
       }
 
