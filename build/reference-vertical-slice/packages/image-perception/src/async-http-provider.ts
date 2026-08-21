@@ -38,6 +38,8 @@ export interface AsyncHttpImagePerceptionProviderConfig {
   timeoutMs?: number;
   headers?: Readonly<Record<string,string>>;
   fetchImpl?: typeof fetch;
+  providerClass?: 'FIXTURE_PROVIDER'|'MODEL_PROVIDER'|'SOURCE_DEFINED';
+  evidenceMode?: 'FIXTURE_EXPECTATION'|'MODEL_INFERENCE'|'SOURCE_DEFINED';
 }
 
 export interface AsyncImagePerceptionTransportEnvelope {
@@ -211,11 +213,13 @@ export function validateUntrustedImagePerceptionProviderResult(raw: unknown, con
 
   if (providerId !== config.providerId) fail('response.providerId', `expected ${config.providerId}`);
   if (providerVersion !== config.providerVersion) fail('response.providerVersion', `expected ${config.providerVersion}`);
-  if (providerClass !== 'MODEL_PROVIDER') fail('response.providerClass', 'real I7B provider must be MODEL_PROVIDER');
+  const expectedProviderClass = config.providerClass ?? 'MODEL_PROVIDER';
+  if (providerClass !== expectedProviderClass) fail('response.providerClass', `expected ${expectedProviderClass}`);
   if (modelRef !== config.modelRef) fail('response.modelRef', `expected ${config.modelRef}`);
   if (modelVersion !== config.modelVersion) fail('response.modelVersion', `expected ${config.modelVersion}`);
   if (pipelineVersion !== config.pipelineVersion) fail('response.pipelineVersion', `expected ${config.pipelineVersion}`);
-  if (evidenceMode !== 'MODEL_INFERENCE') fail('response.evidenceMode', 'real I7B provider must emit MODEL_INFERENCE');
+  const expectedEvidenceMode = config.evidenceMode ?? 'MODEL_INFERENCE';
+  if (evidenceMode !== expectedEvidenceMode) fail('response.evidenceMode', `expected ${expectedEvidenceMode}`);
   if (!PROVIDER_STATUSES.has(status)) fail('response.status', `unsupported value ${status}`);
 
   const anchors = arrayValue(value.anchors, 'response.anchors').map(validateAnchor);
@@ -279,11 +283,11 @@ export function validateUntrustedImagePerceptionProviderResult(raw: unknown, con
   return {
     providerId,
     providerVersion,
-    providerClass: 'MODEL_PROVIDER',
+    providerClass: expectedProviderClass,
     modelRef,
     modelVersion,
     pipelineVersion,
-    evidenceMode: 'MODEL_INFERENCE',
+    evidenceMode: expectedEvidenceMode,
     status: status as ImagePerceptionProviderResult['status'],
     anchors,
     observations,
