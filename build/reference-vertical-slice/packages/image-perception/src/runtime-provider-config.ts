@@ -22,6 +22,8 @@ export const IMAGE_PERCEPTION_RUNTIME_ENV = {
   pipelineVersion: 'TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION',
   timeoutMs: 'TALOS_IMAGE_PERCEPTION_TIMEOUT_MS',
   bearerToken: 'TALOS_IMAGE_PERCEPTION_BEARER_TOKEN',
+  providerClass: 'TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS',
+  evidenceMode: 'TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE',
 } as const;
 
 export interface ImagePerceptionRuntimeDescriptor {
@@ -35,6 +37,8 @@ export interface ImagePerceptionRuntimeDescriptor {
   timeoutMs: number;
   authMode: 'NONE' | 'BEARER';
   authConfigured: boolean;
+  providerClass: 'FIXTURE_PROVIDER'|'MODEL_PROVIDER'|'SOURCE_DEFINED';
+  evidenceMode: 'FIXTURE_EXPECTATION'|'MODEL_INFERENCE'|'SOURCE_DEFINED';
   configurationFingerprint: string;
 }
 
@@ -138,6 +142,11 @@ export function resolveImagePerceptionRuntimeBinding(
   const pipelineVersion = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.pipelineVersion);
   const resolvedTimeoutMs = timeoutMs(env);
   const bearerToken = secretToken(env);
+  const providerClass = (optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.providerClass) ?? 'MODEL_PROVIDER') as ImagePerceptionRuntimeDescriptor['providerClass'];
+  const evidenceMode = (optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.evidenceMode) ?? 'MODEL_INFERENCE') as ImagePerceptionRuntimeDescriptor['evidenceMode'];
+  if (!['FIXTURE_PROVIDER','MODEL_PROVIDER','SOURCE_DEFINED'].includes(providerClass)) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: unsupported provider class');
+  if (!['FIXTURE_EXPECTATION','MODEL_INFERENCE','SOURCE_DEFINED'].includes(evidenceMode)) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: unsupported evidence mode');
+  if ((providerClass === 'FIXTURE_PROVIDER') !== (evidenceMode === 'FIXTURE_EXPECTATION')) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: fixture provider requires fixture evidence mode');
   const safeFields = {
     configVersion: IMAGE_PERCEPTION_RUNTIME_CONFIG_VERSION,
     endpoint,
@@ -149,6 +158,8 @@ export function resolveImagePerceptionRuntimeBinding(
     timeoutMs: resolvedTimeoutMs,
     authMode: bearerToken ? 'BEARER' as const : 'NONE' as const,
     authConfigured: Boolean(bearerToken),
+    providerClass,
+    evidenceMode,
   };
   const descriptor: ImagePerceptionRuntimeDescriptor = Object.freeze({
     ...safeFields,
@@ -169,6 +180,8 @@ export function resolveImagePerceptionRuntimeBinding(
         modelVersion: descriptor.modelVersion,
         pipelineVersion: descriptor.pipelineVersion,
         timeoutMs: descriptor.timeoutMs,
+        providerClass: descriptor.providerClass,
+        evidenceMode: descriptor.evidenceMode,
         ...(bearerToken ? { headers: { authorization: `Bearer ${bearerToken}` } } : {}),
         ...(fetchImpl ? { fetchImpl } : {}),
       };
