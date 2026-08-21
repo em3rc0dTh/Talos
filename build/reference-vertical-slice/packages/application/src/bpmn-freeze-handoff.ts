@@ -90,17 +90,17 @@ function makeHandoff(
   const id = createOpaqueId('review', digestDeterministicJson({
     kind: 'BpmnFreezeHandoffRecord',
     bpmnRevisionId: input.currentBpmnRevision.id,
-    businessProcessConfirmationId: input.confirmation?.id,
+    ...(input.confirmation ? { businessProcessConfirmationId: input.confirmation.id } : {}),
     canonicalProcessRevisionId: input.canonicalProcessRevision.id,
     reviewWorkspaceRevisionId: input.reviewContext.workspaceRevision.id,
     reviewBaselineBundleId: input.reviewContext.baselineBundle.id,
-    pinnedValidationAssessmentId,
+    ...(pinnedValidationAssessmentId ? { pinnedValidationAssessmentId } : {}),
     freezeCommandId: input.freezeCommand.id,
     freezeRequestPayloadId: input.freezePayload.id,
     confirmationGateResult,
     result,
-    semanticFreezeApplicationResult: freeze?.freezeApplication.result,
-    semanticFreezeRecordId: freeze?.freezeRecord?.id,
+    ...(freeze ? { semanticFreezeApplicationResult: freeze.freezeApplication.result } : {}),
+    ...(freeze?.freezeRecord ? { semanticFreezeRecordId: freeze.freezeRecord.id } : {}),
   }));
   return {
     id,
