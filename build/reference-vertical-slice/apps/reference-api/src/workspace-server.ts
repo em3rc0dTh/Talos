@@ -4,15 +4,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
+  BpmnCanonicalReconciliationService,
   BpmnWorkspaceService,
   NativeBpmnCanonicalReconciliationService,
   NaturalLanguageBpmnCorrectionService,
   applyConfirmedBpmnFreezeHandoff,
+  buildImageBpmnReviewCandidate,
+  confirmImageInterpretedBusinessProcess,
   createHttpBpmnCorrectionService,
-  type NativeBpmnCanonicalReconciliationResult,
+  initializeReview,
+  type BpmnCanonicalReconciliationResult,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
-import { LocalImageByteStore } from '../../../packages/image-perception/src/byte-store.ts';
+import {
+  LocalImageByteStore,
+  resolveImagePerceptionRuntimeBinding,
+} from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
 import { PROCESS_CONFIRMATION_PAGE } from './process-confirmation-page.ts';
 
@@ -23,12 +30,15 @@ export interface WorkspaceServerOptions {
   bpmnCorrectionEndpoint?: string;
   bpmnCorrectionTimeoutMs?: number;
   bpmnCorrectionHeaders?: Readonly<Record<string, string>>;
+  /** Optional dependency-injection surface used by I7C tests; secrets never enter public responses. */
+  imagePerceptionEnv?: Readonly<Record<string, string | undefined>>;
+  imagePerceptionFetchImpl?: typeof fetch;
   /** Internal compatibility switch. The historical I7B-05 entrypoint defaults false. */
   productMode?: boolean;
 }
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
-type ReconciledBinding = Extract<NativeBpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
+type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
 
 function json(res: http.ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload, null, 2);
@@ -95,7 +105,7 @@ function serveBpmnJs(pathname: string, res: http.ServerResponse): boolean {
   return true;
 }
 
-function publicReconciliation(result: NativeBpmnCanonicalReconciliationResult | undefined): unknown {
+function publicReconciliation(result: BpmnCanonicalReconciliationResult | undefined): unknown {
   if (!result) return undefined;
   if (result.status === 'BLOCKED') {
     return { status: result.status, diagnostics: result.diagnostics };
@@ -117,8 +127,8 @@ function publicBinding(binding: ReconciledBinding | undefined): unknown {
  * Historical I7B-05 server contract.
  *
  * By default this keeps native BPMN import/edit separate from canonical
- * reconciliation exactly as I7B-05 proved. I7B-08 is exposed through the
- * explicit product entrypoint below, rather than silently changing history.
+ * reconciliation exactly as I7B-05 proved. Product-only image interpretation
+ * and source-aware BPMN reconciliation are enabled explicitly below.
  */
 export async function startProcessConfirmationWorkspace(options: WorkspaceServerOptions = {}) {
   const host = options.host ?? '127.0.0.1';
@@ -128,9 +138,13 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
   const repo = new SqliteDocumentStore(path.join(runtimeDir, 'talos-workspace.sqlite'));
   const byteStore = new LocalImageByteStore(path.join(runtimeDir, 'source-bytes'));
   const workspace = new BpmnWorkspaceService(repo, byteStore);
-  const reconciler = new NativeBpmnCanonicalReconciliationService(repo);
+  const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
+  const structuredReconciler = new BpmnCanonicalReconciliationService(repo);
   const bindings = new Map<string, ReconciledBinding>();
 
+  const imageRuntime = productMode
+    ? resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env)
+    : undefined;
   const correctionEndpoint = options.bpmnCorrectionEndpoint ?? process.env.TALOS_BPMN_CORRECTION_PROVIDER_URL;
   const correctionService: NaturalLanguageBpmnCorrectionService | undefined = productMode && correctionEndpoint
     ? createHttpBpmnCorrectionService(repo, {
@@ -141,6 +155,9 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
     : undefined;
 
   const reconcileRevision = async (revisionId: string, reconciledBy: string) => {
+    const revision = workspace.getRevision(revisionId);
+    if (!revision) throw new TypeError('BPMN workspace revision not found');
+    const reconciler = revision.sourceRoute === 'NATIVE_BPMN' ? nativeReconciler : structuredReconciler;
     const result = await reconciler.reconcile({ bpmnRevisionId: revisionId, reconciledBy });
     if (result.status === 'RECONCILED') bindings.set(result.alignedBpmnRevision.id, result);
     return result;
@@ -177,6 +194,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           });
           return;
         }
+        const imageConfigured = imageRuntime?.status === 'CONFIGURED';
         json(res, 200, {
           status: 'READY_FOR_PROCESS_INPUT',
           inputRoutes: ['IMAGE_PNG', 'NATIVE_BPMN'],
@@ -189,8 +207,20 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
           },
           image: {
             exactSourceIntake: true,
-            liveVisionInterpretation: false,
-            reason: 'I7C_REAL_ARBITRARY_IMAGE_VISION_NOT_CONFIGURED',
+            liveVisionInterpretation: imageConfigured,
+            correlatedProviderResponsesRequired: true,
+            ...(imageConfigured ? {
+              provider: {
+                providerId: imageRuntime.binding.descriptor.providerId,
+                providerVersion: imageRuntime.binding.descriptor.providerVersion,
+                modelRef: imageRuntime.binding.descriptor.modelRef,
+                modelVersion: imageRuntime.binding.descriptor.modelVersion,
+                pipelineVersion: imageRuntime.binding.descriptor.pipelineVersion,
+                authConfigured: imageRuntime.binding.descriptor.authConfigured,
+              },
+            } : {
+              reason: imageRuntime?.reason ?? 'ENDPOINT_NOT_CONFIGURED',
+            }),
           },
           naturalLanguageCorrection: {
             configured: Boolean(correctionService),
@@ -211,12 +241,88 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
 
       if (req.method === 'POST' && url.pathname === '/api/input/image') {
         const input = await jsonBody(req);
-        const result = workspace.intakeImage({
-          pngBytes: Buffer.from(text(input.imageBase64, 'imageBase64'), 'base64'),
-          declaredName: typeof input.fileName === 'string' ? input.fileName : 'uploaded-process.png',
-          initiatedBy: typeof input.initiatedBy === 'string' ? input.initiatedBy : 'browser-user',
+        const pngBytes = Buffer.from(text(input.imageBase64, 'imageBase64'), 'base64');
+        const declaredName = typeof input.fileName === 'string' ? input.fileName : 'uploaded-process.png';
+        const initiatedBy = typeof input.initiatedBy === 'string' ? input.initiatedBy : 'browser-user';
+
+        if (!productMode || imageRuntime?.status !== 'CONFIGURED') {
+          const preserved = workspace.intakeImage({
+            pngBytes,
+            declaredName,
+            initiatedBy,
+          });
+          json(res, productMode ? 202 : 201, {
+            ...preserved,
+            ...(productMode ? { interpretation: { status: 'NOT_CONFIGURED', reason: imageRuntime?.reason ?? 'ENDPOINT_NOT_CONFIGURED' } } : {}),
+          });
+          return;
+        }
+
+        const result = await buildImageBpmnReviewCandidate(
+          repo,
+          byteStore,
+          pngBytes,
+          imageRuntime.binding,
+          {
+            declaredName,
+            initiatedBy,
+            ...(options.imagePerceptionFetchImpl ? { fetchImpl: options.imagePerceptionFetchImpl } : {}),
+          },
+        );
+
+        if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          json(res, 200, {
+            status: result.status,
+            sourceArtifactId: result.intake.artifact.id,
+            sourceRepresentationId: result.intake.representation.id,
+            sourceContentSha256: result.intake.representation.contentHash,
+            width: result.intake.coordinateSpace.width,
+            height: result.intake.coordinateSpace.height,
+            mediaType: 'image/png',
+            perceptionDecision: result.perception.admission.decision,
+            diagnostics: result.perception.attempt.diagnostics,
+            automaticConfirmationAuthorized: false,
+            automaticFreezeAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+
+        const adapterResultId = result.perception.attempt.result?.id;
+        const review = initializeReview(repo, result.semantic.normalization.processRevision, result.semantic.validation, {
+          createdBy: initiatedBy,
+          sourceRepresentationRefs: [result.intake.representation.id],
+          ...(adapterResultId ? { adapterResultContextRefs: [adapterResultId] } : {}),
         });
-        json(res, 201, result);
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: result.projection.bpmnRevision,
+          alignedBpmnRevision: result.projection.bpmnRevision,
+          processDefinition: result.semantic.normalization.processDefinition,
+          processRevision: result.semantic.normalization.processRevision,
+          validation: result.semantic.validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(result.projection.bpmnRevision.id, binding);
+
+        json(res, 201, {
+          status: result.status,
+          sourceArtifactId: result.intake.artifact.id,
+          sourceRepresentationId: result.intake.representation.id,
+          sourceContentSha256: result.intake.representation.contentHash,
+          width: result.intake.coordinateSpace.width,
+          height: result.intake.coordinateSpace.height,
+          mediaType: 'image/png',
+          perceptionDecision: result.perception.admission.decision,
+          revision: result.projection.bpmnRevision,
+          reconciliation: publicBinding(binding),
+          projectionDiagnostics: result.projection.diagnostics,
+          unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
         return;
       }
 
@@ -278,12 +384,56 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
 
       if (req.method === 'POST' && url.pathname === '/api/bpmn/confirm') {
         const input = await jsonBody(req);
+        const revisionId = text(input.revisionId, 'revisionId');
+        const currentRevision = workspace.getRevision(revisionId);
+        if (!currentRevision) throw new TypeError('BPMN workspace revision not found');
+        const confirmedBy = typeof input.confirmedBy === 'string' ? input.confirmedBy : 'browser-user';
+        const authorityRef = text(input.authorityRef, 'authorityRef');
+        const rationale = typeof input.rationale === 'string' ? input.rationale : undefined;
+
+        if (productMode && currentRevision.sourceRoute === 'IMAGE_INTERPRETATION') {
+          const binding = bindings.get(revisionId);
+          if (!binding) throw new TypeError('Canonical reconciliation context not found for this image BPMN revision');
+          const result = confirmImageInterpretedBusinessProcess(repo, {
+            currentBpmnRevision: currentRevision,
+            currentProcessRevision: binding.processRevision,
+            currentValidation: binding.validation,
+            currentReviewContext: binding.review.context,
+            confirmedBy,
+            authorityRef,
+            ...(rationale ? { rationale } : {}),
+          });
+          const nextContext = result.canonicalConfirmation.nextContext;
+          const nextExplanation = result.canonicalConfirmation.explanation;
+          if (!nextContext || !nextExplanation) throw new TypeError('Confirmed image process did not produce a next review baseline');
+          const confirmedBinding: ReconciledBinding = {
+            ...binding,
+            sourceBpmnRevision: currentRevision,
+            alignedBpmnRevision: result.confirmedBpmnRevision,
+            processRevision: result.confirmedProcessRevision,
+            validation: result.confirmedValidation,
+            review: { context: nextContext, explanation: nextExplanation },
+          };
+          bindings.set(result.confirmedBpmnRevision.id, confirmedBinding);
+          json(res, 201, {
+            revision: result.confirmedBpmnRevision,
+            confirmation: result.confirmation,
+            reconciliation: publicBinding(confirmedBinding),
+            canonicalConfirmation: {
+              application: result.canonicalConfirmation.application,
+              confirmedClaimCount: result.canonicalConfirmation.confirmedClaims.length,
+              findingDispositionCount: result.canonicalConfirmation.findingDispositions.length,
+            },
+          });
+          return;
+        }
+
         const result = workspace.confirm({
-          revisionId: text(input.revisionId, 'revisionId'),
+          revisionId,
           canonicalProcessRevisionId: text(input.canonicalProcessRevisionId, 'canonicalProcessRevisionId') as never,
-          confirmedBy: typeof input.confirmedBy === 'string' ? input.confirmedBy : 'browser-user',
-          authorityRef: text(input.authorityRef, 'authorityRef'),
-          ...(typeof input.rationale === 'string' ? { rationale: input.rationale } : {}),
+          confirmedBy,
+          authorityRef,
+          ...(rationale ? { rationale } : {}),
         });
         json(res, 201, result);
         return;
@@ -455,7 +605,7 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
   };
 }
 
-/** Product entrypoint added by I7B-08. */
+/** Product entrypoint added by I7B-08 and extended by I7C-05 image integration. */
 export function startTalosProcessConfirmationProduct(options: Omit<WorkspaceServerOptions, 'productMode'> = {}) {
   return startProcessConfirmationWorkspace({ ...options, productMode: true });
 }
