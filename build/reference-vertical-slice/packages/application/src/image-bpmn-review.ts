@@ -108,13 +108,20 @@ export async function buildImageBpmnReviewCandidate(
   });
 
   const projectedAt = options.projectedAt ?? options.assessedAt ?? options.normalizedAt ?? options.perceivedAt ?? new Date().toISOString();
-  const projection = projectCanonicalProcessToBpmn({
+  const baseProjection = projectCanonicalProcessToBpmn({
     processRevision: semantic.normalization.processRevision,
     sourceRoute: 'IMAGE_INTERPRETATION',
     createdAt: projectedAt,
     createdBy: options.initiatedBy,
     ...(options.bpmnRevisionNumber ? { revisionNumber: options.bpmnRevisionNumber } : {}),
   });
+  const projection: BpmnProjectionResult = {
+    ...baseProjection,
+    bpmnRevision: {
+      ...baseProjection.bpmnRevision,
+      sourceRepresentationRefs: [intake.representation.id],
+    },
+  };
   persistBpmnProjection(repo, projection);
 
   return {
