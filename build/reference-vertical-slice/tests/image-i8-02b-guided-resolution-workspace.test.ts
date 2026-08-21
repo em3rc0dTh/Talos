@@ -26,6 +26,10 @@ test('I8-02B canvas exposes guided proposal and explicit decision controls', () 
   assert.match(PROCESS_CONFIRMATION_PAGE, /\/api\/semantic-resolution\/decide/);
   assert.match(PROCESS_CONFIRMATION_PAGE, /Proposal ready\. No canonical revision has been created/);
   assert.match(PROCESS_CONFIRMATION_PAGE, /Reconfirm the process before automation design/);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /Subprocess: /);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /Branch: /);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /sourceNodeId/);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /targetNodeId/);
 });
 
 test('I8-02B accepted meaning derives a new draft even from a confirmed BPMN', async () => {
@@ -72,4 +76,11 @@ test('I8-02B accepted meaning derives a new draft even from a confirmed BPMN', a
     repo.close();
     rmSync(runtimeDir, { recursive: true, force: true });
   }
+});
+
+test('I8-02C never presents duplicate-looking questions without their canonical target', () => {
+  assert.match(PROCESS_CONFIRMATION_PAGE, /semanticTarget\(q,f\)/);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /guidedTarget/);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /Subprocess: /);
+  assert.match(PROCESS_CONFIRMATION_PAGE, /Branch: /);
 });
