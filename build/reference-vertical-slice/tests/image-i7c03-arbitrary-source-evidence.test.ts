@@ -158,7 +158,12 @@ test('I7C-03 unregistered PNG produces image-region common evidence with explici
       assert.equal(graphs[0].sourceRepresentationId, intake.representation.id);
       assert.equal(graphs[0].occurrenceIds.length, 2);
       assert.equal(graphs[0].relationshipOccurrenceIds.length, 1);
-      assert.equal(graphs[0].evidenceFragmentIds.length > 0, true);
+      assert.equal(graphs[0].evidenceFragmentIds.length, 0, 'canonical EvidenceFragments are created during later normalization, not perception materialization');
+      assert.ok(graphs[0].sourceExtensionRefs.includes(intake.coordinateSpace.id));
+      for (const anchor of anchors) assert.ok(graphs[0].sourceExtensionRefs.includes(anchor.id));
+      for (const observation of observations) assert.ok(graphs[0].sourceExtensionRefs.includes(observation.id));
+      assert.ok(graphs[0].sourceExtensionRefs.includes(relations[0].id));
+      assert.ok(graphs[0].sourceExtensionRefs.includes(alternatives[0].id));
 
       assert.equal(result.admission.semanticAuthority, 'NONE');
       assert.equal(result.admission.automaticFreezeAuthorized, false);
