@@ -1,0 +1,103 @@
+export const PROCESS_CONFIRMATION_PAGE = String.raw`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Talos · Process Confirmation</title>
+  <link rel="stylesheet" href="/vendor/bpmn-js/assets/diagram-js.css" />
+  <link rel="stylesheet" href="/vendor/bpmn-js/assets/bpmn-js.css" />
+  <link rel="stylesheet" href="/vendor/bpmn-js/assets/bpmn-font/css/bpmn.css" />
+  <style>
+    :root{color-scheme:dark;--bg:#090d13;--panel:#0f151e;--panel2:#111a25;--line:#253142;--text:#f3f6fa;--muted:#9baabd;--ok:#5fe0a5;--warn:#ffc968;--bad:#ff7f7f;--accent:#8ab4ff;--shadow:0 18px 60px rgba(0,0,0,.32)}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,textarea{font:inherit}.shell{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr auto}.topbar{display:flex;align-items:center;gap:18px;padding:17px 22px;border-bottom:1px solid var(--line);background:rgba(9,13,19,.94);backdrop-filter:blur(16px);position:sticky;top:0;z-index:20}.brand{font-weight:800;letter-spacing:.14em}.title{font-size:14px;color:var(--muted)}.truth{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}.truth strong{color:var(--text)}
+    .intake{display:flex;gap:10px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line);background:#0c121a;flex-wrap:wrap}.intake button,.actions button,.proposalActions button{border:1px solid #34445b;background:#172131;color:var(--text);border-radius:9px;padding:9px 13px;cursor:pointer}.intake button.primary,.actions button.primary{background:#e8eef8;color:#111821;border-color:#e8eef8;font-weight:700}.intake button:hover,.actions button:hover,.proposalActions button:hover{border-color:#7189a7}.intake button:disabled,.actions button:disabled,.proposalActions button:disabled{opacity:.42;cursor:not-allowed}.intake .status{margin-left:auto;font-size:12px;color:var(--muted)}
+    .workspace{min-height:620px;display:grid;grid-template-columns:minmax(250px,25%) minmax(430px,1fr) minmax(330px,31%);gap:1px;background:var(--line);border-bottom:1px solid var(--line)}.panel{min-width:0;background:var(--panel);display:flex;flex-direction:column}.panelHead{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;min-height:48px}.panelHead h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0}.panelHead span{margin-left:auto;font-size:11px;color:var(--muted)}
+    .sourceBody{padding:16px;display:flex;flex-direction:column;gap:14px;overflow:auto}.sourceEmpty,.bpmnEmpty{border:1px dashed #35455b;border-radius:12px;padding:22px;color:var(--muted);line-height:1.55}.sourcePreview{width:100%;max-height:430px;object-fit:contain;background:#fff;border-radius:10px;display:none}.sourceMeta{font-size:12px;color:var(--muted);line-height:1.55;word-break:break-word}.sourceMeta strong{color:var(--text)}
+    #canvas{flex:1;min-height:560px;background:#fff;position:relative}.bpmnEmpty{position:absolute;inset:18px;z-index:5;background:#0f151ee8;color:var(--muted);border-color:#627087;pointer-events:none}.bpmnReady .bpmnEmpty{display:none}.xmlWrap{display:flex;flex-direction:column;min-height:360px;border-bottom:1px solid var(--line)}#xml{width:100%;flex:1;resize:none;border:0;outline:0;padding:14px;background:#0a1018;color:#dce8f8;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.editorButtons{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}.editorButtons button{border:1px solid #34445b;background:#151f2d;color:var(--text);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:12px}
+    .validation{padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto}.validationTop{display:flex;align-items:center;gap:8px}.badge{border-radius:999px;padding:4px 8px;font-size:11px;font-weight:700;background:#273548;color:var(--muted)}.badge.ok{background:#17382d;color:var(--ok)}.badge.warn{background:#3a301b;color:var(--warn)}.badge.bad{background:#3a2023;color:var(--bad)}.validationSummary{font-size:12px;color:var(--muted);line-height:1.45}.findings{display:flex;flex-direction:column;gap:8px}.finding{padding:10px;border:1px solid var(--line);border-radius:9px;background:#0b1119}.findingCode{font:11px ui-monospace,monospace;color:var(--warn)}.findingTitle{font-size:12px;font-weight:700;margin-top:4px}.findingText{font-size:11px;color:var(--muted);line-height:1.4;margin-top:4px}
+    .proposal{display:none;margin:0 22px 14px;border:1px solid #4a3f27;background:#17140d;border-radius:12px;box-shadow:var(--shadow)}.proposal.open{display:block}.proposalHead{padding:12px 14px;border-bottom:1px solid #4a3f27;display:flex;gap:10px;align-items:center}.proposalHead strong{font-size:13px}.proposalHead span{margin-left:auto;color:var(--warn);font-size:11px}.proposalBody{display:grid;grid-template-columns:220px 1fr;gap:12px;padding:12px 14px}.proposalInstruction{font-size:12px;color:var(--muted);line-height:1.45}.diff{max-height:210px;overflow:auto;background:#090d13;border-radius:8px;padding:10px;font:11px/1.5 ui-monospace,monospace;white-space:pre-wrap}.proposalActions{display:flex;gap:8px;padding:0 14px 13px}.proposalActions .accept{border-color:#315f4b;color:var(--ok)}.proposalActions .reject{border-color:#683c42;color:var(--bad)}
+    .bottom{padding:13px 22px 17px;background:#0c121a}.message{min-height:23px;font-size:12px;color:var(--muted);padding-bottom:9px}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.actions .spacer{flex:1}.actions .secondaryGate{border-color:#5b5132;color:#ffe09b}.gateNote{font-size:11px;color:var(--muted);max-width:430px;line-height:1.35}.fatal{color:var(--bad)}.success{color:var(--ok)}.warning{color:var(--warn)}
+    @media(max-width:1050px){.workspace{grid-template-columns:1fr;min-height:auto}.panel{min-height:420px}.sourcePanel{min-height:300px}#canvas{min-height:520px}.truth{display:none}.proposalBody{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar"><div class="brand">TALOS</div><div class="title">Process Confirmation</div><div class="truth"><strong>Source preserved</strong> ≠ understood ≠ confirmed ≠ execution authorized</div></header>
+  <div class="intake">
+    <button id="imageBtn">Upload image</button><input id="imageInput" type="file" accept="image/png" hidden />
+    <button id="bpmnBtn" class="primary">Open BPMN</button><input id="bpmnInput" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden />
+    <div class="status" id="workspaceStatus">Waiting for your process.</div>
+  </div>
+  <main class="workspace">
+    <section class="panel sourcePanel">
+      <div class="panelHead"><h2>Original source</h2><span id="sourceKind">No input</span></div>
+      <div class="sourceBody">
+        <div class="sourceEmpty" id="sourceEmpty">Upload an image or native BPMN file. Talos will not use a repository fixture as if you supplied it.</div>
+        <img id="sourcePreview" class="sourcePreview" alt="Original uploaded process" />
+        <div class="sourceMeta" id="sourceMeta"></div>
+      </div>
+    </section>
+    <section class="panel" id="bpmnPanel">
+      <div class="panelHead"><h2>BPMN · What Talos understands</h2><span id="revisionLabel">No revision</span></div>
+      <div id="canvas"><div class="bpmnEmpty">No BPMN candidate exists yet. An uploaded image remains source-only until a real perception provider produces a review candidate. Native BPMN opens directly.</div></div>
+    </section>
+    <section class="panel">
+      <div class="panelHead"><h2>BPMN XML + Validation</h2><span id="alignmentLabel">Not aligned</span></div>
+      <div class="xmlWrap"><textarea id="xml" spellcheck="false" placeholder="BPMN XML appears here after a BPMN revision exists."></textarea><div class="editorButtons"><button id="saveGraph">Save graphical edit</button><button id="saveXml">Apply XML edit</button></div></div>
+      <div class="validation">
+        <div class="validationTop"><span class="badge" id="readinessBadge">NOT ASSESSED</span><span class="badge" id="semanticBadge">NO CANONICAL MODEL</span></div>
+        <div class="validationSummary" id="validationSummary">Talos has not reconciled a canonical business-process revision yet.</div>
+        <div class="findings" id="findings"></div>
+      </div>
+    </section>
+  </main>
+  <section class="proposal" id="proposal">
+    <div class="proposalHead"><strong>Natural-language BPMN proposal</strong><span>PROPOSAL ONLY · NOT APPLIED</span></div>
+    <div class="proposalBody"><div class="proposalInstruction" id="proposalInstruction"></div><div class="diff" id="proposalDiff"></div></div>
+    <div class="proposalActions"><button id="acceptProposal" class="accept">Accept proposal</button><button id="rejectProposal" class="reject">Reject proposal</button></div>
+  </section>
+  <footer class="bottom">
+    <div class="message" id="message">Choose a process input to begin.</div>
+    <div class="actions">
+      <button id="tellTalos">Tell Talos what's wrong</button>
+      <button id="confirm" class="primary" disabled>Confirm Process</button>
+      <div class="spacer"></div>
+      <div class="gateNote">Process confirmation means “this BPMN is my business process.” It does not approve deployment.</div>
+      <button id="automationGate" class="secondaryGate" disabled>Approve for Automation Design</button>
+    </div>
+  </footer>
+</div>
+<script src="/vendor/bpmn-js/bpmn-modeler.development.js"></script>
+<script>
+(function(){
+  var state={revision:null,canonical:null,validation:null,confirmation:null,proposal:null,source:null,correctionConfigured:false};
+  var modeler=new BpmnJS({container:'#canvas'});
+  var imageInput=document.getElementById('imageInput'),bpmnInput=document.getElementById('bpmnInput');
+  var xml=document.getElementById('xml'),message=document.getElementById('message'),confirmBtn=document.getElementById('confirm'),automationBtn=document.getElementById('automationGate');
+  function setMessage(text,kind){message.textContent=text;message.className='message'+(kind?' '+kind:'');}
+  async function api(path,payload){var r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});var b=await r.json();if(!r.ok){var e=new Error(b.error||b.code||('HTTP '+r.status));e.body=b;throw e;}return b;}
+  function fileText(file){return file.text();}
+  function fileDataUrl(file){return new Promise(function(resolve,reject){var reader=new FileReader();reader.onload=function(){resolve(String(reader.result||''));};reader.onerror=reject;reader.readAsDataURL(file);});}
+  function fileBase64(file){return fileDataUrl(file).then(function(url){return url.split(',')[1]||'';});}
+  function validationClass(readiness){if(readiness==='READY_FOR_AUTOMATION_DESIGN')return'ok';if(readiness==='NOT_ASSESSED')return'';return'bad';}
+  function renderValidation(){var rb=document.getElementById('readinessBadge'),sb=document.getElementById('semanticBadge'),summary=document.getElementById('validationSummary'),list=document.getElementById('findings');list.innerHTML='';if(!state.validation){rb.textContent='NOT ASSESSED';rb.className='badge';sb.textContent='NO CANONICAL MODEL';sb.className='badge';summary.textContent='Talos has not reconciled a canonical business-process revision yet.';return;}var a=state.validation.assessment;rb.textContent=a.executionReadiness;rb.className='badge '+validationClass(a.executionReadiness);sb.textContent=a.semanticVerdict;sb.className='badge '+(a.semanticVerdict==='VALID'?'ok':a.semanticVerdict==='VALID_WITH_FINDINGS'?'warn':'bad');summary.textContent=state.validation.findings.length?state.validation.findings.length+' semantic finding(s) remain. Process confirmation and automation readiness are separate gates.':'No semantic blockers found for the current canonical revision.';state.validation.findings.forEach(function(f){var d=document.createElement('div');d.className='finding';d.innerHTML='<div class="findingCode"></div><div class="findingTitle"></div><div class="findingText"></div>';d.children[0].textContent=f.code;d.children[1].textContent=f.title;d.children[2].textContent=f.description;list.appendChild(d);});}
+  function renderActions(){var aligned=state.revision&&state.revision.canonicalAlignmentStatus==='ALIGNED_TO_CANONICAL'&&state.revision.canonicalProcessRevisionId;confirmBtn.disabled=!aligned||state.revision.state==='CONFIRMED';automationBtn.disabled=!state.confirmation;document.getElementById('alignmentLabel').textContent=aligned?'Aligned to canonical':'Canonical reconciliation required';document.getElementById('revisionLabel').textContent=state.revision?'REV '+state.revision.revisionNumber+' · '+state.revision.state:'No revision';document.getElementById('tellTalos').disabled=!state.revision||!state.correctionConfigured;}
+  async function loadRevision(revision){state.revision=revision;xml.value=revision.bpmnXml||'';document.getElementById('bpmnPanel').classList.add('bpmnReady');await modeler.importXML(revision.bpmnXml);var canvas=modeler.get('canvas');if(canvas&&canvas.zoom)canvas.zoom('fit-viewport');renderActions();}
+  function applyCanonical(payload){state.canonical=payload&&payload.processRevision?payload.processRevision:null;state.validation=payload&&payload.validation?payload.validation:null;renderValidation();}
+  function renderSource(kind,file,extra){document.getElementById('sourceEmpty').style.display='none';document.getElementById('sourceKind').textContent=kind;var meta=document.getElementById('sourceMeta');meta.innerHTML='';var lines=['<strong>File</strong> '+file.name,'<strong>Size</strong> '+file.size+' bytes'];if(extra)lines=lines.concat(extra);meta.innerHTML=lines.join('<br>');}
+  document.getElementById('imageBtn').onclick=function(){imageInput.click();};document.getElementById('bpmnBtn').onclick=function(){bpmnInput.click();};
+  imageInput.onchange=async function(){var file=imageInput.files&&imageInput.files[0];if(!file)return;try{var dataUrl=await fileDataUrl(file);var base64=dataUrl.split(',')[1]||'';var result=await api('/api/input/image',{fileName:file.name,imageBase64:base64,initiatedBy:'browser-user'});state={revision:null,canonical:null,validation:null,confirmation:null,proposal:null,source:result,correctionConfigured:state.correctionConfigured};document.getElementById('sourcePreview').src=dataUrl;document.getElementById('sourcePreview').style.display='block';renderSource('IMAGE · SOURCE PRESERVED',file,['<strong>SHA-256</strong> '+result.sourceContentSha256,'<strong>Next</strong> '+result.nextRequiredStage]);document.getElementById('bpmnPanel').classList.remove('bpmnReady');xml.value='';renderValidation();renderActions();setMessage('Image source preserved. No BPMN was fabricated; real image perception is still required.','warning');}catch(e){setMessage(e.message,'fatal');}};
+  bpmnInput.onchange=async function(){var file=bpmnInput.files&&bpmnInput.files[0];if(!file)return;try{var text=await fileText(file);var result=await api('/api/input/bpmn',{fileName:file.name,bpmnXml:text,initiatedBy:'browser-user'});state.confirmation=null;state.proposal=null;renderSource('NATIVE BPMN',file,['<strong>Route</strong> direct BPMN import']);await loadRevision(result.revision);applyCanonical(result.reconciliation);if(result.reconciliation&&result.reconciliation.status==='RECONCILED')setMessage('Native BPMN parsed, canonically reconciled and semantically validated. Review it before confirmation.','success');else setMessage('BPMN opened, but canonical reconciliation is blocked. Review the diagnostics before confirmation.','warning');}catch(e){setMessage(e.message,'fatal');}};
+  document.getElementById('saveGraph').onclick=async function(){if(!state.revision)return;try{var exported=await modeler.saveXML({format:true});var result=await api('/api/bpmn/edit',{baseRevisionId:state.revision.id,bpmnXml:exported.xml,editMode:'GRAPH_EDIT',editedBy:'browser-user'});state.confirmation=null;await loadRevision(result.revision);applyCanonical(result.reconciliation);setMessage(result.changeClass+' graphical revision saved.','success');}catch(e){setMessage(e.message,'fatal');}};
+  document.getElementById('saveXml').onclick=async function(){if(!state.revision)return;try{var result=await api('/api/bpmn/edit',{baseRevisionId:state.revision.id,bpmnXml:xml.value,editMode:'XML_EDIT',editedBy:'browser-user'});state.confirmation=null;await loadRevision(result.revision);applyCanonical(result.reconciliation);setMessage(result.changeClass+' XML revision accepted.','success');}catch(e){setMessage('XML edit rejected; the last valid BPMN revision is unchanged. '+e.message,'fatal');}};
+  confirmBtn.onclick=async function(){if(!state.revision||!state.revision.canonicalProcessRevisionId)return;try{var result=await api('/api/bpmn/confirm',{revisionId:state.revision.id,canonicalProcessRevisionId:state.revision.canonicalProcessRevisionId,confirmedBy:'browser-user',authorityRef:'ui:business-process-confirmation',rationale:'I confirm this BPMN represents the business process I intend Talos to use for automation design.'});state.revision=result.revision;state.confirmation=result.confirmation;renderActions();setMessage('Process confirmed. This is not deployment approval. You may now evaluate the separate automation-design gate.','success');}catch(e){setMessage(e.message,'fatal');}};
+  automationBtn.onclick=async function(){if(!state.confirmation||!state.revision)return;try{var result=await api('/api/bpmn/automation-design-approval',{revisionId:state.revision.id,confirmationId:state.confirmation.id,approvedBy:'browser-user',authorityRef:'ui:automation-design-approval'});if(result.handoff.result==='FROZEN')setMessage('Automation-design semantic freeze created. Deployment is still not authorized.','success');else setMessage('Automation-design gate blocked: '+result.handoff.result+'. Resolve the validation findings first.','warning');}catch(e){setMessage(e.message,'fatal');}};
+  document.getElementById('tellTalos').onclick=async function(){if(!state.revision)return;var instruction=prompt('What is wrong with this BPMN? Talos will create a proposal, not silently apply it.');if(!instruction)return;try{var result=await api('/api/bpmn/correction/propose',{baseRevisionId:state.revision.id,instruction:instruction,requestedBy:'browser-user'});if(result.status!=='PROPOSED'){setMessage('Correction provider safe-stopped: '+result.status,'warning');return;}state.proposal=result;document.getElementById('proposalInstruction').textContent=instruction;document.getElementById('proposalDiff').textContent=result.diff.unifiedDiff||JSON.stringify(result.diff,null,2);document.getElementById('proposal').classList.add('open');setMessage('Proposal created. Nothing has been applied.','warning');}catch(e){setMessage(e.message,'fatal');}};
+  async function decideProposal(decision){if(!state.proposal)return;try{var result=await api('/api/bpmn/correction/decide',{proposalId:state.proposal.proposal.id,decision:decision,decidedBy:'browser-user',authorityRef:decision==='ACCEPT'?'ui:bpmn-correction-acceptance':undefined});document.getElementById('proposal').classList.remove('open');if(decision==='ACCEPT'&&result.revision){state.confirmation=null;await loadRevision(result.revision);applyCanonical(result.reconciliation);setMessage('Correction accepted as a new BPMN revision and revalidated.','success');}else setMessage('Correction proposal rejected. Current BPMN remains unchanged.','warning');state.proposal=null;}catch(e){setMessage(e.message,'fatal');}}
+  document.getElementById('acceptProposal').onclick=function(){decideProposal('ACCEPT');};document.getElementById('rejectProposal').onclick=function(){decideProposal('REJECT');};
+  fetch('/api/workspace/status').then(function(r){return r.json();}).then(function(s){state.correctionConfigured=Boolean(s.naturalLanguageCorrection&&s.naturalLanguageCorrection.configured);document.getElementById('workspaceStatus').textContent=s.status==='READY_FOR_PROCESS_INPUT'?'Ready for your process.':'Workspace state: '+s.status;renderActions();}).catch(function(e){setMessage(e.message,'fatal');});
+})();
+</script>
+</body>
+</html>`;
