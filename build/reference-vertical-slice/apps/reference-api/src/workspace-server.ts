@@ -534,8 +534,6 @@ export async function startProcessConfirmationWorkspace(options: WorkspaceServer
         });
         const review = initializeReview(repo, result.resolvedRevision, result.validation, {
           createdBy: decidedBy,
-          sourceRepresentationRefs: binding.review.context.baselineBundle.sourceRepresentationRefs,
-          adapterResultContextRefs: binding.review.context.baselineBundle.adapterResultContextRefs,
         });
         const resolvedBinding: ReconciledBinding = {
           ...binding,
