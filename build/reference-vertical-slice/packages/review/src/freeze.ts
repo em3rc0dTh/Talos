@@ -187,7 +187,9 @@ export function evaluateFreeze(
     validationAssessmentRefs: outcome.validationAssessmentRefs,
     ...(scopeBinding.semanticScopeRef === outcome.semanticScopeRef
       ? {
-          explanationDraftSnapshotRef: scopeBinding.explanationDraftSnapshotRef,
+          ...(scopeBinding.explanationDraftSnapshotRef
+            ? { explanationDraftSnapshotRef: scopeBinding.explanationDraftSnapshotRef }
+            : {}),
           visualScopeBindingRef: scopeBinding.id,
         }
       : {}),
@@ -211,7 +213,9 @@ export function evaluateFreeze(
     reviewContractVersion: 'v0.2',
     freezeDigest: digestDeterministicJson({
       processRevisionId: workspaceRevision.baselineProcessRevisionId,
-      validationAssessmentId: workspaceRevision.baselineValidationAssessmentId,
+      ...(workspaceRevision.baselineValidationAssessmentId
+        ? { validationAssessmentId: workspaceRevision.baselineValidationAssessmentId }
+        : {}),
       freezeKind: payload.freezeKind,
       scopes: scopeRecords.map((record) => ({
         scope: record.semanticScopeRef,
