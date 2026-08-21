@@ -158,8 +158,6 @@ test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-r
     assert.deepEqual(new Set(plan.revision.capabilityBindingRevisionRefs), new Set(resolved.bindingRevisions.map((binding) => binding.id)));
     assert.equal(plan.capabilityUses.length, resolved.requirements.length);
     assert(plan.elements.filter((element) => element.kind === 'CAPABILITY_INVOCATION').length >= resolved.requirements.length);
-    assert.equal(plan.revision.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
-    assert.equal(plan.assessment.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
 
     const waitNode = x.current.process.nodes.find((node) => node.kind === 'WAIT');
     assert.ok(waitNode);
@@ -176,6 +174,12 @@ test('I5C-03 resolved ExecutionPlan pins bindings and becomes Temporal-mapping-r
     assert.equal(subprocessElement?.designState, 'COMPLETE');
     assert.equal(plan.coordinationResolutions[0].resolutionKind, 'INLINE_COORDINATION');
     assert.equal(JSON.stringify(plan).includes('CHILD_WORKFLOW'), false);
+
+    assert.deepEqual(plan.requirements, [], 'Temporal mapping readiness requires zero unresolved execution requirements');
+    assert(plan.elements.every((element) => element.designState === 'COMPLETE'));
+    assert(plan.relations.every((relation) => relation.relationState === 'COMPLETE'));
+    assert.equal(plan.revision.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
+    assert.equal(plan.assessment.readiness, 'READY_FOR_TEMPORAL_MAPPING_DESIGN');
   } finally {
     close(x);
   }
