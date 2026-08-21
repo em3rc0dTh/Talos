@@ -83,7 +83,7 @@
     "image:i7c05:verify": "npm run image:i7c04:verify && npm run image:i7c05:test",
     "image:i7c06:test": "node --experimental-strip-types --test ./tests/image-i7c06-*.test.ts",
     "image:i7c06:verify": "npm run image:i7c05:verify && npm run image:i7c06:test",
-    "image:edge:test": "npm run image:i7c06:test",
+    "image:edge:test": "npm run image:i8-01:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
@@ -96,7 +96,9 @@
     "b7:verify": "npm run b6:verify && npm run b7:lock:verify && npm run b7:provider:test && npm run b7:contract:test && npm run b7:sdk:test",
     "b8:verify": "npm run b7:verify && npm run b8:test",
     "b9:verify": "npm run b8:verify && npm run b9:test",
-    "test": "npm run b9:verify"
+    "test": "npm run b9:verify",
+    "image:i8-01:test": "node --experimental-strip-types --test ./tests/image-i8-01-*.test.ts",
+    "image:i8-01:verify": "npm run image:i7c06:verify && npm run image:i8-01:test"
   },
   "dependencies": {
     "@temporalio/activity": "1.22.0",
