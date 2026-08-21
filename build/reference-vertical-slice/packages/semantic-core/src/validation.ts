@@ -68,7 +68,7 @@ function readinessFor(findings:ValidationFinding[],revision:ProcessRevision,inte
   if(intent==='BUSINESS_MODEL_UNDERSTANDING')return findings.some(f=>f.blockerClass==='SEMANTIC_UNDERSTANDING')?'INSUFFICIENT_DETAIL':'SEMANTICALLY_COMPLETE';
   if(intent!=='AUTOMATION_DESIGN_READINESS')return findings.length?'INSUFFICIENT_DETAIL':'SEMANTICALLY_COMPLETE';
   if(findings.some(f=>f.code==='SV-CNF-001'))return'BLOCKED_BY_CONFLICT';
-  const missingCodes=new Set(['SV-STR-001','SV-STR-002','SV-STR-003','SV-STR-004','SV-CFL-002','SV-CFL-004','SV-CMP-001','SV-CMP-002','SV-CMP-003','SV-ACT-001','SV-ACT-002','SV-HUM-001','SV-HUM-002','SV-DAT-001','SV-DAT-002','SV-DAT-003','SV-RUL-001','SV-EVT-001','SV-EVT-002','SV-EVT-003','SV-COR-001','SV-COR-002','SV-COR-003','SV-CON-001','SV-CON-002','SV-CON-003','SV-LOP-001','SV-SUB-001','SV-SUB-002','SV-SFX-001','SV-SFX-002','SV-SFX-003']);
+  const missingCodes=new Set(['SV-STR-001','SV-STR-002','SV-STR-003','SV-STR-004','SV-CFL-001','SV-CFL-002','SV-CFL-004','SV-CMP-001','SV-CMP-002','SV-CMP-003','SV-ACT-001','SV-ACT-002','SV-HUM-001','SV-HUM-002','SV-DAT-001','SV-DAT-002','SV-DAT-003','SV-RUL-001','SV-EVT-001','SV-EVT-002','SV-EVT-003','SV-COR-001','SV-COR-002','SV-COR-003','SV-CON-001','SV-CON-002','SV-CON-003','SV-LOP-001','SV-SUB-001','SV-SUB-002','SV-SFX-001','SV-SFX-002','SV-SFX-003']);
   if(findings.some(f=>missingCodes.has(f.code)))return'INSUFFICIENT_DETAIL';
   if(findings.some(f=>f.blockerClass==='SOURCE_ACCEPTANCE'||f.code==='SV-SRC-001'||f.code==='SV-SRC-002'))return'NEEDS_CONFIRMATION';
   return'READY_FOR_AUTOMATION_DESIGN';
@@ -80,6 +80,7 @@ function verdictFor(findings:ValidationFinding[],revision:ProcessRevision):Seman
 }
 function questionText(f:ValidationFinding):string{
   switch(f.code){
+    case'SV-CFL-001':return'What exact business condition selects this branch?';
     case'SV-CFL-002':return'What happens on this unresolved branch?';
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
     case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';

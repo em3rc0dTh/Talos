@@ -10,3 +10,4 @@ export * from './talos-bpmn-moddle.ts';
 export * from './bpmn-correction-provider.ts';
 export * from './async-http-bpmn-correction-provider.ts';
 export * from './bpmn-xml-diff.ts';
+export * from './bpmn-canonical-source-view.ts';

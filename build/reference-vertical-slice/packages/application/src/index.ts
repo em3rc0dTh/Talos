@@ -6,3 +6,5 @@ export * from './execution-design.ts';
 export * from './bpmn-workspace.ts';
 export * from './bpmn-natural-language.ts';
 export * from './bpmn-freeze-handoff.ts';
+export * from './bpmn-canonical-import.ts';
+export * from './bpmn-correction-factory.ts';

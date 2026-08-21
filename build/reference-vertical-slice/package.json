@@ -69,6 +69,8 @@
     "image:i7b06:verify": "npm run image:i7b05:verify && npm run image:i7b06:test",
     "image:i7b07:test": "node --experimental-strip-types --test ./tests/image-i7b07-confirmation-freeze-integration.test.ts",
     "image:i7b07:verify": "npm run image:i7b06:verify && npm run image:i7b07:test",
+    "image:i7b08:test": "node --experimental-strip-types --test ./tests/image-i7b08-*.test.ts",
+    "image:i7b08:verify": "npm run image:i7b07:verify && npm run image:i7b08:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
