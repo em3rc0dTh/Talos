@@ -71,7 +71,7 @@
     "image:i7b07:verify": "npm run image:i7b06:verify && npm run image:i7b07:test",
     "image:i7b08:test": "node --experimental-strip-types --test ./tests/image-i7b08-*.test.ts",
     "image:i7b08:verify": "npm run image:i7b07:verify && npm run image:i7b08:test",
-    "image:i7c01:test": "node --experimental-strip-types --test ./tests/image-i7c01-real-vision-runtime-config.test.ts",
+    "image:i7c01:test": "node --experimental-strip-types --test ./tests/image-i7c01-*.test.ts",
     "image:i7c01:verify": "npm run image:i7b08:verify && npm run image:i7c01:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
