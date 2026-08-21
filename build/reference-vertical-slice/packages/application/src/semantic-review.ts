@@ -216,6 +216,7 @@ export function applyClaimConfirmation(
     derivationKind: 'HUMAN_CONFIRMATION',
     nodes: currentProcess.nodes.map((node) => ({ ...node, ...(subjectTruth(node.id) ? { truthClass: 'CONFIRMED' as const } : {}) })),
     edges: currentProcess.edges.map((edge) => ({ ...edge, ...(subjectTruth(edge.id) ? { truthClass: 'CONFIRMED' as const } : {}) })),
+    rules: currentProcess.rules.map((rule) => ({ ...rule, ...(subjectTruth(rule.id) ? { truthClass: 'CONFIRMED' as const } : {}) })),
     semanticClaims: activeClaims,
     semanticStatus: 'NORMALIZED',
     executionReadiness: 'NOT_ASSESSED',
