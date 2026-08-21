@@ -32,8 +32,8 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
     }
     if(node.kind==='WAIT'){
       const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??'');
-      const timezone=props.timezone??props['propertyValues.timezone'];
-      const expression=props.expression??props['propertyValues.expression'];
+      const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
+      const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
         out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }

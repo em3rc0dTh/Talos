@@ -178,6 +178,15 @@ function fullCorrection(repo: SqliteDocumentStore, prepared: ReturnType<typeof p
     rationale: 'Business reviewer authors the structured YES-branch business rule.',
   }));
 
+  const waitAfterRules = byName(current.process, 'On Next Wednesday');
+  current = apply(repo, current, command(current, 5, {
+    actionKind: 'CORRECT_PROPERTY',
+    targetSubjectRefs: [waitAfterRules.id],
+    targetPropertyPath: 'details.waitSemantics',
+    proposedValue: { waitKind: 'SCHEDULE', expression: 'NEXT_WEDNESDAY', timezone: 'America/Lima' },
+    rationale: 'Business reviewer explicitly defines the schedule semantics and timezone; the image label alone was insufficient.',
+  }));
+
   return current;
 }
 

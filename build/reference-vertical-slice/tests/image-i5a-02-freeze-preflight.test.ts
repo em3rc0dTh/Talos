@@ -158,6 +158,15 @@ function fullyCorrect(repo: SqliteDocumentStore, currentInput: Current): Current
     targetPropertyPath: 'conditionRuleRef',
     proposedValue: { naturalLanguage: 'Customer exists', expression: { fact: 'customerExists', operator: 'EQUALS', value: true } },
   }));
+
+  const waitAfterRules = byName(current.process, 'On Next Wednesday');
+  current = apply(repo, current, correctionCommand(current, 5, {
+    actionKind: 'CORRECT_PROPERTY',
+    targetSubjectRefs: [waitAfterRules.id],
+    targetPropertyPath: 'details.waitSemantics',
+    proposedValue: { waitKind: 'SCHEDULE', expression: 'NEXT_WEDNESDAY', timezone: 'America/Lima' },
+    rationale: 'Business reviewer explicitly defines the schedule semantics and timezone.',
+  }));
   return current;
 }
 
@@ -214,18 +223,18 @@ test('I5A-02 freeze preflight proves the ready graph is structurally defensible 
 
     const correctionCommands = repo.listByKind<ReviewCommand>('ReviewCommand').map((item) => item.payload)
       .filter((cmd) => ['CORRECT_PROPERTY', 'ADD_PROCESS_ELEMENT', 'ADD_RELATIONSHIP'].includes(cmd.actionKind));
-    assert.equal(correctionCommands.length, 4);
+    assert.equal(correctionCommands.length, 5);
     assert.equal(correctionCommands.every((cmd) => Boolean(cmd.authorityRef)), true);
     const correctionApplications = repo.listByKind<any>('ReviewCommandApplication').map((item) => item.payload)
       .filter((application) => correctionCommands.some((cmd) => cmd.id === application.reviewCommandId));
-    assert.equal(correctionApplications.length, 4);
+    assert.equal(correctionApplications.length, 5);
     assert.equal(correctionApplications.every((application) => application.result === 'APPLIED' && application.reviewAuthoredSourceRevisionRef), true);
 
     const processRevisions = repo.listByKind<ProcessRevision>('ProcessRevision').map((item) => item.payload)
       .filter((revision) => revision.processDefinitionId === final.process.processDefinitionId)
       .sort((a, b) => a.revision - b.revision);
     const fromConfirmed = processRevisions.slice(processRevisions.findIndex((revision) => revision.id === confirmedRevisionId));
-    assert.equal(fromConfirmed.length, 5, 'confirmed baseline plus four semantic corrections must remain as five immutable revisions');
+    assert.equal(fromConfirmed.length, 6, 'confirmed baseline plus five semantic corrections must remain as six immutable revisions');
     for (let index = 1; index < fromConfirmed.length; index += 1) {
       assert.equal(fromConfirmed[index].revision, fromConfirmed[index - 1].revision + 1);
       assert.deepEqual(fromConfirmed[index].parentRevisionIds, [fromConfirmed[index - 1].id]);

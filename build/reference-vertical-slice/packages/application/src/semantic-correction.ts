@@ -168,7 +168,7 @@ function correctionDifferences(before: ProcessRevision, after: ProcessRevision):
 function expectedDifference(command: ReviewCommand, entry: SemanticDiffEntry, supportingRefs: Set<string>): boolean {
   const target = new Set(command.targetSubjectRefs);
   if (command.actionKind === 'CORRECT_PROPERTY') {
-    if (command.targetPropertyPath === 'details.subprocessMode') {
+    if (command.targetPropertyPath === 'details.subprocessMode' || command.targetPropertyPath === 'details.waitSemantics') {
       return entry.kind === 'CHANGED' && entry.propertyPath === 'node' && target.has(entry.subjectRef);
     }
     if (command.targetPropertyPath === 'conditionRuleRef') {
@@ -257,6 +257,38 @@ function applyCorrectionMutation(current: ProcessRevision, command: ReviewComman
     node.truthClass = 'CONFIRMED';
     authoredClaims.push(correctionClaim(command, node.id, 'details.subprocessMode', value, at, previousClaims(node.id, 'details.subprocessMode')));
     confirmationDrafts.push({ subjectRef: node.id, propertyPath: 'details.subprocessMode', value });
+    return { nodes, edges, rules, authoredClaims, confirmationDrafts, supportingRefs };
+  }
+
+  if (command.actionKind === 'CORRECT_PROPERTY' && command.targetPropertyPath === 'details.waitSemantics') {
+    if (command.targetSubjectRefs.length !== 1 || !command.proposedValue || typeof command.proposedValue !== 'object' || Array.isArray(command.proposedValue)) return undefined;
+    const node = nodes.find((item) => item.id === command.targetSubjectRefs[0]);
+    if (!node || node.kind !== 'WAIT') return undefined;
+    const proposal = command.proposedValue as Record<string, unknown>;
+    const waitKind = typeof proposal.waitKind === 'string' ? proposal.waitKind.trim() : '';
+    const supported = new Set(['SCHEDULE','DEADLINE','EXTERNAL_EVENT','MESSAGE','HUMAN_RESPONSE','CONDITION']);
+    if (!supported.has(waitKind)) return undefined;
+    const nextDetails: Record<string, unknown> = { ...(node.details ?? {}), waitKind };
+    const authored: [string, unknown][] = [['details.waitKind', waitKind]];
+    if (waitKind === 'SCHEDULE' || waitKind === 'DEADLINE') {
+      const expression = proposal.expression;
+      const timezone = typeof proposal.timezone === 'string' ? proposal.timezone.trim() : '';
+      if ((typeof expression !== 'string' && (typeof expression !== 'object' || expression === null || Array.isArray(expression))) || !timezone) return undefined;
+      nextDetails.expression = expression;
+      nextDetails.timezone = timezone;
+      authored.push(['details.expression', expression], ['details.timezone', timezone]);
+    } else {
+      const resumeSemantics = typeof proposal.resumeSemantics === 'string' ? proposal.resumeSemantics.trim() : '';
+      if (!resumeSemantics) return undefined;
+      nextDetails.resumeSemantics = resumeSemantics;
+      authored.push(['details.resumeSemantics', resumeSemantics]);
+    }
+    node.details = nextDetails;
+    node.truthClass = 'CONFIRMED';
+    for (const [propertyPath, value] of authored) {
+      authoredClaims.push(correctionClaim(command, node.id, propertyPath, value, at, previousClaims(node.id, propertyPath)));
+      confirmationDrafts.push({ subjectRef: node.id, propertyPath, value });
+    }
     return { nodes, edges, rules, authoredClaims, confirmationDrafts, supportingRefs };
   }
 
