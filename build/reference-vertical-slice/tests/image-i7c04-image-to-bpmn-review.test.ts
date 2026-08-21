@@ -147,6 +147,8 @@ test('I7C-04 arbitrary image evidence normalizes, validates and projects into a 
       assert.equal(projection.bpmnRevision.state, 'DRAFT');
       assert.equal(projection.bpmnRevision.canonicalProcessRevisionId, process.id);
       assert.equal(projection.bpmnRevision.sourceRoute, 'IMAGE_INTERPRETATION');
+      assert.deepEqual(projection.bpmnRevision.sourceArtifactRefs, [result.intake.artifact.id]);
+      assert.deepEqual(projection.bpmnRevision.sourceRepresentationRefs, [result.intake.representation.id]);
       assert.match(projection.bpmnRevision.bpmnXml, /isExecutable="false"/);
       assert.match(projection.bpmnRevision.bpmnXml, /bpmn:startEvent/);
       assert.match(projection.bpmnRevision.bpmnXml, /bpmn:task/);
