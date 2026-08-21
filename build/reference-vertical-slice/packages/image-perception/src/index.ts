@@ -6,4 +6,5 @@ export * from './perception-types.ts';
 export * from './perception-adapter.ts';
 export * from './admission.ts';
 export * from './async-http-provider.ts';
+export * from './runtime-provider-config.ts';
 export * from './reference-quarry-provider.ts';
