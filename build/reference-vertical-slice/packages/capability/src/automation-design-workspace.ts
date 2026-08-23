@@ -33,6 +33,8 @@ export interface AutomationDesignRequirementView {
 
 export interface AutomationDesignWorkspace {
   id: string;
+  revisionNumber: number;
+  supersedesWorkspaceRef?: string;
   processRevisionRef: string;
   capabilityDesignRevisionRef: string;
   requirementRefs: string[];
@@ -44,7 +46,6 @@ export interface AutomationDesignWorkspace {
   bindingAuthorized: false;
   executionPlanAuthorized: false;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface AutomationDesignWorkspaceBundle {
@@ -126,12 +127,16 @@ function buildWorkspace(
   design: CapabilityDesignBundle,
   suggestions: readonly IntegrationSuggestion[],
   decisions: readonly IntegrationSuggestionDecision[],
+  revisionNumber: number,
   createdAt: string,
-  updatedAt: string,
+  revisionSeed: string,
+  supersedesWorkspaceRef?: string,
 ): AutomationDesignWorkspace {
   const requirements = design.requirements.map((requirement) => requirementView(requirement, suggestions, decisions));
   return {
-    id: createOpaqueId('capability', `automation-design-workspace:${design.designRevision.id}`),
+    id: createOpaqueId('capability', `automation-design-workspace:${design.designRevision.id}:${revisionNumber}:${revisionSeed}`),
+    revisionNumber,
+    ...(supersedesWorkspaceRef ? { supersedesWorkspaceRef } : {}),
     processRevisionRef: design.designRevision.processRevisionId,
     capabilityDesignRevisionRef: design.designRevision.id,
     requirementRefs: design.requirements.map((requirement) => requirement.id),
@@ -145,7 +150,6 @@ function buildWorkspace(
     bindingAuthorized: false,
     executionPlanAuthorized: false,
     createdAt,
-    updatedAt,
   };
 }
 
@@ -156,7 +160,7 @@ export function openAutomationDesignWorkspace(
   const suggestions = suggestIntegrations(design.requirements, createdAt);
   const decisions: IntegrationSuggestionDecision[] = [];
   return {
-    workspace: buildWorkspace(design, suggestions, decisions, createdAt, createdAt),
+    workspace: buildWorkspace(design, suggestions, decisions, 1, createdAt, 'OPEN'),
     suggestions,
     decisions,
   };
@@ -190,8 +194,10 @@ export function decideAutomationDesignSuggestion(
       design,
       current.suggestions,
       decisions,
-      current.workspace.createdAt,
+      current.workspace.revisionNumber + 1,
       input.decidedAt,
+      decision.id,
+      current.workspace.id,
     ),
     suggestions: [...current.suggestions],
     decisions,
