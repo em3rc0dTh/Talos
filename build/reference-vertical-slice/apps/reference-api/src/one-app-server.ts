@@ -10,6 +10,7 @@ import {
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
+  designOneAppDeployment,
   designOneAppExplicitRuntimePolicy,
   initializeReview,
   mapOneAppApprovedTemporalDesign,
@@ -115,7 +116,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           releaseGate: imageConfigured
             ? 'I9-02_ONE_APP_IMAGE_BPMN_E2E'
             : 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
-          currentAuthorityStage: 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN',
+          currentAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
@@ -144,10 +145,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             'EXPLICIT_AUTOMATION_APPROVAL',
             'APPROVED_TEMPORAL_MAPPING',
             'EXPLICIT_RUNTIME_POLICY_DESIGN',
+            'DEPLOYMENT_DESIGN',
           ],
           automaticCapabilityBindingAuthorized: false,
           automaticTemporalDesignAuthorized: false,
           automaticRuntimePolicyDefaultsAuthorized: false,
+          automaticDeploymentRealizationAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -556,6 +559,51 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         json(res, 201, {
           runtimePolicy,
           automaticRuntimePolicyDefaultsAuthorized: false,
+          deploymentAuthorized: false,
+          executionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/deployment-design') {
+        const input = await jsonBody(req);
+        const approvalId = text(input.approvalId, 'approvalId');
+        const session = approvalSessions.get(approvalId);
+        if (!session) throw new TypeError('one-app Deployment design requires an explicit automation approval');
+        const runtimePolicy = session.automation.runtimePolicy;
+        if (!runtimePolicy) throw new TypeError('one-app Deployment design requires an explicit RuntimePolicy first');
+        const runtimePolicyRevisionId = text(input.runtimePolicyRevisionId, 'runtimePolicyRevisionId');
+        if (runtimePolicyRevisionId !== runtimePolicy.revision.id) {
+          throw new TypeError('one-app Deployment design must pin the exact RuntimePolicyRevision');
+        }
+        const environmentClass = text(input.environmentClass, 'environmentClass');
+        if (!['DEVELOPMENT', 'TEST', 'STAGING', 'PRODUCTION'].includes(environmentClass)) {
+          throw new TypeError('environmentClass must be DEVELOPMENT, TEST, STAGING or PRODUCTION');
+        }
+        session.automation = designOneAppDeployment(
+          repo,
+          session.automation,
+          {
+            environmentKey: text(input.environmentKey, 'environmentKey'),
+            environmentClass: environmentClass as any,
+            temporalPlatformRef: text(input.temporalPlatformRef, 'temporalPlatformRef'),
+            desiredNamespaceKey: text(input.desiredNamespaceKey, 'desiredNamespaceKey'),
+            desiredTaskQueueKey: text(input.desiredTaskQueueKey, 'desiredTaskQueueKey'),
+            desiredWorkflowTypeName: text(input.desiredWorkflowTypeName, 'desiredWorkflowTypeName'),
+            desiredActivityTypeName: text(input.desiredActivityTypeName, 'desiredActivityTypeName'),
+            desiredWorkerLogicalName: text(input.desiredWorkerLogicalName, 'desiredWorkerLogicalName'),
+            authorityRef: text(input.authorityRef, 'authorityRef'),
+            decidedBy: text(input.decidedBy, 'decidedBy'),
+            rationale: text(input.rationale, 'rationale'),
+          },
+          new Date().toISOString(),
+        );
+        const deploymentDesign = session.automation.deploymentDesign;
+        if (!deploymentDesign) throw new TypeError('one-app Deployment design was not created');
+        json(res, 201, {
+          deploymentDesign,
+          deploymentRealizationAuthorized: false,
+          deploymentAttemptAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
