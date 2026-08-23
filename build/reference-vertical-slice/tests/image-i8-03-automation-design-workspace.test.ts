@@ -9,7 +9,7 @@ import {
 const requirement = (family: string, seed: string, requirementState = 'REQUIRED') => ({
   id: createOpaqueId('capability', `requirement:${seed}`),
   capabilityDesignRevisionId: createOpaqueId('capability', 'design:i8-03'),
-  semanticScopeRef: createOpaqueId('semantic', 'scope:i8-03'),
+  semanticScopeRef: createOpaqueId('validation', 'scope:i8-03'),
   semanticSubjectRefs: [createOpaqueId('canonical', `subject:${seed}`)],
   family,
   operationIntent: 'PERFORM_ACTION',
@@ -27,7 +27,7 @@ const design = (requirements: any[]) => ({
     semanticFreezeRecordId: createOpaqueId('review', 'freeze:i8-03'),
     scopeFreezeRefs: [createOpaqueId('review', 'scope-freeze:i8-03')],
     processRevisionId: createOpaqueId('canonical', 'process:i8-03'),
-    validationAssessmentRefs: [createOpaqueId('semantic', 'assessment:i8-03')],
+    validationAssessmentRefs: [createOpaqueId('validation', 'assessment:i8-03')],
     requirementRefs: requirements.map((item) => item.id),
     unresolvedRequirementRefs: requirements.filter((item) => item.requirementState === 'UNRESOLVED').map((item) => item.id),
     designState: requirements.some((item) => item.requirementState === 'UNRESOLVED') ? 'NEEDS_DESIGN_DECISION' : 'READY_FOR_BINDING',
@@ -46,6 +46,8 @@ test('I8-03 opens one automation-design view across requirements without creatin
   const unknown = requirement('SOURCE_DEFINED', 'unknown', 'UNRESOLVED');
   const opened = openAutomationDesignWorkspace(design([communication, unknown]) as any, '2026-08-23T21:31:00.000Z');
 
+  assert.equal(opened.workspace.revisionNumber, 1);
+  assert.equal(opened.workspace.supersedesWorkspaceRef, undefined);
   assert.equal(opened.workspace.requirements.length, 2);
   assert.equal(opened.workspace.state, 'BLOCKED_UNRESOLVED_CAPABILITY');
   assert.deepEqual(opened.workspace.unresolvedRequirementRefs, [unknown.id]);
@@ -58,7 +60,7 @@ test('I8-03 opens one automation-design view across requirements without creatin
   assert.equal(opened.workspace.executionPlanAuthorized, false);
 });
 
-test('I8-03 ACCEPT records user direction but still requires an explicit capability selection', () => {
+test('I8-03 ACCEPT creates a child workspace revision but still requires an explicit capability selection', () => {
   const communication = requirement('COMMUNICATION', 'notify');
   const capabilityDesign = design([communication]) as any;
   const opened = openAutomationDesignWorkspace(capabilityDesign, '2026-08-23T21:32:00.000Z');
@@ -80,6 +82,11 @@ test('I8-03 ACCEPT records user direction but still requires an explicit capabil
   assert.equal(decided.decisions.length, 1);
   assert.equal(decided.decisions[0].decision, 'ACCEPT');
   assert.equal(decided.decisions[0].createsBinding, false);
+  assert.equal(decided.workspace.revisionNumber, 2);
+  assert.notEqual(decided.workspace.id, opened.workspace.id);
+  assert.equal(decided.workspace.supersedesWorkspaceRef, opened.workspace.id);
+  assert.equal(opened.workspace.revisionNumber, 1);
+  assert.equal(opened.workspace.state, 'AWAITING_USER_DECISIONS');
   assert.equal(decided.workspace.state, 'READY_FOR_EXPLICIT_SELECTION');
   assert.equal(decided.workspace.capabilitySelectionCreated, false);
   assert.equal(decided.workspace.bindingAuthorized, false);
@@ -111,6 +118,7 @@ test('I8-03 REPLACE keeps the replacement proposal under user authority without 
   assert.equal(decided.decisions[0].replacement?.implementationRef, 'internal:notification-gateway');
   assert.equal(decided.workspace.state, 'READY_FOR_EXPLICIT_SELECTION');
   assert.equal(decided.workspace.createsBinding, false);
+  assert.equal(decided.workspace.supersedesWorkspaceRef, opened.workspace.id);
 });
 
 test('I8-03 rejects stale workspace pins, duplicate suggestion decisions and competing accepted directions', () => {
