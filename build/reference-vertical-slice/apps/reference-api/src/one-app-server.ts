@@ -7,33 +7,41 @@ import {
   NativeBpmnCanonicalReconciliationService,
   applyConfirmedBpmnFreezeHandoff,
   approveOneAppAutomation,
+  buildImageBpmnReviewCandidate,
+  confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
+  initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
-  type NativeBpmnCanonicalReconciliationResult,
+  type BpmnCanonicalReconciliationResult,
   type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
-import { LocalImageByteStore } from '../../../packages/image-perception/src/byte-store.ts';
+import {
+  LocalImageByteStore,
+  resolveImagePerceptionRuntimeBinding,
+} from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
 
 export interface TalosOneAppOptions {
   port?: number;
   host?: string;
   runtimeDir?: string;
+  imagePerceptionEnv?: Readonly<Record<string, string | undefined>>;
+  imagePerceptionFetchImpl?: typeof fetch;
 }
 
-type Reconciled = Extract<NativeBpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
+type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
 
 interface OneAppSession {
   revisionId: string;
-  binding: Reconciled;
+  binding: ReconciledBinding;
   automation: OneAppAutomationContext;
 }
 
-const MAX_JSON_BYTES = 10 * 1024 * 1024;
+const MAX_JSON_BYTES = 20 * 1024 * 1024;
 
 function json(res: http.ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload, null, 2);
@@ -70,7 +78,7 @@ function array(value: unknown, field: string): any[] {
   return value;
 }
 
-function publicReconciliation(result: NativeBpmnCanonicalReconciliationResult): unknown {
+function publicReconciliation(result: BpmnCanonicalReconciliationResult): unknown {
   if (result.status === 'BLOCKED') return { status: result.status, diagnostics: result.diagnostics };
   return {
     status: result.status,
@@ -88,8 +96,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const repo = new SqliteDocumentStore(path.join(runtimeDir, 'talos-one-app.sqlite'));
   const byteStore = new LocalImageByteStore(path.join(runtimeDir, 'source-bytes'));
   const workspace = new BpmnWorkspaceService(repo, byteStore);
-  const reconciler = new NativeBpmnCanonicalReconciliationService(repo);
-  const bindings = new Map<string, Reconciled>();
+  const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
+  const imageRuntime = resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env);
+  const bindings = new Map<string, ReconciledBinding>();
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
@@ -99,11 +108,31 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
 
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/status')) {
+        const imageConfigured = imageRuntime.status === 'CONFIGURED';
         json(res, 200, {
           status: 'READY',
-          releaseGate: 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
-          inputRoutes: ['NATIVE_BPMN'],
-          imageInputIntegratedIntoOneApp: false,
+          releaseGate: imageConfigured
+            ? 'I9-02_ONE_APP_IMAGE_BPMN_E2E'
+            : 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
+          inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
+          imageInputIntegratedIntoOneApp: imageConfigured,
+          image: {
+            exactSourceIntake: true,
+            liveVisionInterpretation: imageConfigured,
+            correlatedProviderResponsesRequired: true,
+            ...(imageConfigured ? {
+              provider: {
+                providerId: imageRuntime.binding.descriptor.providerId,
+                providerVersion: imageRuntime.binding.descriptor.providerVersion,
+                modelRef: imageRuntime.binding.descriptor.modelRef,
+                modelVersion: imageRuntime.binding.descriptor.modelVersion,
+                pipelineVersion: imageRuntime.binding.descriptor.pipelineVersion,
+                authConfigured: imageRuntime.binding.descriptor.authConfigured,
+              },
+            } : {
+              reason: imageRuntime.reason,
+            }),
+          },
           authorityChain: [
             'PROCESS_CONFIRMATION',
             'AUTOMATION_DESIGN_FREEZE',
@@ -121,6 +150,91 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/input/image') {
+        const input = await jsonBody(req);
+        const pngBytes = Buffer.from(text(input.imageBase64, 'imageBase64'), 'base64');
+        const declaredName = typeof input.fileName === 'string' ? input.fileName : 'uploaded-process.png';
+        const initiatedBy = typeof input.initiatedBy === 'string' ? input.initiatedBy : 'one-app-user';
+
+        if (imageRuntime.status !== 'CONFIGURED') {
+          const preserved = workspace.intakeImage({ pngBytes, declaredName, initiatedBy });
+          json(res, 202, {
+            ...preserved,
+            interpretation: { status: 'NOT_CONFIGURED', reason: imageRuntime.reason },
+            automaticConfirmationAuthorized: false,
+            automaticAutomationDesignAuthorized: false,
+          });
+          return;
+        }
+
+        const result = await buildImageBpmnReviewCandidate(
+          repo,
+          byteStore,
+          pngBytes,
+          imageRuntime.binding,
+          {
+            declaredName,
+            initiatedBy,
+            ...(options.imagePerceptionFetchImpl ? { fetchImpl: options.imagePerceptionFetchImpl } : {}),
+          },
+        );
+
+        if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          json(res, 200, {
+            status: result.status,
+            sourceArtifactId: result.intake.artifact.id,
+            sourceRepresentationId: result.intake.representation.id,
+            sourceContentSha256: result.intake.representation.contentHash,
+            width: result.intake.coordinateSpace.width,
+            height: result.intake.coordinateSpace.height,
+            mediaType: 'image/png',
+            perceptionDecision: result.perception.admission.decision,
+            diagnostics: result.perception.attempt.diagnostics,
+            automaticConfirmationAuthorized: false,
+            automaticFreezeAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+
+        const adapterResultId = result.perception.attempt.result?.id;
+        const review = initializeReview(repo, result.semantic.normalization.processRevision, result.semantic.validation, {
+          createdBy: initiatedBy,
+          sourceRepresentationRefs: [result.intake.representation.id],
+          ...(adapterResultId ? { adapterResultContextRefs: [adapterResultId] } : {}),
+        });
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: result.projection.bpmnRevision,
+          alignedBpmnRevision: result.projection.bpmnRevision,
+          processDefinition: result.semantic.normalization.processDefinition,
+          processRevision: result.semantic.normalization.processRevision,
+          validation: result.semantic.validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(result.projection.bpmnRevision.id, binding);
+
+        json(res, 201, {
+          status: result.status,
+          sourceArtifactId: result.intake.artifact.id,
+          sourceRepresentationId: result.intake.representation.id,
+          sourceContentSha256: result.intake.representation.contentHash,
+          width: result.intake.coordinateSpace.width,
+          height: result.intake.coordinateSpace.height,
+          mediaType: 'image/png',
+          perceptionDecision: result.perception.admission.decision,
+          revision: result.projection.bpmnRevision,
+          reconciliation: publicReconciliation(binding),
+          projectionDiagnostics: result.projection.diagnostics,
+          unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/input/bpmn') {
         const input = await jsonBody(req);
         const initiatedBy = typeof input.initiatedBy === 'string' ? input.initiatedBy : 'one-app-user';
@@ -129,7 +243,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           declaredName: typeof input.fileName === 'string' ? input.fileName : 'uploaded-process.bpmn',
           initiatedBy,
         });
-        const reconciliation = await reconciler.reconcile({
+        const reconciliation = await nativeReconciler.reconcile({
           bpmnRevisionId: imported.revision.id,
           reconciledBy: initiatedBy,
         });
@@ -149,18 +263,63 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/bpmn/confirm') {
         const input = await jsonBody(req);
         const revisionId = text(input.revisionId, 'revisionId');
+        const currentRevision = workspace.getRevision(revisionId);
+        if (!currentRevision) throw new TypeError('one-app BPMN workspace revision not found');
         const binding = bindings.get(revisionId);
         if (!binding) throw new TypeError('one-app canonical reconciliation context not found for this BPMN revision');
         const canonicalProcessRevisionId = text(input.canonicalProcessRevisionId, 'canonicalProcessRevisionId');
         if (canonicalProcessRevisionId !== binding.processRevision.id) {
           throw new TypeError('one-app confirmation must pin the exact reconciled ProcessRevision');
         }
+        const confirmedBy = typeof input.confirmedBy === 'string' ? input.confirmedBy : 'one-app-user';
+        const authorityRef = text(input.authorityRef, 'authorityRef');
+        const rationale = typeof input.rationale === 'string' && input.rationale.trim() ? input.rationale : undefined;
+
+        if (currentRevision.sourceRoute === 'IMAGE_INTERPRETATION') {
+          const result = confirmImageInterpretedBusinessProcess(repo, {
+            currentBpmnRevision: currentRevision,
+            currentProcessRevision: binding.processRevision,
+            currentValidation: binding.validation,
+            currentReviewContext: binding.review.context,
+            confirmedBy,
+            authorityRef,
+            ...(rationale ? { rationale } : {}),
+          });
+          const nextContext = result.canonicalConfirmation.nextContext;
+          const nextExplanation = result.canonicalConfirmation.explanation;
+          if (!nextContext || !nextExplanation) {
+            throw new TypeError('one-app image confirmation did not produce a next canonical review baseline');
+          }
+          const confirmedBinding: ReconciledBinding = {
+            ...binding,
+            sourceBpmnRevision: currentRevision,
+            alignedBpmnRevision: result.confirmedBpmnRevision,
+            processRevision: result.confirmedProcessRevision,
+            validation: result.confirmedValidation,
+            review: { context: nextContext, explanation: nextExplanation },
+          };
+          bindings.set(result.confirmedBpmnRevision.id, confirmedBinding);
+          json(res, 201, {
+            revision: result.confirmedBpmnRevision,
+            confirmation: result.confirmation,
+            reconciliation: publicReconciliation(confirmedBinding),
+            canonicalConfirmation: {
+              application: result.canonicalConfirmation.application,
+              confirmedClaimCount: result.canonicalConfirmation.confirmedClaims.length,
+              findingDispositionCount: result.canonicalConfirmation.findingDispositions.length,
+            },
+            automaticAutomationDesignAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+
         const result = workspace.confirm({
           revisionId,
           canonicalProcessRevisionId: binding.processRevision.id,
-          confirmedBy: typeof input.confirmedBy === 'string' ? input.confirmedBy : 'one-app-user',
-          authorityRef: text(input.authorityRef, 'authorityRef'),
-          ...(typeof input.rationale === 'string' && input.rationale.trim() ? { rationale: input.rationale } : {}),
+          confirmedBy,
+          authorityRef,
+          ...(rationale ? { rationale } : {}),
         });
         json(res, 201, {
           ...result,
@@ -188,9 +347,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const reviewContext = binding.review.context;
         const assessment = binding.validation.assessment;
         const semanticScopeRef = reviewContext.scopeBinding.semanticScopeRef;
-        const commandId = createOpaqueId('review', `i9-01:automation-design:${revisionId}:${confirmationId}:${approvedBy}:${at}`);
-        const payloadId = createOpaqueId('review', `i9-01:freeze-payload:${commandId}`);
-        const requestId = createOpaqueId('review', `i9-01:freeze-scope:${commandId}:${semanticScopeRef}`);
+        const commandId = createOpaqueId('review', `i9:automation-design:${revisionId}:${confirmationId}:${approvedBy}:${at}`);
+        const payloadId = createOpaqueId('review', `i9:freeze-payload:${commandId}`);
+        const requestId = createOpaqueId('review', `i9:freeze-scope:${commandId}:${semanticScopeRef}`);
         const result = applyConfirmedBpmnFreezeHandoff(repo, {
           currentBpmnRevision: currentRevision,
           confirmation: confirmationDocument.payload as any,
