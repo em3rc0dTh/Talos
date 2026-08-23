@@ -83,11 +83,12 @@
     "image:i7c05:verify": "npm run image:i7c04:verify && npm run image:i7c05:test",
     "image:i7c06:test": "node --experimental-strip-types --test ./tests/image-i7c06-*.test.ts",
     "image:i7c06:verify": "npm run image:i7c05:verify && npm run image:i7c06:test",
-    "image:edge:test": "npm run image:i8-01:test && npm run image:i8-02:test && npm run image:i8-03:test && npm run image:i8-04:test && npm run image:i8-05:test && npm run image:i8-06:test",
+    "image:edge:test": "npm run image:i8-01:test && npm run image:i8-02:test && npm run image:i8-03:test && npm run image:i8-04:test && npm run image:i8-05:test && npm run image:i8-06:test && npm run image:i9-01:test",
     "demo": "node --experimental-strip-types ./apps/reference-api/src/server.ts",
     "demo:generic": "node --experimental-strip-types ./apps/reference-api/src/generic-server.ts",
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
     "workspace:test-vision": "node --experimental-strip-types ./apps/reference-api/src/test-vision-workspace.ts",
+    "one-app": "node --experimental-strip-types ./apps/reference-api/src/one-app-server.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
@@ -109,7 +110,9 @@
     "image:i8-05:test": "node --experimental-strip-types --test ./tests/image-i8-05*.test.ts",
     "image:i8-05:verify": "npm run image:i8-04:verify && npm run image:i8-05:test",
     "image:i8-06:test": "node --experimental-strip-types --test ./tests/image-i8-06*.test.ts",
-    "image:i8-06:verify": "npm run image:i8-05:verify && npm run image:i8-06:test"
+    "image:i8-06:verify": "npm run image:i8-05:verify && npm run image:i8-06:test",
+    "image:i9-01:test": "node --experimental-strip-types --test ./tests/image-i9-01*.test.ts",
+    "image:i9-01:verify": "npm run image:i8-06:verify && npm run image:i9-01:test"
   },
   "dependencies": {
     "@temporalio/activity": "1.22.0",
