@@ -91,3 +91,24 @@ export function persistAutomationDesignApproval(
     'i8-06-automation-design-approval-v0.1',
   );
 }
+
+export function persistApprovedAutomationTemporalMapping(
+  repo: ImmutableDocumentRepository,
+  mapping: ReferenceTemporalMappingBundle,
+): void {
+  const at = mapping.revision.createdAt;
+  const records:Array<[string,any]> = [
+    ['TemporalMappingDefinition', mapping.definition],
+    ['TemporalMappingRevision', mapping.revision],
+    ['TemporalFeatureProfile', mapping.featureProfile],
+    ...mapping.workflowBoundaries.map(x=>['TemporalWorkflowBoundaryMapping',x] as [string,any]),
+    ...mapping.groups.map(x=>['TemporalMappingGroup',x] as [string,any]),
+    ...mapping.units.map(x=>['TemporalMappingUnit',x] as [string,any]),
+    ...mapping.alternatives.map(x=>['TemporalMappingAlternative',x] as [string,any]),
+    ...mapping.decisions.map(x=>['TemporalMappingDecision',x] as [string,any]),
+    ...mapping.unitCompatibility.map(x=>['TemporalMappingUnitCompatibility',x] as [string,any]),
+    ['TemporalFeatureCompatibilityAssessment', mapping.compatibilityAssessment],
+    ['TemporalMappingAssessment', mapping.assessment],
+  ];
+  for (const [kind,payload] of records) append(repo,kind,payload,at,'i9-01-approved-temporal-mapping-v0.1');
+}
