@@ -10,6 +10,7 @@ import {
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
+  designOneAppExplicitRuntimePolicy,
   initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
@@ -111,9 +112,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const imageConfigured = imageRuntime.status === 'CONFIGURED';
         json(res, 200, {
           status: 'READY',
-          releaseGate: imageConfigured
-            ? 'I9-02_ONE_APP_IMAGE_BPMN_E2E'
-            : 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
+          releaseGate: 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
@@ -141,9 +140,11 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             'EXECUTION_PLAN_REVIEW',
             'EXPLICIT_AUTOMATION_APPROVAL',
             'APPROVED_TEMPORAL_MAPPING',
+            'EXPLICIT_RUNTIME_POLICY_DESIGN',
           ],
           automaticCapabilityBindingAuthorized: false,
           automaticTemporalDesignAuthorized: false,
+          automaticRuntimePolicyDefaultsAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -518,6 +519,40 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         json(res, 201, {
           mapping,
           runtimePolicyAuthorized: false,
+          automaticRuntimePolicyDefaultsAuthorized: false,
+          deploymentAuthorized: false,
+          executionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/runtime-policy') {
+        const input = await jsonBody(req);
+        const approvalId = text(input.approvalId, 'approvalId');
+        const session = approvalSessions.get(approvalId);
+        if (!session) throw new TypeError('one-app RuntimePolicy design requires an explicit automation approval');
+        const mapping = session.automation.mapping;
+        if (!mapping) throw new TypeError('one-app RuntimePolicy design requires an approved Temporal mapping first');
+        const temporalMappingRevisionId = text(input.temporalMappingRevisionId, 'temporalMappingRevisionId');
+        if (temporalMappingRevisionId !== mapping.revision.id) {
+          throw new TypeError('one-app RuntimePolicy design must pin the exact approved TemporalMappingRevision');
+        }
+        const workflow = input.workflow;
+        if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+          throw new TypeError('workflow must be an explicit RuntimePolicy decision object');
+        }
+        session.automation = designOneAppExplicitRuntimePolicy(
+          repo,
+          session.automation,
+          array(input.activities, 'activities') as any,
+          workflow as any,
+          new Date().toISOString(),
+        );
+        const runtimePolicy = session.automation.runtimePolicy;
+        if (!runtimePolicy) throw new TypeError('one-app explicit RuntimePolicy design was not created');
+        json(res, 201, {
+          runtimePolicy,
+          automaticRuntimePolicyDefaultsAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });

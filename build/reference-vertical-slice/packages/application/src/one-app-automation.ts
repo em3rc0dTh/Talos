@@ -31,6 +31,12 @@ import {
 import type { GenericTemporalResolutionSet } from '../../temporal-design/src/generic-mapping.ts';
 import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
 import {
+  designGenericRuntimePolicy,
+  type GenericActivityRuntimePolicyResolution,
+  type GenericWorkflowRuntimePolicyResolution,
+} from '../../runtime-policy/src/generic-policy.ts';
+import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
+import {
   persistAutomationCapabilitySelection,
   persistGenericCapabilityDesign,
 } from './capability.ts';
@@ -39,6 +45,7 @@ import {
   persistAutomationExecutionPlanReview,
   persistApprovedAutomationTemporalMapping,
 } from './execution-design.ts';
+import { persistExplicitRuntimePolicyDesign } from './runtime-policy-design.ts';
 
 export interface OneAppAutomationContext {
   process: ProcessRevision;
@@ -52,6 +59,7 @@ export interface OneAppAutomationContext {
   executionReview?: AutomationExecutionPlanReviewBundle;
   approval?: AutomationDesignApprovalRecord;
   mapping?: ReferenceTemporalMappingBundle;
+  runtimePolicy?: ReferenceRuntimePolicyBundle;
 }
 
 export function openOneAppAutomationDesign(
@@ -165,4 +173,31 @@ export function mapOneAppApprovedTemporalDesign(
   );
   persistApprovedAutomationTemporalMapping(repo, mapping);
   return { ...context, mapping };
+}
+
+export function designOneAppExplicitRuntimePolicy(
+  repo: ImmutableDocumentRepository,
+  context: OneAppAutomationContext,
+  activities: GenericActivityRuntimePolicyResolution[],
+  workflow: GenericWorkflowRuntimePolicyResolution,
+  createdAt: string,
+): OneAppAutomationContext {
+  if (!context.executionReview || !context.approval || !context.mapping) {
+    throw new TypeError('one-app RuntimePolicy design requires an approved Temporal mapping first');
+  }
+  if (!context.approval.temporalDesignAuthorized) {
+    throw new TypeError('one-app RuntimePolicy design requires explicit Temporal-design authority');
+  }
+  if (context.runtimePolicy) {
+    throw new TypeError('one-app RuntimePolicy design is append-only and already exists for this context');
+  }
+  const runtimePolicy = designGenericRuntimePolicy(
+    context.executionReview.execution,
+    context.mapping,
+    activities,
+    workflow,
+    createdAt,
+  );
+  persistExplicitRuntimePolicyDesign(repo, runtimePolicy);
+  return { ...context, runtimePolicy };
 }
