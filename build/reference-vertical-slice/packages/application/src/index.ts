@@ -3,6 +3,7 @@ export * from './validation-persistence.ts';
 export * from './review.ts';
 export * from './capability.ts';
 export * from './execution-design.ts';
+export * from './runtime-policy-design.ts';
 export * from './one-app-automation.ts';
 export * from './bpmn-workspace.ts';
 export * from './bpmn-natural-language.ts';
