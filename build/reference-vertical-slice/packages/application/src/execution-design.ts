@@ -2,6 +2,7 @@ import type { ImmutableDocumentRepository } from '../../foundation/src/repositor
 import type { ReferenceExecutionBundle } from '../../execution/src/types.ts';
 import type { GenericExecutionDraftBundle } from '../../execution/src/generic-plan.ts';
 import type { GenericResolvedExecutionBundle } from '../../execution/src/generic-resolved-plan.ts';
+import type { AutomationExecutionPlanReviewBundle } from '../../execution/src/automation-execution-review.ts';
 import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
 import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
 import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
@@ -56,4 +57,18 @@ export function persistGenericResolvedExecutionPlan(repo:ImmutableDocumentReposi
     ...execution.relationResolutions.map(x=>['ExecutionRelationResolution',x] as [string,any]),
   ];
   for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-resolved-execution-v0.1');
+}
+
+export function persistAutomationExecutionPlanReview(
+  repo: ImmutableDocumentRepository,
+  bundle: AutomationExecutionPlanReviewBundle,
+): void {
+  persistGenericResolvedExecutionPlan(repo, bundle.execution);
+  append(
+    repo,
+    'AutomationExecutionPlanReview',
+    bundle.review,
+    bundle.review.createdAt,
+    'i8-05-automation-execution-plan-review-v0.1',
+  );
 }
