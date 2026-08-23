@@ -3,12 +3,13 @@ import type { ReferenceExecutionBundle } from '../../execution/src/types.ts';
 import type { GenericExecutionDraftBundle } from '../../execution/src/generic-plan.ts';
 import type { GenericResolvedExecutionBundle } from '../../execution/src/generic-resolved-plan.ts';
 import type { AutomationExecutionPlanReviewBundle } from '../../execution/src/automation-execution-review.ts';
+import type { AutomationDesignApprovalRecord } from '../../execution/src/automation-approval.ts';
 import type { ReferenceTemporalMappingBundle } from '../../temporal-design/src/types.ts';
 import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
 import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
 
 function append(repo:ImmutableDocumentRepository,kind:string,payload:any,fallbackAt:string,schemaVersion='phase5-reference-v0.2'):void{
-  repo.append({id:payload.id,aggregateKind:kind,schemaVersion,payload,createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??fallbackAt});
+  repo.append({id:payload.id,aggregateKind:kind,schemaVersion,payload,createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??payload.approvedAt??fallbackAt});
 }
 export function persistReferenceExecutionDesign(repo:ImmutableDocumentRepository,execution:ReferenceExecutionBundle,mapping:ReferenceTemporalMappingBundle,policy:ReferenceRuntimePolicyBundle,deployment:ReferenceDeploymentBundle):void{
   const at=execution.revision.createdAt;
@@ -70,5 +71,23 @@ export function persistAutomationExecutionPlanReview(
     bundle.review,
     bundle.review.createdAt,
     'i8-05-automation-execution-plan-review-v0.1',
+  );
+}
+
+export function persistAutomationDesignApproval(
+  repo: ImmutableDocumentRepository,
+  approval: AutomationDesignApprovalRecord,
+): void {
+  const existingForReview = repo.listByKind<AutomationDesignApprovalRecord>('AutomationDesignApprovalRecord')
+    .find((document) => document.payload.automationExecutionPlanReviewRef === approval.automationExecutionPlanReviewRef);
+  if (existingForReview && existingForReview.id !== approval.id) {
+    throw new TypeError('automation ExecutionPlan review already has a different append-only approval decision');
+  }
+  append(
+    repo,
+    'AutomationDesignApprovalRecord',
+    approval,
+    approval.approvedAt,
+    'i8-06-automation-design-approval-v0.1',
   );
 }
