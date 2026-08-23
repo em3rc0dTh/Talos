@@ -134,6 +134,9 @@ test('I9-03 one app requires explicit RuntimePolicy decisions after approved Tem
   const app = await startTalosOneApp({ port: 0, runtimeDir, imagePerceptionEnv: {} });
   try {
     const status = await (await fetch(`${app.baseUrl}/api/status`)).json() as any;
+    assert.equal(status.releaseGate, 'I9-01_ONE_APP_NATIVE_BPMN_E2E');
+    assert.equal(status.currentAuthorityStage, 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN');
+    assert.equal(status.authorityChain.includes('EXPLICIT_RUNTIME_POLICY_DESIGN'), true);
     assert.equal(status.automaticRuntimePolicyDefaultsAuthorized, false);
     assert.equal(status.deploymentAuthorized, false);
     assert.equal(status.executionAuthorized, false);
