@@ -6,37 +6,18 @@ import {
   BpmnWorkspaceService,
   NativeBpmnCanonicalReconciliationService,
   applyConfirmedBpmnFreezeHandoff,
-  persistAutomationCapabilitySelection,
-  persistAutomationDesignApproval,
-  persistAutomationExecutionPlanReview,
-  persistApprovedAutomationTemporalMapping,
-  persistGenericCapabilityDesign,
+  approveOneAppAutomation,
+  decideOneAppAutomationSuggestion,
+  mapOneAppApprovedTemporalDesign,
+  openOneAppAutomationDesign,
+  reviewOneAppExecutionPlan,
+  selectOneAppAutomationCapabilities,
   type NativeBpmnCanonicalReconciliationResult,
+  type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
 import { LocalImageByteStore } from '../../../packages/image-perception/src/byte-store.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
-import { designGenericCapabilities, type CapabilityDesignBundle } from '../../../packages/capability/src/generic-design.ts';
-import {
-  decideAutomationDesignSuggestion,
-  openAutomationDesignWorkspace,
-  type AutomationDesignWorkspaceBundle,
-} from '../../../packages/capability/src/automation-design-workspace.ts';
-import {
-  selectAndBindAutomationCapabilities,
-  type AutomationCapabilitySelectionResult,
-} from '../../../packages/capability/src/automation-capability-selection.ts';
-import {
-  approveAutomationDesign,
-  openAutomationExecutionPlanReview,
-  type AutomationDesignApprovalRecord,
-  type AutomationExecutionPlanReviewBundle,
-} from '../../../packages/execution/src/index.ts';
-import {
-  designApprovedAutomationTemporalMapping,
-  type GenericTemporalResolutionSet,
-} from '../../../packages/temporal-design/src/approved-mapping.ts';
-import type { ReferenceTemporalMappingBundle } from '../../../packages/temporal-design/src/types.ts';
 
 export interface TalosOneAppOptions {
   port?: number;
@@ -46,17 +27,10 @@ export interface TalosOneAppOptions {
 
 type Reconciled = Extract<NativeBpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
 
-interface AutomationContext {
+interface OneAppSession {
   revisionId: string;
   binding: Reconciled;
-  freeze: any;
-  scopeFreeze: any;
-  design: CapabilityDesignBundle;
-  workspace: AutomationDesignWorkspaceBundle;
-  selection?: AutomationCapabilitySelectionResult;
-  executionReview?: AutomationExecutionPlanReviewBundle;
-  approval?: AutomationDesignApprovalRecord;
-  mapping?: ReferenceTemporalMappingBundle;
+  automation: OneAppAutomationContext;
 }
 
 const MAX_JSON_BYTES = 10 * 1024 * 1024;
@@ -116,9 +90,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const workspace = new BpmnWorkspaceService(repo, byteStore);
   const reconciler = new NativeBpmnCanonicalReconciliationService(repo);
   const bindings = new Map<string, Reconciled>();
-  const automationContexts = new Map<string, AutomationContext>();
-  const reviewContexts = new Map<string, AutomationContext>();
-  const approvalContexts = new Map<string, AutomationContext>();
+  const automationSessions = new Map<string, OneAppSession>();
+  const reviewSessions = new Map<string, OneAppSession>();
+  const approvalSessions = new Map<string, OneAppSession>();
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -211,24 +185,24 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           throw new TypeError('one-app business-process confirmation record not found');
         }
         const at = new Date().toISOString();
-        const context = binding.review.context;
+        const reviewContext = binding.review.context;
         const assessment = binding.validation.assessment;
-        const scope = context.scopeBinding.semanticScopeRef;
+        const semanticScopeRef = reviewContext.scopeBinding.semanticScopeRef;
         const commandId = createOpaqueId('review', `i9-01:automation-design:${revisionId}:${confirmationId}:${approvedBy}:${at}`);
         const payloadId = createOpaqueId('review', `i9-01:freeze-payload:${commandId}`);
-        const requestId = createOpaqueId('review', `i9-01:freeze-scope:${commandId}:${scope}`);
+        const requestId = createOpaqueId('review', `i9-01:freeze-scope:${commandId}:${semanticScopeRef}`);
         const result = applyConfirmedBpmnFreezeHandoff(repo, {
           currentBpmnRevision: currentRevision,
           confirmation: confirmationDocument.payload as any,
           canonicalProcessRevision: binding.processRevision,
-          reviewContext: context,
+          reviewContext,
           freezeCommand: {
             id: commandId,
-            reviewWorkspaceDefinitionId: context.workspaceDefinition.id,
-            expectedReviewWorkspaceRevisionId: context.workspaceRevision.id,
-            expectedReviewBaselineBundleId: context.baselineBundle.id,
-            primarySemanticScopeRef: scope,
-            targetSemanticScopeRefs: [scope],
+            reviewWorkspaceDefinitionId: reviewContext.workspaceDefinition.id,
+            expectedReviewWorkspaceRevisionId: reviewContext.workspaceRevision.id,
+            expectedReviewBaselineBundleId: reviewContext.baselineBundle.id,
+            primarySemanticScopeRef: semanticScopeRef,
+            targetSemanticScopeRefs: [semanticScopeRef],
             actionKind: 'REQUEST_FREEZE',
             targetSubjectRefs: [],
             actionPayloadRef: payloadId,
@@ -247,7 +221,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           scopeRequests: [{
             id: requestId,
             freezeRequestPayloadId: payloadId,
-            semanticScopeRef: scope,
+            semanticScopeRef,
             requestedDisposition: 'ACCEPTED',
             referencedValidationAssessmentRefs: [assessment.id],
           }],
@@ -265,31 +239,21 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           return;
         }
 
-        const scopeFreeze = result.freeze.scopeRecords[0];
-        const design = designGenericCapabilities(
-          binding.processRevision,
-          binding.validation.scope,
+        const automation = openOneAppAutomationDesign(repo, {
+          process: binding.processRevision,
+          scope: binding.validation.scope,
           assessment,
-          result.freezeRecord,
-          scopeFreeze,
-          at,
-        );
-        persistGenericCapabilityDesign(repo, design);
-        const opened = openAutomationDesignWorkspace(design, at);
-        const automationContext: AutomationContext = {
-          revisionId,
-          binding,
           freeze: result.freezeRecord,
-          scopeFreeze,
-          design,
-          workspace: opened,
-        };
-        automationContexts.set(opened.workspace.id, automationContext);
+          scopeFreeze: result.freeze.scopeRecords[0],
+          createdAt: at,
+        });
+        const session: OneAppSession = { revisionId, binding, automation };
+        automationSessions.set(automation.workspace.workspace.id, session);
 
         json(res, 201, {
           ...result,
           automationDesignOpened: true,
-          automationDesign: opened,
+          automationDesign: automation.workspace,
           capabilitySelectionCreated: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
@@ -300,13 +264,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/automation/suggestion/decide') {
         const input = await jsonBody(req);
         const workspaceId = text(input.workspaceId, 'workspaceId');
-        const context = automationContexts.get(workspaceId);
-        if (!context) throw new TypeError('one-app Automation Design Workspace not found');
+        const session = automationSessions.get(workspaceId);
+        if (!session) throw new TypeError('one-app Automation Design Workspace not found');
         const decision = text(input.decision, 'decision');
         if (!['ACCEPT', 'REPLACE', 'REJECT', 'DEFER'].includes(decision)) {
           throw new TypeError('decision must be ACCEPT, REPLACE, REJECT or DEFER');
         }
-        context.workspace = decideAutomationDesignSuggestion(context.design, context.workspace, {
+        session.automation = decideOneAppAutomationSuggestion(session.automation, {
           suggestionRef: text(input.suggestionRef, 'suggestionRef'),
           capabilityRequirementRef: text(input.capabilityRequirementRef, 'capabilityRequirementRef'),
           decision: decision as any,
@@ -317,7 +281,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           decidedAt: new Date().toISOString(),
         });
         json(res, 201, {
-          ...context.workspace,
+          ...session.automation.workspace,
           capabilitySelectionCreated: false,
           executionPlanAuthorized: false,
         });
@@ -327,41 +291,33 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/automation/capability/select') {
         const input = await jsonBody(req);
         const workspaceId = text(input.workspaceId, 'workspaceId');
-        const context = automationContexts.get(workspaceId);
-        if (!context) throw new TypeError('one-app explicit capability selection requires an existing Automation Design Workspace');
-        const selection = selectAndBindAutomationCapabilities(
-          context.design,
-          context.workspace,
+        const session = automationSessions.get(workspaceId);
+        if (!session) throw new TypeError('one-app explicit capability selection requires an existing Automation Design Workspace');
+        session.automation = selectOneAppAutomationCapabilities(
+          repo,
+          session.automation,
           array(input.selections, 'selections') as any,
           new Date().toISOString(),
         );
-        persistAutomationCapabilitySelection(repo, selection);
-        context.selection = selection;
-        json(res, 201, selection);
+        json(res, 201, session.automation.selection);
         return;
       }
 
       if (req.method === 'POST' && url.pathname === '/api/automation/execution-plan/review') {
         const input = await jsonBody(req);
         const workspaceId = text(input.workspaceId, 'workspaceId');
-        const context = automationContexts.get(workspaceId);
-        if (!context || !context.selection) {
-          throw new TypeError('one-app ExecutionPlan review requires an explicit capability selection first');
-        }
+        const session = automationSessions.get(workspaceId);
+        if (!session) throw new TypeError('one-app ExecutionPlan review requires an existing Automation Design Workspace');
         const decisions = input.decisions && typeof input.decisions === 'object' ? input.decisions as any : {};
-        const review = openAutomationExecutionPlanReview(
-          context.binding.processRevision,
-          context.binding.validation.scope,
-          context.binding.validation.assessment,
-          context.freeze,
-          context.scopeFreeze,
-          context.selection,
+        session.automation = reviewOneAppExecutionPlan(
+          repo,
+          session.automation,
           decisions,
           new Date().toISOString(),
         );
-        persistAutomationExecutionPlanReview(repo, review);
-        context.executionReview = review;
-        reviewContexts.set(review.review.id, context);
+        const review = session.automation.executionReview;
+        if (!review) throw new TypeError('one-app ExecutionPlan review was not created');
+        reviewSessions.set(review.review.id, session);
         json(res, 201, review);
         return;
       }
@@ -369,19 +325,17 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/automation/approve') {
         const input = await jsonBody(req);
         const reviewId = text(input.reviewId, 'reviewId');
-        const context = reviewContexts.get(reviewId);
-        if (!context?.executionReview) {
-          throw new TypeError('one-app automation approval requires an existing ExecutionPlan review');
-        }
-        const approval = approveAutomationDesign(context.executionReview, {
+        const session = reviewSessions.get(reviewId);
+        if (!session) throw new TypeError('one-app automation approval requires an existing ExecutionPlan review');
+        session.automation = approveOneAppAutomation(repo, session.automation, {
           approvedBy: typeof input.approvedBy === 'string' ? input.approvedBy : 'one-app-user',
           authorityRef: text(input.authorityRef, 'authorityRef'),
           rationale: text(input.rationale, 'rationale'),
           approvedAt: new Date().toISOString(),
         });
-        persistAutomationDesignApproval(repo, approval);
-        context.approval = approval;
-        approvalContexts.set(approval.id, context);
+        const approval = session.automation.approval;
+        if (!approval) throw new TypeError('one-app automation approval was not created');
+        approvalSessions.set(approval.id, session);
         json(res, 201, approval);
         return;
       }
@@ -389,22 +343,19 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/automation/temporal-mapping') {
         const input = await jsonBody(req);
         const approvalId = text(input.approvalId, 'approvalId');
-        const context = approvalContexts.get(approvalId);
-        if (!context?.approval || !context.executionReview) {
-          throw new TypeError('one-app Temporal mapping requires an explicit I8-06 automation approval');
-        }
-        const resolutions: GenericTemporalResolutionSet = {
-          waits: Array.isArray(input.waits) ? input.waits as any : [],
-          humans: Array.isArray(input.humans) ? input.humans as any : [],
-        };
-        const mapping = designApprovedAutomationTemporalMapping(
-          context.executionReview.execution,
-          context.approval,
-          resolutions,
+        const session = approvalSessions.get(approvalId);
+        if (!session) throw new TypeError('one-app Temporal mapping requires an explicit I8-06 automation approval');
+        session.automation = mapOneAppApprovedTemporalDesign(
+          repo,
+          session.automation,
+          {
+            waits: Array.isArray(input.waits) ? input.waits as any : [],
+            humans: Array.isArray(input.humans) ? input.humans as any : [],
+          },
           new Date().toISOString(),
         );
-        persistApprovedAutomationTemporalMapping(repo, mapping);
-        context.mapping = mapping;
+        const mapping = session.automation.mapping;
+        if (!mapping) throw new TypeError('one-app approved Temporal mapping was not created');
         json(res, 201, {
           mapping,
           runtimePolicyAuthorized: false,
@@ -417,7 +368,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       json(res, 404, { error: 'not found', code: 'ONE_APP_ROUTE_NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked/i.test(message);
+      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists/i.test(message);
       json(res, conflict ? 409 : 400, {
         error: message,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
