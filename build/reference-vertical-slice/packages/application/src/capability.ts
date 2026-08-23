@@ -2,6 +2,7 @@ import type { ImmutableDocumentRepository } from '../../foundation/src/repositor
 import type { CapabilityReferenceBundle } from '../../capability/src/types.ts';
 import type { CapabilityDesignBundle } from '../../capability/src/generic-design.ts';
 import type { GenericCapabilityResolutionBundle } from '../../capability/src/generic-resolution.ts';
+import type { AutomationCapabilitySelectionResult } from '../../capability/src/automation-capability-selection.ts';
 
 const records = (bundle:CapabilityReferenceBundle) => [
   ['CapabilityDesignRevision', bundle.designRevision],
@@ -90,6 +91,22 @@ export function persistGenericCapabilityResolution(repo:ImmutableDocumentReposit
       schemaVersion:'phase4-generic-capability-resolution-v0.1',
       payload,
       createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??bundle.designRevision.createdAt,
+    });
+  }
+}
+
+export function persistAutomationCapabilitySelection(
+  repo: ImmutableDocumentRepository,
+  result: AutomationCapabilitySelectionResult,
+): void {
+  persistGenericCapabilityResolution(repo, result.resolution);
+  for (const trace of result.traces) {
+    repo.append({
+      id: trace.id as any,
+      aggregateKind: 'AutomationCapabilitySelectionTrace',
+      schemaVersion: 'i8-04-automation-capability-selection-v0.1',
+      payload: trace,
+      createdAt: trace.createdAt,
     });
   }
 }
