@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
 const MODEL_REVISION = 'cee7dc33d83ff2ddec17238b7aba85145169e631';
 const PROVIDER_ID = 'R0_04B_SMOLVLM_LOCAL';
 const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-http-v0.1';
+const EXPECTED_PNG_SHA256 = 'cefdcf1deec8aad8fecc7ab1507461c0a6c7af690dc3a1d152470ccc8a8ff239';
 const PNG = readFileSync(new URL('./fixtures/r0-04b-simple-process.png', import.meta.url));
 
 function requiredEnv(name: string): string {
@@ -45,6 +47,7 @@ test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation
   const endpoint = requiredEnv('TALOS_R0_04B_PROVIDER_ENDPOINT');
   const bearerToken = requiredEnv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN');
   assert.ok(bearerToken.length >= 24);
+  assert.equal(createHash('sha256').update(PNG).digest('hex'), EXPECTED_PNG_SHA256, 'R0-04B must certify the exact verified source PNG');
 
   const health = await fetch(endpoint.replace(/\/vision$/, '/health'));
   assert.equal(health.status, 200);
@@ -81,6 +84,7 @@ test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation
       throw new Error(`R0-04B real model did not establish a BPMN review candidate: ${diagnostics}`);
     }
 
+    assert.equal(result.intake.representation.contentHash, EXPECTED_PNG_SHA256);
     assert.equal(result.perception.admission.decision, 'ADMITTED_FOR_REVIEW');
     assert.ok(result.perception.attempt.result);
     assert.equal(result.perception.attempt.result?.modelRef, MODEL_ID);
