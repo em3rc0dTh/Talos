@@ -8,6 +8,8 @@ import {
   applyConfirmedBpmnFreezeHandoff,
   approveOneAppAutomation,
   approveOneAppDeploymentAttempt,
+  approveOneAppWorkflowExecution,
+  assertOneAppWorkflowExecutionInputApproved,
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
@@ -18,6 +20,7 @@ import {
   openOneAppAutomationDesign,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
+  recordOneAppAuthorizedWorkflowExecution,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
@@ -45,6 +48,24 @@ export interface OneAppDeploymentAttemptExecutorResult {
   orchestratorRef: string;
 }
 
+export interface OneAppWorkflowExecutionExecutorInput {
+  context: OneAppAutomationContext;
+  workflowExecutionApprovalId: string;
+  executionId: string;
+  facts: Record<string, unknown>;
+  capabilityInputs?: Record<string, unknown>;
+  startedAt: string;
+}
+
+export interface OneAppWorkflowExecutionExecutorResult {
+  completedAt: string;
+  workflowExecutionRef: string;
+  workflowIdRef: string;
+  runIdRef: string;
+  executionStatus: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  evidenceRefs: string[];
+}
+
 export interface TalosOneAppOptions {
   port?: number;
   host?: string;
@@ -54,6 +75,9 @@ export interface TalosOneAppOptions {
   deploymentAttemptExecutor?: (
     input: OneAppDeploymentAttemptExecutorInput,
   ) => Promise<OneAppDeploymentAttemptExecutorResult>;
+  workflowExecutionExecutor?: (
+    input: OneAppWorkflowExecutionExecutorInput,
+  ) => Promise<OneAppWorkflowExecutionExecutorResult>;
 }
 
 type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
@@ -101,6 +125,11 @@ function array(value: unknown, field: string): any[] {
   return value;
 }
 
+function object(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${field} must be an object`);
+  return value as Record<string, unknown>;
+}
+
 function publicReconciliation(result: BpmnCanonicalReconciliationResult): unknown {
   if (result.status === 'BLOCKED') return { status: result.status, diagnostics: result.diagnostics };
   return {
@@ -126,6 +155,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
   const deploymentApprovalSessions = new Map<string, OneAppSession>();
+  const workflowExecutionApprovalSessions = new Map<string, OneAppSession>();
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -142,6 +172,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           latestAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
           environmentRealizationStage: 'I9-05_ENVIRONMENT_REALIZATION',
           deploymentAttemptStage: 'I9-06_EXPLICIT_DEPLOYMENT_APPROVAL_ATTEMPT',
+          workflowExecutionStage: 'I9-07_EXPLICIT_WORKFLOW_EXECUTION_AUTHORITY',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
@@ -174,13 +205,17 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             'ENVIRONMENT_REALIZATION',
             'EXPLICIT_DEPLOYMENT_APPROVAL',
             'DEPLOYMENT_ATTEMPT',
+            'EXPLICIT_WORKFLOW_EXECUTION_APPROVAL',
+            'WORKFLOW_EXECUTION',
           ],
           automaticCapabilityBindingAuthorized: false,
           automaticTemporalDesignAuthorized: false,
           automaticRuntimePolicyDefaultsAuthorized: false,
           automaticDeploymentRealizationAuthorized: false,
           automaticDeploymentAttemptAuthorized: false,
+          automaticWorkflowExecutionAuthorized: false,
           deploymentAttemptExecutorConfigured: Boolean(options.deploymentAttemptExecutor),
+          workflowExecutionExecutorConfigured: Boolean(options.workflowExecutionExecutor),
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -745,8 +780,111 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           deploymentAttempt,
           deploymentAttemptConsumed: true,
           deploymentAttemptSucceeded: deploymentAttempt.result === 'SUCCEEDED',
+          workflowExecutionAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/execution/approve') {
+        const input = await jsonBody(req);
+        const automationApprovalId = text(input.automationApprovalId, 'automationApprovalId');
+        const session = approvalSessions.get(automationApprovalId);
+        if (!session) throw new TypeError('one-app workflow execution approval requires the explicit automation approval session');
+        const deploymentRealization = session.automation.deploymentRealization;
+        const deploymentAttempt = session.automation.deploymentAttempt;
+        if (!deploymentRealization || !deploymentAttempt) throw new TypeError('one-app workflow execution approval requires a successful deployment attempt first');
+        const deploymentRevisionId = text(input.deploymentRevisionId, 'deploymentRevisionId');
+        const deploymentAttemptId = text(input.deploymentAttemptId, 'deploymentAttemptId');
+        if (deploymentRevisionId !== deploymentRealization.revision.id || deploymentAttempt.deploymentRevisionRef !== deploymentRevisionId) {
+          throw new TypeError('one-app workflow execution approval must pin the exact deployed DeploymentRevision');
+        }
+        if (deploymentAttemptId !== deploymentAttempt.id || deploymentAttempt.result !== 'SUCCEEDED') {
+          throw new TypeError('one-app workflow execution approval must pin the exact successful DeploymentAttempt');
+        }
+        const facts = object(input.facts, 'facts');
+        const capabilityInputs = input.capabilityInputs === undefined ? undefined : object(input.capabilityInputs, 'capabilityInputs');
+        session.automation = approveOneAppWorkflowExecution(repo, session.automation, {
+          workflowTypeBindingRef: text(input.workflowTypeBindingRef, 'workflowTypeBindingRef'),
+          executionId: text(input.executionId, 'executionId'),
+          facts,
+          ...(capabilityInputs ? { capabilityInputs } : {}),
+          authorityRef: text(input.authorityRef, 'authorityRef'),
+          approvedBy: typeof input.approvedBy === 'string' ? text(input.approvedBy, 'approvedBy') : 'one-app-user',
+          rationale: text(input.rationale, 'rationale'),
+          approvedAt: new Date().toISOString(),
+        });
+        const workflowExecutionApproval = session.automation.workflowExecutionApproval;
+        if (!workflowExecutionApproval) throw new TypeError('one-app workflow execution approval was not created');
+        workflowExecutionApprovalSessions.set(workflowExecutionApproval.id, session);
+        json(res, 201, {
+          workflowExecutionApproval,
+          workflowStartAuthorized: true,
+          authorizedWorkflowStartCount: 1,
+          additionalWorkflowStartAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/execution/start') {
+        const input = await jsonBody(req);
+        const workflowExecutionApprovalId = text(input.workflowExecutionApprovalId, 'workflowExecutionApprovalId');
+        const session = workflowExecutionApprovalSessions.get(workflowExecutionApprovalId);
+        if (!session) throw new TypeError('one-app workflow start requires an explicit workflow execution approval');
+        if (!options.workflowExecutionExecutor) throw new TypeError('one-app workflow start requires a configured trusted workflow execution executor');
+        const deploymentRealization = session.automation.deploymentRealization;
+        const deploymentAttempt = session.automation.deploymentAttempt;
+        const workflowExecutionApproval = session.automation.workflowExecutionApproval;
+        if (!deploymentRealization || !deploymentAttempt || !workflowExecutionApproval) {
+          throw new TypeError('one-app workflow start requires exact deployment and execution approval context');
+        }
+        const deploymentRevisionId = text(input.deploymentRevisionId, 'deploymentRevisionId');
+        if (deploymentRevisionId !== deploymentRealization.revision.id || workflowExecutionApproval.deploymentRevisionRef !== deploymentRevisionId) {
+          throw new TypeError('one-app workflow start must pin the exact approved deployed DeploymentRevision');
+        }
+        if (deploymentAttempt.id !== workflowExecutionApproval.deploymentAttemptRef || deploymentAttempt.result !== 'SUCCEEDED') {
+          throw new TypeError('one-app workflow start must use the exact successful DeploymentAttempt approved for execution');
+        }
+        const executionId = text(input.executionId, 'executionId');
+        const facts = object(input.facts, 'facts');
+        const capabilityInputs = input.capabilityInputs === undefined ? undefined : object(input.capabilityInputs, 'capabilityInputs');
+        assertOneAppWorkflowExecutionInputApproved(workflowExecutionApproval, {
+          executionId,
+          facts,
+          ...(capabilityInputs ? { capabilityInputs } : {}),
+        });
+        workflowExecutionApprovalSessions.delete(workflowExecutionApprovalId);
+        const startedAt = new Date().toISOString();
+        const outcome = await options.workflowExecutionExecutor({
+          context: session.automation,
+          workflowExecutionApprovalId,
+          executionId,
+          facts,
+          ...(capabilityInputs ? { capabilityInputs } : {}),
+          startedAt,
+        });
+        session.automation = recordOneAppAuthorizedWorkflowExecution(
+          repo,
+          session.automation,
+          { executionId, facts, ...(capabilityInputs ? { capabilityInputs } : {}) },
+          {
+            startedAt,
+            completedAt: text(outcome.completedAt, 'completedAt'),
+            workflowExecutionRef: text(outcome.workflowExecutionRef, 'workflowExecutionRef'),
+            workflowIdRef: text(outcome.workflowIdRef, 'workflowIdRef'),
+            runIdRef: text(outcome.runIdRef, 'runIdRef'),
+            executionStatus: outcome.executionStatus,
+            evidenceRefs: array(outcome.evidenceRefs, 'evidenceRefs') as string[],
+          },
+        );
+        const workflowExecutionObservation = session.automation.workflowExecutionObservation;
+        if (!workflowExecutionObservation) throw new TypeError('one-app workflow execution observation was not created');
+        json(res, 201, {
+          workflowExecutionObservation,
+          workflowExecutionApprovalConsumed: true,
+          workflowStartWasExplicitlyAuthorized: true,
+          additionalWorkflowStartAuthorized: false,
         });
         return;
       }
@@ -754,7 +892,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       json(res, 404, { error: 'not found', code: 'ONE_APP_ROUTE_NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor/i.test(message);
+      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor|workflow start|execution input/i.test(message);
       json(res, conflict ? 409 : 400, {
         error: message,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
