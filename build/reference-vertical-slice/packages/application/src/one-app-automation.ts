@@ -44,7 +44,17 @@ import {
   realizeGenericDeployment,
   type GenericWorkerRealizationEvidence,
 } from '../../deployment/src/generic-realization.ts';
-import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
+import {
+  approveGenericDeploymentAttempt,
+  recordAuthorizedDeploymentAttempt,
+  type GenericDeploymentApprovalInput,
+  type GenericDeploymentAttemptResult,
+} from '../../deployment/src/generic-deployment-attempt.ts';
+import type {
+  DeploymentApprovalRecord,
+  DeploymentAttempt,
+  ReferenceDeploymentBundle,
+} from '../../deployment/src/types.ts';
 import {
   persistAutomationCapabilitySelection,
   persistGenericCapabilityDesign,
@@ -59,6 +69,10 @@ import {
   persistOneAppDeploymentDesign,
   persistOneAppDeploymentRealization,
 } from './deployment-design.ts';
+import {
+  persistOneAppDeploymentApproval,
+  persistOneAppDeploymentAttempt,
+} from './deployment-attempt.ts';
 
 export interface OneAppAutomationContext {
   process: ProcessRevision;
@@ -75,6 +89,8 @@ export interface OneAppAutomationContext {
   runtimePolicy?: ReferenceRuntimePolicyBundle;
   deploymentDesign?: ReferenceDeploymentBundle;
   deploymentRealization?: ReferenceDeploymentBundle;
+  deploymentApproval?: DeploymentApprovalRecord;
+  deploymentAttempt?: DeploymentAttempt;
 }
 
 export function openOneAppAutomationDesign(
@@ -270,4 +286,29 @@ export function realizeOneAppDeploymentEnvironment(
   );
   persistOneAppDeploymentRealization(repo, deploymentRealization);
   return { ...context, deploymentRealization };
+}
+
+export function approveOneAppDeploymentAttempt(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  input:GenericDeploymentApprovalInput,
+):OneAppAutomationContext{
+  if(!context.deploymentRealization)throw new TypeError('one-app deployment approval requires exact environment realization first');
+  if(context.deploymentApproval)throw new TypeError('one-app deployment approval is append-only and already exists for this context');
+  const deploymentApproval=approveGenericDeploymentAttempt(context.deploymentRealization,input);
+  persistOneAppDeploymentApproval(repo,deploymentApproval);
+  return{...context,deploymentApproval};
+}
+
+export function recordOneAppAuthorizedDeploymentAttempt(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  result:GenericDeploymentAttemptResult,
+):OneAppAutomationContext{
+  if(!context.deploymentRealization||!context.deploymentApproval)throw new TypeError('one-app deployment attempt requires explicit deployment approval and environment realization');
+  if(context.deploymentAttempt)throw new TypeError('one-app deployment attempt is append-only and already exists for this context');
+  if(result.startedAt<context.deploymentApproval.approvedAt)throw new TypeError('deployment attempt cannot begin before explicit deployment approval');
+  const deploymentAttempt=recordAuthorizedDeploymentAttempt(context.deploymentRealization,context.deploymentApproval,result);
+  persistOneAppDeploymentAttempt(repo,deploymentAttempt);
+  return{...context,deploymentAttempt};
 }
