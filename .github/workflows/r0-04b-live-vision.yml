@@ -75,7 +75,22 @@ jobs:
         run: node --experimental-strip-types --test ./tests/r0-04a-*.test.ts
 
       - name: Install pinned real-model runtime
-        run: python -m pip install --disable-pip-version-check 'torch==2.13.0' 'transformers==5.15.0' 'Pillow==12.3.0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            'torch==2.13.0+cpu' 'torchvision==0.28.0+cpu' \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check \
+            'transformers==5.15.0' 'Pillow==12.3.0'
+          python - <<'PY'
+          import torch, torchvision, transformers, PIL
+          assert torch.__version__ == '2.13.0+cpu', torch.__version__
+          assert torchvision.__version__ == '0.28.0+cpu', torchvision.__version__
+          assert transformers.__version__ == '5.15.0', transformers.__version__
+          assert PIL.__version__ == '12.3.0', PIL.__version__
+          print('R0-04B pinned CPU vision runtime verified')
+          PY
 
       - name: Start pinned real SmolVLM provider
         shell: bash
