@@ -1,4 +1,5 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
+import { workflowExecutionInputDigest } from '../../deployment/src/generic-workflow-execution.ts';
 import type { WorkflowExecutionApprovalRecord, WorkflowExecutionObservation } from '../../deployment/src/types.ts';
 
 function append(repo:ImmutableDocumentRepository,aggregateKind:string,payload:any,createdAt:string):void{
@@ -9,6 +10,15 @@ function append(repo:ImmutableDocumentRepository,aggregateKind:string,payload:an
     payload,
     createdAt,
   });
+}
+
+export function assertOneAppWorkflowExecutionInputApproved(
+  approval:WorkflowExecutionApprovalRecord,
+  input:{executionId:string;facts:Record<string,unknown>;capabilityInputs?:Record<string,unknown>},
+):void{
+  if(input.executionId!==approval.executionId)throw new TypeError('workflow start must use the exact approved executionId');
+  const digest=workflowExecutionInputDigest(input);
+  if(digest!==approval.executionInputDigest)throw new TypeError('workflow start input must match the exact approved execution input digest');
 }
 
 export function persistOneAppWorkflowExecutionApproval(
