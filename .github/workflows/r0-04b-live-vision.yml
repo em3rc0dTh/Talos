@@ -37,11 +37,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache pinned SmolVLM model
+      - name: Cache pinned SmolVLM 500M model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/hub
-          key: r0-04b-smolvlm-cee7dc33d83ff2ddec17238b7aba85145169e631
+          key: r0-04b-smolvlm-500m-a7da5b986cb59b408707209984f360a5f4ad7e47
 
       - name: Install exact Talos Node lock
         working-directory: build/reference-vertical-slice
@@ -107,19 +107,15 @@ jobs:
           dark='black'
           font=ImageFont.load_default(size=42)
           small=ImageFont.load_default(size=30)
-          # START event
           d.ellipse((80,120,200,240),outline=dark,width=line)
           d.text((96,255),'START',fill=dark,font=small)
-          # REVIEW REQUEST activity
           d.rounded_rectangle((390,95,810,265),radius=24,outline=dark,width=line)
           label='REVIEW REQUEST'
           bbox=d.textbbox((0,0),label,font=font)
           d.text(((1200-(bbox[2]-bbox[0]))/2,155),label,fill=dark,font=font)
-          # END event, double ring
           d.ellipse((1000,120,1120,240),outline=dark,width=line)
           d.ellipse((1010,130,1110,230),outline=dark,width=3)
           d.text((1028,255),'END',fill=dark,font=small)
-          # visible directed connectors
           d.line((200,180,390,180),fill=dark,width=line)
           d.polygon([(390,180),(365,165),(365,195)],fill=dark)
           d.line((810,180,1000,180),fill=dark,width=line)
