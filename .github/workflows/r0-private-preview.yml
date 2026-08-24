@@ -8,8 +8,10 @@ on:
       - 'build/reference-vertical-slice/apps/reference-api/src/private-preview-server.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/private-preview-config.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/private-preview-runtime.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/private-preview-operator.ts'
       - 'build/reference-vertical-slice/tests/r0-01-*.test.ts'
       - 'build/reference-vertical-slice/tests/r0-02-*.test.ts'
+      - 'build/reference-vertical-slice/tests/r0-03-*.test.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
       - 'build/reference-vertical-slice/packages/**'
       - 'build/reference-vertical-slice/package.json'
@@ -46,3 +48,7 @@ jobs:
       - name: Verify R0-02 configuration and secret contract
         working-directory: build/reference-vertical-slice
         run: node --experimental-strip-types --test ./tests/r0-02-*.test.ts
+
+      - name: Verify R0-03 operator startup and durable recovery contract
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r0-03-*.test.ts
