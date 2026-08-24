@@ -12,10 +12,10 @@ import {
 } from '../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-document-store.ts';
 
-const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
-const MODEL_REVISION = 'cee7dc33d83ff2ddec17238b7aba85145169e631';
-const PROVIDER_ID = 'R0_04B_SMOLVLM_LOCAL';
-const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-http-v0.1';
+const MODEL_ID = 'HuggingFaceTB/SmolVLM-500M-Instruct';
+const MODEL_REVISION = 'a7da5b986cb59b408707209984f360a5f4ad7e47';
+const PROVIDER_ID = 'R0_04B_SMOLVLM_500M_LOCAL';
+const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-http-v0.1';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -41,7 +41,7 @@ function persistedPerceptionJson(repo: SqliteDocumentStore): string {
   return JSON.stringify(kinds.flatMap((kind) => repo.listByKind(kind)));
 }
 
-test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation path into a non-executable BPMN review candidate', { timeout: 240_000 }, async () => {
+test('R0-04B real SmolVLM 500M inference crosses the exact Talos provider/correlation path into a non-executable BPMN review candidate', { timeout: 240_000 }, async () => {
   const endpoint = requiredEnv('TALOS_R0_04B_PROVIDER_ENDPOINT');
   const bearerToken = requiredEnv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN');
   const sourceImage = requiredEnv('TALOS_R0_04B_SOURCE_IMAGE');
@@ -93,8 +93,8 @@ test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation
     assert.equal(result.perception.attempt.result?.modelVersion, MODEL_REVISION);
 
     const adapterJson = JSON.stringify(repo.listByKind('AdapterResult'));
-    assert.match(adapterJson, /R0_04B_SMOLVLM_LOCAL/);
-    assert.match(adapterJson, /HuggingFaceTB\/SmolVLM-256M-Instruct/);
+    assert.match(adapterJson, /R0_04B_SMOLVLM_500M_LOCAL/);
+    assert.match(adapterJson, /HuggingFaceTB\/SmolVLM-500M-Instruct/);
     assert.match(adapterJson, /R0_04B_REAL_MODEL_INFERENCE/);
     assert.equal(adapterJson.includes(bearerToken), false);
 
