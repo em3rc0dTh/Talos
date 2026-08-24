@@ -1,0 +1,41 @@
+name: R0 Private preview access
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/r0-private-preview.yml'
+      - 'build/reference-vertical-slice/apps/reference-api/src/private-preview-server.ts'
+      - 'build/reference-vertical-slice/tests/r0-01-*.test.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
+      - 'build/reference-vertical-slice/packages/**'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  r0-private-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture boundaries
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Verify R0-01 private preview access boundary
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r0-01-*.test.ts
