@@ -11,10 +11,19 @@ export interface TalosPrivatePreviewAccess {
   bearerToken: string;
 }
 
+export interface TalosPrivatePreviewRequestPolicy {
+  allowedHostnames?: string[];
+  allowedOrigins?: string[];
+  maxJsonBytes?: number;
+  maxImageBytes?: number;
+}
+
 export interface TalosPrivatePreviewOptions {
   port?: number;
   host?: string;
   access: TalosPrivatePreviewAccess;
+  requestPolicy?: TalosPrivatePreviewRequestPolicy;
+  releaseGate?: 'R0-01_PRIVATE_PREVIEW_ACCESS_BOUNDARY' | 'R0-02_PREVIEW_CONFIGURATION_SECRET_CONTRACT';
   oneApp?: Omit<TalosOneAppOptions, 'port' | 'host'>;
 }
 
@@ -31,13 +40,14 @@ const ACTOR_FIELDS = new Set([
   'frozenBy',
 ]);
 const BUSINESS_PAYLOAD_FIELDS = new Set(['facts', 'capabilityInputs']);
-const MAX_PROXY_JSON_BYTES = 20 * 1024 * 1024;
+const DEFAULT_MAX_PROXY_JSON_BYTES = 20 * 1024 * 1024;
+const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 class PreviewAccessError extends Error {
-  readonly status: 401 | 403 | 400;
+  readonly status: 400 | 401 | 403 | 413;
   readonly code: string;
 
-  constructor(status: 401 | 403 | 400, code: string, message: string) {
+  constructor(status: 400 | 401 | 403 | 413, code: string, message: string) {
     super(message);
     this.status = status;
     this.code = code;
@@ -70,15 +80,52 @@ function json(res: http.ServerResponse, status: number, payload: unknown): void 
   res.end(body);
 }
 
-async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown> | undefined> {
+function normalizedHostname(value: string): string {
+  return value.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+}
+
+function requestHostname(req: http.IncomingMessage): string | undefined {
+  const header = req.headers.host;
+  if (!header) return undefined;
+  try {
+    const hostname = new URL(`http://${header}`).hostname;
+    return normalizedHostname(hostname);
+  } catch {
+    return undefined;
+  }
+}
+
+function assertRequestScope(req: http.IncomingMessage, policy: TalosPrivatePreviewRequestPolicy | undefined): void {
+  if (!policy) return;
+  if (policy.allowedHostnames) {
+    const allowed = new Set(policy.allowedHostnames.map(normalizedHostname));
+    const hostname = requestHostname(req);
+    if (!hostname || !allowed.has(hostname)) {
+      throw new PreviewAccessError(403, 'R0_HOST_SCOPE_MISMATCH', 'Request host is outside the configured private-preview host scope');
+    }
+  }
+  const originHeader = req.headers.origin;
+  const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+  if (origin && policy.allowedOrigins) {
+    const allowed = new Set(policy.allowedOrigins);
+    if (!allowed.has(origin)) {
+      throw new PreviewAccessError(403, 'R0_ORIGIN_SCOPE_MISMATCH', 'Request origin is outside the configured private-preview origin scope');
+    }
+  }
+}
+
+async function readJsonBody(
+  req: http.IncomingMessage,
+  maxJsonBytes: number,
+): Promise<Record<string, unknown> | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.byteLength;
-    if (total > MAX_PROXY_JSON_BYTES) {
-      throw new PreviewAccessError(400, 'R0_REQUEST_TOO_LARGE', 'Request payload exceeds the Talos private-preview limit');
+    if (total > maxJsonBytes) {
+      throw new PreviewAccessError(413, 'R0_REQUEST_TOO_LARGE', 'Request payload exceeds the Talos private-preview limit');
     }
     chunks.push(buffer);
   }
@@ -93,6 +140,14 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
     throw new PreviewAccessError(400, 'R0_INVALID_JSON', 'Expected a JSON object request body');
   }
   return parsed as Record<string, unknown>;
+}
+
+function assertImageLimit(pathname: string, payload: Record<string, unknown> | undefined, maxImageBytes: number): void {
+  if (pathname !== '/api/input/image' || !payload || typeof payload.imageBase64 !== 'string') return;
+  const imageBytes = Buffer.from(payload.imageBase64, 'base64').byteLength;
+  if (imageBytes > maxImageBytes) {
+    throw new PreviewAccessError(413, 'R0_IMAGE_TOO_LARGE', 'Image payload exceeds the configured Talos private-preview image limit');
+  }
 }
 
 function assertActorClaims(value: unknown, actorId: string, path = '$'): void {
@@ -214,6 +269,11 @@ export async function startTalosPrivatePreview(options: TalosPrivatePreviewOptio
   const bearerToken = required(options.access.bearerToken, 'bearerToken');
   if (bearerToken.length < 24) throw new TypeError('bearerToken must contain at least 24 characters for private preview');
 
+  const maxJsonBytes = options.requestPolicy?.maxJsonBytes ?? DEFAULT_MAX_PROXY_JSON_BYTES;
+  const maxImageBytes = options.requestPolicy?.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  if (!Number.isSafeInteger(maxJsonBytes) || maxJsonBytes < 1) throw new TypeError('maxJsonBytes must be a positive safe integer');
+  if (!Number.isSafeInteger(maxImageBytes) || maxImageBytes < 1) throw new TypeError('maxImageBytes must be a positive safe integer');
+
   const access = { workspaceId, actorId, bearerToken };
   const inner = await startTalosOneApp({
     ...(options.oneApp ?? {}),
@@ -221,14 +281,16 @@ export async function startTalosPrivatePreview(options: TalosPrivatePreviewOptio
     port: 0,
   });
   const host = options.host ?? '127.0.0.1';
+  const releaseGate = options.releaseGate ?? 'R0-01_PRIVATE_PREVIEW_ACCESS_BOUNDARY';
 
   const server = http.createServer(async (req, res) => {
     try {
+      assertRequestScope(req, options.requestPolicy);
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
       if (req.method === 'GET' && url.pathname === '/health') {
         json(res, 200, {
           status: 'READY',
-          releaseGate: 'R0-01_PRIVATE_PREVIEW_ACCESS_BOUNDARY',
+          releaseGate,
           privatePreview: true,
           engineAuthorityStage: 'I9-07_EXPLICIT_WORKFLOW_EXECUTION_AUTHORITY',
           authentication: 'BEARER_TOKEN',
@@ -239,7 +301,8 @@ export async function startTalosPrivatePreview(options: TalosPrivatePreviewOptio
       }
 
       authorize(req, access);
-      const payload = await readJsonBody(req);
+      const payload = await readJsonBody(req, maxJsonBytes);
+      assertImageLimit(url.pathname, payload, maxImageBytes);
       if (payload) assertActorClaims(payload, actorId);
       const boundPayload = payload ? bindActor(url.pathname, payload, actorId) : undefined;
 
@@ -248,7 +311,7 @@ export async function startTalosPrivatePreview(options: TalosPrivatePreviewOptio
         const engine = await engineResponse.json() as Record<string, unknown>;
         json(res, engineResponse.status, {
           ...engine,
-          releaseGate: 'R0-01_PRIVATE_PREVIEW_ACCESS_BOUNDARY',
+          releaseGate,
           privatePreview: {
             accessBoundaryEnforced: true,
             authentication: 'BEARER_TOKEN',
@@ -256,6 +319,7 @@ export async function startTalosPrivatePreview(options: TalosPrivatePreviewOptio
             actorBinding: 'SINGLE_CONFIGURED_ACTOR',
             workspaceId,
             actorId,
+            requestPolicyEnforced: Boolean(options.requestPolicy),
             bearerTokenExposed: false,
           },
           engineReleaseGate: engine.releaseGate,
