@@ -50,10 +50,18 @@ import {
   type GenericDeploymentApprovalInput,
   type GenericDeploymentAttemptResult,
 } from '../../deployment/src/generic-deployment-attempt.ts';
+import {
+  approveGenericWorkflowExecution,
+  recordAuthorizedWorkflowExecution,
+  type GenericWorkflowExecutionApprovalInput,
+  type GenericWorkflowExecutionResult,
+} from '../../deployment/src/generic-workflow-execution.ts';
 import type {
   DeploymentApprovalRecord,
   DeploymentAttempt,
   ReferenceDeploymentBundle,
+  WorkflowExecutionApprovalRecord,
+  WorkflowExecutionObservation,
 } from '../../deployment/src/types.ts';
 import {
   persistAutomationCapabilitySelection,
@@ -73,6 +81,10 @@ import {
   persistOneAppDeploymentApproval,
   persistOneAppDeploymentAttempt,
 } from './deployment-attempt.ts';
+import {
+  persistOneAppWorkflowExecutionApproval,
+  persistOneAppWorkflowExecutionObservation,
+} from './workflow-execution.ts';
 
 export interface OneAppAutomationContext {
   process: ProcessRevision;
@@ -91,6 +103,8 @@ export interface OneAppAutomationContext {
   deploymentRealization?: ReferenceDeploymentBundle;
   deploymentApproval?: DeploymentApprovalRecord;
   deploymentAttempt?: DeploymentAttempt;
+  workflowExecutionApproval?: WorkflowExecutionApprovalRecord;
+  workflowExecutionObservation?: WorkflowExecutionObservation;
 }
 
 export function openOneAppAutomationDesign(
@@ -311,4 +325,37 @@ export function recordOneAppAuthorizedDeploymentAttempt(
   const deploymentAttempt=recordAuthorizedDeploymentAttempt(context.deploymentRealization,context.deploymentApproval,result);
   persistOneAppDeploymentAttempt(repo,deploymentAttempt);
   return{...context,deploymentAttempt};
+}
+
+export function approveOneAppWorkflowExecution(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  input:GenericWorkflowExecutionApprovalInput,
+):OneAppAutomationContext{
+  if(!context.deploymentRealization||!context.deploymentAttempt)throw new TypeError('one-app workflow execution approval requires a successful deployment attempt first');
+  if(context.workflowExecutionApproval)throw new TypeError('one-app workflow execution approval is append-only and already exists for this context');
+  const workflowExecutionApproval=approveGenericWorkflowExecution(context.deploymentRealization,context.deploymentAttempt,input);
+  persistOneAppWorkflowExecutionApproval(repo,workflowExecutionApproval);
+  return{...context,workflowExecutionApproval};
+}
+
+export function recordOneAppAuthorizedWorkflowExecution(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  input:{executionId:string;facts:Record<string,unknown>;capabilityInputs?:Record<string,unknown>},
+  result:GenericWorkflowExecutionResult,
+):OneAppAutomationContext{
+  if(!context.deploymentRealization||!context.deploymentAttempt||!context.workflowExecutionApproval){
+    throw new TypeError('one-app workflow execution requires explicit execution approval and successful deployment context');
+  }
+  if(context.workflowExecutionObservation)throw new TypeError('one-app workflow execution observation is append-only and already exists for this context');
+  const workflowExecutionObservation=recordAuthorizedWorkflowExecution(
+    context.deploymentRealization,
+    context.deploymentAttempt,
+    context.workflowExecutionApproval,
+    input,
+    result,
+  );
+  persistOneAppWorkflowExecutionObservation(repo,workflowExecutionObservation);
+  return{...context,workflowExecutionObservation};
 }
