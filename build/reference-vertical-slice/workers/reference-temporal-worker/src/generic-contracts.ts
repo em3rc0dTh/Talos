@@ -48,5 +48,13 @@ export interface GenericWorkflowInput {
   program:CompiledGenericRuntimeProgram;
 }
 export interface GenericCapabilityActivityInput { executionId:string; capabilityUseOccurrenceRef:string; input:unknown; }
-export interface GenericCapabilityActivityResult { outcome:'COMPLETED'; capabilityUseOccurrenceRef:string; effectKey:string; effectStatus:'INSERTED'|'DUPLICATE_IDENTICAL'; }
+export interface GenericCapabilityActivityResult {
+  outcome:'COMPLETED';
+  capabilityUseOccurrenceRef:string;
+  effectKey:string;
+  effectStatus:'INSERTED'|'DUPLICATE_IDENTICAL';
+  transportRef?:string;
+  externalEffectRef?:string;
+  evidenceRefs?:string[];
+}
 export interface GenericWorkflowResult { outcome:'COMPLETED'; executionId:string; visitedElementRefs:string[]; capabilityResults:GenericCapabilityActivityResult[]; }
