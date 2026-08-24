@@ -7,6 +7,7 @@ import {
   NativeBpmnCanonicalReconciliationService,
   applyConfirmedBpmnFreezeHandoff,
   approveOneAppAutomation,
+  approveOneAppDeploymentAttempt,
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
@@ -16,6 +17,7 @@ import {
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
   realizeOneAppDeploymentEnvironment,
+  recordOneAppAuthorizedDeploymentAttempt,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
@@ -28,12 +30,30 @@ import {
 } from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
 
+export interface OneAppDeploymentAttemptExecutorInput {
+  context: OneAppAutomationContext;
+  deploymentApprovalId: string;
+  attemptNumber: 1;
+  startedAt: string;
+}
+
+export interface OneAppDeploymentAttemptExecutorResult {
+  completedAt: string;
+  result: 'SUCCEEDED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
+  diagnosticRefs: string[];
+  evidenceRefs: string[];
+  orchestratorRef: string;
+}
+
 export interface TalosOneAppOptions {
   port?: number;
   host?: string;
   runtimeDir?: string;
   imagePerceptionEnv?: Readonly<Record<string, string | undefined>>;
   imagePerceptionFetchImpl?: typeof fetch;
+  deploymentAttemptExecutor?: (
+    input: OneAppDeploymentAttemptExecutorInput,
+  ) => Promise<OneAppDeploymentAttemptExecutorResult>;
 }
 
 type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
@@ -105,6 +125,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
+  const deploymentApprovalSessions = new Map<string, OneAppSession>();
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -120,6 +141,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           currentAuthorityStage: 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN',
           latestAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
           environmentRealizationStage: 'I9-05_ENVIRONMENT_REALIZATION',
+          deploymentAttemptStage: 'I9-06_EXPLICIT_DEPLOYMENT_APPROVAL_ATTEMPT',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
@@ -150,12 +172,15 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             'EXPLICIT_RUNTIME_POLICY_DESIGN',
             'DEPLOYMENT_DESIGN',
             'ENVIRONMENT_REALIZATION',
+            'EXPLICIT_DEPLOYMENT_APPROVAL',
+            'DEPLOYMENT_ATTEMPT',
           ],
           automaticCapabilityBindingAuthorized: false,
           automaticTemporalDesignAuthorized: false,
           automaticRuntimePolicyDefaultsAuthorized: false,
           automaticDeploymentRealizationAuthorized: false,
           automaticDeploymentAttemptAuthorized: false,
+          deploymentAttemptExecutorConfigured: Boolean(options.deploymentAttemptExecutor),
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -655,10 +680,81 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/automation/deployment/approve') {
+        const input = await jsonBody(req);
+        const automationApprovalId = text(input.automationApprovalId, 'automationApprovalId');
+        const session = approvalSessions.get(automationApprovalId);
+        if (!session) throw new TypeError('one-app deployment approval requires the explicit automation approval session');
+        const deploymentRealization = session.automation.deploymentRealization;
+        if (!deploymentRealization) throw new TypeError('one-app deployment approval requires exact environment realization first');
+        const deploymentRevisionId = text(input.deploymentRevisionId, 'deploymentRevisionId');
+        if (deploymentRevisionId !== deploymentRealization.revision.id) {
+          throw new TypeError('one-app deployment approval must pin the exact realized DeploymentRevision');
+        }
+        session.automation = approveOneAppDeploymentAttempt(repo, session.automation, {
+          authorityRef: text(input.authorityRef, 'authorityRef'),
+          approvedBy: typeof input.approvedBy === 'string' ? text(input.approvedBy, 'approvedBy') : 'one-app-user',
+          rationale: text(input.rationale, 'rationale'),
+          approvedAt: new Date().toISOString(),
+        });
+        const deploymentApproval = session.automation.deploymentApproval;
+        if (!deploymentApproval) throw new TypeError('one-app deployment approval was not created');
+        deploymentApprovalSessions.set(deploymentApproval.id, session);
+        json(res, 201, {
+          deploymentApproval,
+          deploymentAttemptAuthorized: true,
+          authorizedAttemptCount: 1,
+          deploymentAuthorized: false,
+          executionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/deployment/attempt') {
+        const input = await jsonBody(req);
+        const deploymentApprovalId = text(input.deploymentApprovalId, 'deploymentApprovalId');
+        const session = deploymentApprovalSessions.get(deploymentApprovalId);
+        if (!session) throw new TypeError('one-app deployment attempt requires an explicit deployment approval');
+        if (!options.deploymentAttemptExecutor) throw new TypeError('one-app deployment attempt requires a configured trusted deployment executor');
+        const deploymentRealization = session.automation.deploymentRealization;
+        const deploymentApproval = session.automation.deploymentApproval;
+        if (!deploymentRealization || !deploymentApproval) throw new TypeError('one-app deployment attempt requires realized deployment and approval context');
+        const deploymentRevisionId = text(input.deploymentRevisionId, 'deploymentRevisionId');
+        if (deploymentRevisionId !== deploymentRealization.revision.id || deploymentApproval.deploymentRevisionRef !== deploymentRevisionId) {
+          throw new TypeError('one-app deployment attempt must pin the exact approved realized DeploymentRevision');
+        }
+        deploymentApprovalSessions.delete(deploymentApprovalId);
+        const startedAt = new Date().toISOString();
+        const outcome = await options.deploymentAttemptExecutor({
+          context: session.automation,
+          deploymentApprovalId,
+          attemptNumber: 1,
+          startedAt,
+        });
+        session.automation = recordOneAppAuthorizedDeploymentAttempt(repo, session.automation, {
+          startedAt,
+          completedAt: text(outcome.completedAt, 'completedAt'),
+          result: outcome.result,
+          diagnosticRefs: array(outcome.diagnosticRefs, 'diagnosticRefs') as string[],
+          evidenceRefs: array(outcome.evidenceRefs, 'evidenceRefs') as string[],
+          orchestratorRef: text(outcome.orchestratorRef, 'orchestratorRef'),
+        });
+        const deploymentAttempt = session.automation.deploymentAttempt;
+        if (!deploymentAttempt) throw new TypeError('one-app deployment attempt record was not created');
+        json(res, 201, {
+          deploymentAttempt,
+          deploymentAttemptConsumed: true,
+          deploymentAttemptSucceeded: deploymentAttempt.result === 'SUCCEEDED',
+          deploymentAuthorized: false,
+          executionAuthorized: false,
+        });
+        return;
+      }
+
       json(res, 404, { error: 'not found', code: 'ONE_APP_ROUTE_NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists/i.test(message);
+      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor/i.test(message);
       json(res, conflict ? 409 : 400, {
         error: message,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
