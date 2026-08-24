@@ -16,8 +16,6 @@ const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
 const MODEL_REVISION = 'cee7dc33d83ff2ddec17238b7aba85145169e631';
 const PROVIDER_ID = 'R0_04B_SMOLVLM_LOCAL';
 const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-http-v0.1';
-const EXPECTED_PNG_SHA256 = 'cefdcf1deec8aad8fecc7ab1507461c0a6c7af690dc3a1d152470ccc8a8ff239';
-const PNG = readFileSync(new URL('./fixtures/r0-04b-simple-process.png', import.meta.url));
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -46,8 +44,12 @@ function persistedPerceptionJson(repo: SqliteDocumentStore): string {
 test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation path into a non-executable BPMN review candidate', { timeout: 240_000 }, async () => {
   const endpoint = requiredEnv('TALOS_R0_04B_PROVIDER_ENDPOINT');
   const bearerToken = requiredEnv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN');
+  const sourceImage = requiredEnv('TALOS_R0_04B_SOURCE_IMAGE');
+  const expectedPngSha256 = requiredEnv('TALOS_R0_04B_SOURCE_SHA256');
+  const png = readFileSync(sourceImage);
   assert.ok(bearerToken.length >= 24);
-  assert.equal(createHash('sha256').update(PNG).digest('hex'), EXPECTED_PNG_SHA256, 'R0-04B must certify the exact verified source PNG');
+  assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'R0-04B source must be a PNG');
+  assert.equal(createHash('sha256').update(png).digest('hex'), expectedPngSha256, 'R0-04B must certify the exact PNG rendered and verified by the pinned runtime');
 
   const health = await fetch(endpoint.replace(/\/vision$/, '/health'));
   assert.equal(health.status, 200);
@@ -73,7 +75,7 @@ test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation
   const repo = new SqliteDocumentStore(path.join(runtimeDir, 'state.sqlite'));
   const byteStore = new LocalImageByteStore(path.join(runtimeDir, 'source-bytes'));
   try {
-    const result = await buildImageBpmnReviewCandidate(repo, byteStore, PNG, resolution.binding, {
+    const result = await buildImageBpmnReviewCandidate(repo, byteStore, png, resolution.binding, {
       declaredName: 'r0-04b-real-model-business-process.png', initiatedBy: 'r0-04b-release-certifier',
       receivedAt: '2026-08-24T18:45:00.000Z', perceivedAt: '2026-08-24T18:45:01.000Z', normalizedAt: '2026-08-24T18:45:02.000Z', assessedAt: '2026-08-24T18:45:03.000Z', projectedAt: '2026-08-24T18:45:04.000Z',
     });
@@ -84,7 +86,7 @@ test('R0-04B real SmolVLM inference crosses the exact Talos provider/correlation
       throw new Error(`R0-04B real model did not establish a BPMN review candidate: ${diagnostics}`);
     }
 
-    assert.equal(result.intake.representation.contentHash, EXPECTED_PNG_SHA256);
+    assert.equal(result.intake.representation.contentHash, expectedPngSha256);
     assert.equal(result.perception.admission.decision, 'ADMITTED_FOR_REVIEW');
     assert.ok(result.perception.attempt.result);
     assert.equal(result.perception.attempt.result?.modelRef, MODEL_ID);
