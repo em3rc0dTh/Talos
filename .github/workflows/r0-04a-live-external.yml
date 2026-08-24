@@ -1,0 +1,64 @@
+name: R0-04A Live external integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/r0-04a-live-external.yml'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/src/generic-contracts.ts'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/src/generic-activities.ts'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/src/generic-worker-runtime.ts'
+      - 'build/reference-vertical-slice/workers/reference-temporal-worker/src/github-issue-comment-transport.ts'
+      - 'build/reference-vertical-slice/tests/r0-04a-*.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  live-external:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture boundaries
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Regress R0-01 through R0-03 preview shell
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r0-01-*.test.ts ./tests/r0-02-*.test.ts ./tests/r0-03-*.test.ts
+
+      - name: Regress B10 restart safety
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
+
+      - name: Regress I9-07 explicit workflow execution authority
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i9-07:test
+
+      - name: Certify real Temporal to GitHub external effect
+        working-directory: build/reference-vertical-slice
+        env:
+          R0_04_LIVE_REQUIRED: '1'
+          R0_04_GITHUB_TOKEN: ${{ github.token }}
+          R0_04_GITHUB_REPOSITORY: ${{ github.repository }}
+          R0_04_GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          R0_04_GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node --experimental-strip-types --test ./tests/r0-04a-*.test.ts
