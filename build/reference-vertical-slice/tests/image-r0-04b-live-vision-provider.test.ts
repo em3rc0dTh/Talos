@@ -31,7 +31,7 @@ function providerEnv(endpoint: string, bearerToken: string): Record<string, stri
     [IMAGE_PERCEPTION_RUNTIME_ENV.modelRef]: MODEL_ID,
     [IMAGE_PERCEPTION_RUNTIME_ENV.modelVersion]: MODEL_REVISION,
     [IMAGE_PERCEPTION_RUNTIME_ENV.pipelineVersion]: PIPELINE_VERSION,
-    [IMAGE_PERCEPTION_RUNTIME_ENV.timeoutMs]: '180000',
+    [IMAGE_PERCEPTION_RUNTIME_ENV.timeoutMs]: '120000',
     [IMAGE_PERCEPTION_RUNTIME_ENV.bearerToken]: bearerToken,
   };
 }
