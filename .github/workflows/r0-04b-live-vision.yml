@@ -1,0 +1,128 @@
+name: R0-04B Live vision provider
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/r0-04b-live-vision.yml'
+      - 'build/reference-vertical-slice/tests/image-r0-04b-*.test.ts'
+      - 'build/reference-vertical-slice/tests/support/r0-04b-smolvlm-provider.py'
+      - 'build/reference-vertical-slice/tests/fixtures/r0-04b-simple-process.png'
+      - 'build/reference-vertical-slice/packages/image-perception/**'
+      - 'build/reference-vertical-slice/packages/application/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  live-vision:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pinned SmolVLM model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: r0-04b-smolvlm-cee7dc33d83ff2ddec17238b7aba85145169e631
+
+      - name: Install exact Talos Node lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture boundaries
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Regress private-preview access config and recovery
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r0-01-*.test.ts ./tests/r0-02-*.test.ts ./tests/r0-03-*.test.ts
+
+      - name: Regress restart-safe runtime
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
+
+      - name: Regress explicit workflow execution authority
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i9-07:test
+
+      - name: Re-certify real Temporal to GitHub external effect
+        working-directory: build/reference-vertical-slice
+        env:
+          R0_04_LIVE_REQUIRED: '1'
+          R0_04_GITHUB_TOKEN: ${{ github.token }}
+          R0_04_GITHUB_REPOSITORY: ${{ github.repository }}
+          R0_04_GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          R0_04_GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node --experimental-strip-types --test ./tests/r0-04a-*.test.ts
+
+      - name: Install pinned real-model runtime
+        run: python -m pip install --disable-pip-version-check 'torch==2.13.0' 'transformers==5.15.0' 'Pillow==12.3.0'
+
+      - name: Start pinned real SmolVLM provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="talos-r0-04b-$(openssl rand -hex 24)"
+          echo "::add-mask::$TOKEN"
+          echo "TALOS_R0_04B_PROVIDER_BEARER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo 'TALOS_R0_04B_PROVIDER_ENDPOINT=http://127.0.0.1:8765/vision' >> "$GITHUB_ENV"
+          export TALOS_R0_04B_PROVIDER_BEARER_TOKEN="$TOKEN"
+          export TALOS_R0_04B_PROVIDER_PORT=8765
+          LOG="$RUNNER_TEMP/r0-04b-provider.log"
+          python build/reference-vertical-slice/tests/support/r0-04b-smolvlm-provider.py > "$LOG" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r0-04b-provider.pid"
+          for attempt in $(seq 1 180); do
+            if curl --fail --silent http://127.0.0.1:8765/health > "$RUNNER_TEMP/r0-04b-health.json"; then
+              cat "$RUNNER_TEMP/r0-04b-health.json"
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/r0-04b-provider.pid")" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 2
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Certify real image to real model to Talos BPMN review
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/image-r0-04b-live-vision-provider.test.ts
+
+      - name: Prove provider log contains no bearer secret
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/r0-04b-provider.log"
+          if [[ -f "$LOG" ]] && grep -F -- "$TALOS_R0_04B_PROVIDER_BEARER_TOKEN" "$LOG"; then
+            echo 'R0-04B provider leaked bearer material to its log' >&2
+            exit 1
+          fi
+
+      - name: Stop real model provider
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/r0-04b-provider.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/r0-04b-provider.pid")" 2>/dev/null || true
+          fi
