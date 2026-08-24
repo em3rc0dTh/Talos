@@ -116,7 +116,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           releaseGate: imageConfigured
             ? 'I9-02_ONE_APP_IMAGE_BPMN_E2E'
             : 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
-          currentAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
+          currentAuthorityStage: 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN',
+          latestAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
