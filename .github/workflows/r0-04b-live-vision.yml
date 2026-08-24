@@ -123,7 +123,7 @@ jobs:
         working-directory: build/reference-vertical-slice
         run: node --experimental-strip-types --test ./tests/image-r0-04b-live-vision-provider.test.ts
 
-      - name: Prove provider log contains no bearer secret
+      - name: Prove and surface secret-safe provider evidence
         if: always()
         shell: bash
         run: |
@@ -133,6 +133,7 @@ jobs:
             echo 'R0-04B provider leaked bearer material to its log' >&2
             exit 1
           fi
+          if [[ -f "$LOG" ]]; then cat "$LOG"; fi
 
       - name: Stop real model provider
         if: always()
