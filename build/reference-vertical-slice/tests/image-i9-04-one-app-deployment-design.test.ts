@@ -158,7 +158,8 @@ test('I9-04 creates deployment design intent after RuntimePolicy but no realizat
   try {
     const status = await (await fetch(`${app.baseUrl}/api/status`)).json() as any;
     assert.equal(status.releaseGate, 'I9-01_ONE_APP_NATIVE_BPMN_E2E');
-    assert.equal(status.currentAuthorityStage, 'I9-04_DEPLOYMENT_DESIGN');
+    assert.equal(status.currentAuthorityStage, 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN');
+    assert.equal(status.latestAuthorityStage, 'I9-04_DEPLOYMENT_DESIGN');
     assert.equal(status.authorityChain.includes('DEPLOYMENT_DESIGN'), true);
     assert.equal(status.automaticDeploymentRealizationAuthorized, false);
     assert.equal(status.deploymentAuthorized, false);
