@@ -40,6 +40,10 @@ import {
   designGenericDeployment,
   type GenericDeploymentIntent,
 } from '../../deployment/src/generic-deployment.ts';
+import {
+  realizeGenericDeployment,
+  type GenericWorkerRealizationEvidence,
+} from '../../deployment/src/generic-realization.ts';
 import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
 import {
   persistAutomationCapabilitySelection,
@@ -51,7 +55,10 @@ import {
   persistApprovedAutomationTemporalMapping,
 } from './execution-design.ts';
 import { persistExplicitRuntimePolicyDesign } from './runtime-policy-design.ts';
-import { persistOneAppDeploymentDesign } from './deployment-design.ts';
+import {
+  persistOneAppDeploymentDesign,
+  persistOneAppDeploymentRealization,
+} from './deployment-design.ts';
 
 export interface OneAppAutomationContext {
   process: ProcessRevision;
@@ -67,6 +74,7 @@ export interface OneAppAutomationContext {
   mapping?: ReferenceTemporalMappingBundle;
   runtimePolicy?: ReferenceRuntimePolicyBundle;
   deploymentDesign?: ReferenceDeploymentBundle;
+  deploymentRealization?: ReferenceDeploymentBundle;
 }
 
 export function openOneAppAutomationDesign(
@@ -233,4 +241,33 @@ export function designOneAppDeployment(
   );
   persistOneAppDeploymentDesign(repo, deploymentDesign);
   return { ...context, deploymentDesign };
+}
+
+export function realizeOneAppDeploymentEnvironment(
+  repo: ImmutableDocumentRepository,
+  context: OneAppAutomationContext,
+  evidence: Omit<GenericWorkerRealizationEvidence, 'capabilityBindingRevisionRefs'>,
+  createdAt: string,
+): OneAppAutomationContext {
+  if (!context.selection || !context.mapping || !context.deploymentDesign) {
+    throw new TypeError('one-app environment realization requires explicit capability bindings, Temporal mapping and Deployment design');
+  }
+  if (context.deploymentRealization) {
+    throw new TypeError('one-app environment realization is append-only and already exists for this context');
+  }
+  const capabilityBindingRevisionRefs = context.selection.resolution.bindingRevisions.map((item) => item.id);
+  if (capabilityBindingRevisionRefs.length === 0) {
+    throw new TypeError('one-app environment realization requires exact capability binding revision lineage');
+  }
+  const deploymentRealization = realizeGenericDeployment(
+    context.deploymentDesign,
+    context.mapping,
+    {
+      ...evidence,
+      capabilityBindingRevisionRefs,
+    },
+    createdAt,
+  );
+  persistOneAppDeploymentRealization(repo, deploymentRealization);
+  return { ...context, deploymentRealization };
 }

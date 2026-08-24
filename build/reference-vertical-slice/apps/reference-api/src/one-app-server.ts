@@ -15,6 +15,7 @@ import {
   initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
+  realizeOneAppDeploymentEnvironment,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
@@ -118,6 +119,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             : 'I9-01_ONE_APP_NATIVE_BPMN_E2E',
           currentAuthorityStage: 'I9-03_EXPLICIT_RUNTIME_POLICY_DESIGN',
           latestAuthorityStage: 'I9-04_DEPLOYMENT_DESIGN',
+          environmentRealizationStage: 'I9-05_ENVIRONMENT_REALIZATION',
           inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
@@ -147,11 +149,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             'APPROVED_TEMPORAL_MAPPING',
             'EXPLICIT_RUNTIME_POLICY_DESIGN',
             'DEPLOYMENT_DESIGN',
+            'ENVIRONMENT_REALIZATION',
           ],
           automaticCapabilityBindingAuthorized: false,
           automaticTemporalDesignAuthorized: false,
           automaticRuntimePolicyDefaultsAuthorized: false,
           automaticDeploymentRealizationAuthorized: false,
+          automaticDeploymentAttemptAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -604,6 +608,46 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         json(res, 201, {
           deploymentDesign,
           deploymentRealizationAuthorized: false,
+          deploymentAttemptAuthorized: false,
+          deploymentAuthorized: false,
+          executionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/environment-realization') {
+        const input = await jsonBody(req);
+        const approvalId = text(input.approvalId, 'approvalId');
+        const session = approvalSessions.get(approvalId);
+        if (!session) throw new TypeError('one-app environment realization requires an explicit automation approval');
+        const deploymentDesign = session.automation.deploymentDesign;
+        if (!deploymentDesign) throw new TypeError('one-app environment realization requires Deployment design first');
+        const deploymentRevisionId = text(input.deploymentRevisionId, 'deploymentRevisionId');
+        if (deploymentRevisionId !== deploymentDesign.revision.id) {
+          throw new TypeError('one-app environment realization must pin the exact DeploymentRevision');
+        }
+        session.automation = realizeOneAppDeploymentEnvironment(
+          repo,
+          session.automation,
+          {
+            actualNamespace: text(input.actualNamespace, 'actualNamespace'),
+            taskQueue: text(input.taskQueue, 'taskQueue'),
+            workflowTypeName: text(input.workflowTypeName, 'workflowTypeName'),
+            activityTypeName: text(input.activityTypeName, 'activityTypeName'),
+            workerLogicalName: text(input.workerLogicalName, 'workerLogicalName'),
+            executableArtifactRef: text(input.executableArtifactRef, 'executableArtifactRef'),
+            artifactDigest: text(input.artifactDigest, 'artifactDigest'),
+            sdkFamily: text(input.sdkFamily, 'sdkFamily'),
+            sdkVersionRef: text(input.sdkVersionRef, 'sdkVersionRef'),
+            authorityRef: text(input.authorityRef, 'authorityRef'),
+            realizedBy: text(input.realizedBy, 'realizedBy'),
+          },
+          new Date().toISOString(),
+        );
+        const deploymentRealization = session.automation.deploymentRealization;
+        if (!deploymentRealization) throw new TypeError('one-app environment realization was not created');
+        json(res, 201, {
+          deploymentRealization,
           deploymentAttemptAuthorized: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
