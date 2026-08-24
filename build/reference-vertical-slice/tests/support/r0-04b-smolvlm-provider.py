@@ -5,24 +5,24 @@ import torch
 from PIL import Image
 from transformers import AutoModelForMultimodalLM, AutoProcessor
 
-MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-256M-Instruct')
-MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','cee7dc33d83ff2ddec17238b7aba85145169e631')
-PROVIDER='R0_04B_SMOLVLM_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-http-v0.1'
+MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-500M-Instruct')
+MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','a7da5b986cb59b408707209984f360a5f4ad7e47')
+PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.1'
 TOKEN=os.getenv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN',''); PORT=int(os.getenv('TALOS_R0_04B_PROVIDER_PORT','8765'))
 if len(TOKEN)<24: raise SystemExit('R0_04B_PROVIDER_CONFIG_INVALID')
-PROMPT='''Inspect only visible business-process evidence in this image. Do not invent hidden steps, roles, rules, or conditions. Return one JSON object and no markdown: {"nodes":[{"id":"n1","label":"visible label","type":"START|TASK|END|UNKNOWN"}],"edges":[{"source":"n1","target":"n2"}]}. Include only visibly identifiable nodes; preserve visible labels; include an edge only for a visible directed connector; edge ids must reference returned nodes.'''
+PROMPT='''Inspect only the visible business-process diagram in the image. Extract every visible process node and every visible directed connector. Do not invent hidden steps, roles, rules, or conditions. Return exactly one JSON object and no prose or markdown using this schema: {"nodes":[{"id":"unique-id","label":"visible text","type":"START|TASK|END|UNKNOWN"}],"edges":[{"source":"node-id","target":"node-id"}]}. Preserve visible text labels. START means a visible starting event, TASK means a visible activity box, END means a visible ending event, UNKNOWN means a visible node whose type cannot be established. Include an edge only when a directed connector is visibly present. Edge ids must reference ids in nodes.'''
 print(json.dumps({'status':'LOADING_MODEL','providerId':PROVIDER,'modelRef':MODEL_ID,'modelVersion':MODEL_REV}),flush=True)
 processor=AutoProcessor.from_pretrained(MODEL_ID,revision=MODEL_REV)
-model=AutoModelForMultimodalLM.from_pretrained(MODEL_ID,revision=MODEL_REV,torch_dtype=torch.float32); model.eval()
+model=AutoModelForMultimodalLM.from_pretrained(MODEL_ID,revision=MODEL_REV,dtype=torch.float32); model.eval()
 
 def infer(image):
     messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':PROMPT}]}]
     prompt=processor.apply_chat_template(messages,add_generation_prompt=True)
     inputs=processor(text=prompt,images=[image.convert('RGB')],return_tensors='pt')
-    with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=320,do_sample=False)
+    with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=420,do_sample=False)
     text=processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
     start=text.find('{')
-    if start<0: raise ValueError(f'model output contains no JSON; output={text[:240]}')
+    if start<0: raise ValueError(f'model output contains no JSON; output={text[:400]}')
     raw,_=json.JSONDecoder().raw_decode(text[start:])
     nodes=[]; ids=set()
     for item in raw.get('nodes',[]) if isinstance(raw,dict) else []:
@@ -35,14 +35,14 @@ def infer(image):
         if not isinstance(item,dict): continue
         s=str(item.get('source','')).strip(); t=str(item.get('target','')).strip()
         if s in ids and t in ids and s!=t and (s,t) not in seen: seen.add((s,t)); edges.append({'source':s,'target':t})
-    if len(nodes)<2 or not edges: raise ValueError(f'model did not establish a usable visible directed graph; output={text[:240]}')
+    if len(nodes)<2 or not edges: raise ValueError(f'model did not establish a usable visible directed graph; output={text[:400]}')
     return nodes,edges,text
 
 def corr(e): return {'schemaVersion':'talos-image-perception-response-correlation-v0.1','sourceRepresentationId':e['sourceRepresentationId'],'contentSha256':e['contentSha256'],'coordinateSpace':dict(e['coordinateSpace'])}
 def base(e,status,diagnostics): return {'providerId':PROVIDER,'providerVersion':VERSION,'providerClass':'MODEL_PROVIDER','modelRef':MODEL_ID,'modelVersion':MODEL_REV,'pipelineVersion':PIPELINE,'evidenceMode':'MODEL_INFERENCE','status':status,'requestCorrelation':corr(e),'anchors':[],'observations':[],'occurrenceCandidates':[],'alternativeSets':[],'relationCandidates':[],'diagnostics':diagnostics}
 
 def result(e,nodes,edges,text):
-    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f"SmolVLM output sha256={hashlib.sha256(text.encode()).hexdigest()}; nodes={len(nodes)}; edges={len(edges)}"}])
+    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f"SmolVLM-500M output sha256={hashlib.sha256(text.encode()).hexdigest()}; nodes={len(nodes)}; edges={len(edges)}"}])
     type_map={'START':'EVENT','TASK':'ACTION','END':'END','UNKNOWN':'SOURCE_DEFINED'}; occ={}
     for x,n in enumerate(nodes,1):
         a=f'node-anchor-{x}'; o=f'node-label-{x}'; k=f'node-{x}'; occ[n['id']]=(k,a)
@@ -58,7 +58,7 @@ def result(e,nodes,edges,text):
     return r
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='TalosR004BSmolVLM/0.1'
+    server_version='TalosR004BSmolVLM500M/0.1'
     def log_message(self,*_): pass
     def send_json(self,status,payload):
         b=json.dumps(payload,separators=(',',':')).encode(); self.send_response(status); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.send_header('cache-control','no-store'); self.end_headers(); self.wfile.write(b)
@@ -82,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
             print(json.dumps({'status':'R0_04B_REAL_MODEL_INFERENCE','outputSha256':hashlib.sha256(text.encode()).hexdigest(),'nodes':len(nodes),'edges':len(edges)}),flush=True)
             self.send_json(200,result(envelope,nodes,edges,text))
         except Exception as exc:
-            diagnostic=f'{type(exc).__name__}: {exc}'[:500]
+            diagnostic=f'{type(exc).__name__}: {exc}'[:700]
             print(json.dumps({'status':'R0_04B_MODEL_NO_USABLE_GRAPH','diagnostic':diagnostic}),flush=True)
             if isinstance(envelope,dict): self.send_json(200,base(envelope,'NO_RESULT',[{'code':'R0_04B_MODEL_NO_USABLE_GRAPH','description':diagnostic}]))
             else: self.send_json(400,{'status':'INVALID_REQUEST'})
