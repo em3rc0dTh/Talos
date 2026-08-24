@@ -34,12 +34,13 @@ const BUSINESS_PAYLOAD_FIELDS = new Set(['facts', 'capabilityInputs']);
 const MAX_PROXY_JSON_BYTES = 20 * 1024 * 1024;
 
 class PreviewAccessError extends Error {
-  constructor(
-    readonly status: 401 | 403 | 400,
-    readonly code: string,
-    message: string,
-  ) {
+  readonly status: 401 | 403 | 400;
+  readonly code: string;
+
+  constructor(status: 401 | 403 | 400, code: string, message: string) {
     super(message);
+    this.status = status;
+    this.code = code;
   }
 }
 
