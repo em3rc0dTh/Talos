@@ -37,6 +37,11 @@ import {
 } from '../../runtime-policy/src/generic-policy.ts';
 import type { ReferenceRuntimePolicyBundle } from '../../runtime-policy/src/types.ts';
 import {
+  designGenericDeployment,
+  type GenericDeploymentIntent,
+} from '../../deployment/src/generic-deployment.ts';
+import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
+import {
   persistAutomationCapabilitySelection,
   persistGenericCapabilityDesign,
 } from './capability.ts';
@@ -46,6 +51,7 @@ import {
   persistApprovedAutomationTemporalMapping,
 } from './execution-design.ts';
 import { persistExplicitRuntimePolicyDesign } from './runtime-policy-design.ts';
+import { persistOneAppDeploymentDesign } from './deployment-design.ts';
 
 export interface OneAppAutomationContext {
   process: ProcessRevision;
@@ -60,6 +66,7 @@ export interface OneAppAutomationContext {
   approval?: AutomationDesignApprovalRecord;
   mapping?: ReferenceTemporalMappingBundle;
   runtimePolicy?: ReferenceRuntimePolicyBundle;
+  deploymentDesign?: ReferenceDeploymentBundle;
 }
 
 export function openOneAppAutomationDesign(
@@ -200,4 +207,30 @@ export function designOneAppExplicitRuntimePolicy(
   );
   persistExplicitRuntimePolicyDesign(repo, runtimePolicy);
   return { ...context, runtimePolicy };
+}
+
+export function designOneAppDeployment(
+  repo: ImmutableDocumentRepository,
+  context: OneAppAutomationContext,
+  intent: GenericDeploymentIntent,
+  createdAt: string,
+): OneAppAutomationContext {
+  if (!context.executionReview || !context.mapping || !context.runtimePolicy) {
+    throw new TypeError('one-app Deployment design requires an explicit RuntimePolicy first');
+  }
+  if (context.runtimePolicy.assessment.readiness !== 'READY_FOR_DEPLOYMENT_DESIGN') {
+    throw new TypeError('one-app Deployment design requires READY_FOR_DEPLOYMENT_DESIGN RuntimePolicy');
+  }
+  if (context.deploymentDesign) {
+    throw new TypeError('one-app Deployment design is append-only and already exists for this context');
+  }
+  const deploymentDesign = designGenericDeployment(
+    context.executionReview.execution,
+    context.mapping,
+    context.runtimePolicy,
+    intent,
+    createdAt,
+  );
+  persistOneAppDeploymentDesign(repo, deploymentDesign);
+  return { ...context, deploymentDesign };
 }
