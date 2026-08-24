@@ -723,6 +723,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (deploymentRevisionId !== deploymentRealization.revision.id || deploymentApproval.deploymentRevisionRef !== deploymentRevisionId) {
           throw new TypeError('one-app deployment attempt must pin the exact approved realized DeploymentRevision');
         }
+        deploymentApprovalSessions.delete(deploymentApprovalId);
         const startedAt = new Date().toISOString();
         const outcome = await options.deploymentAttemptExecutor({
           context: session.automation,
