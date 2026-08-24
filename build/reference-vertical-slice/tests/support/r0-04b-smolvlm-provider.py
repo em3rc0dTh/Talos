@@ -22,7 +22,7 @@ def infer(image):
     with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=320,do_sample=False)
     text=processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
     start=text.find('{')
-    if start<0: raise ValueError('model output contains no JSON')
+    if start<0: raise ValueError(f'model output contains no JSON; output={text[:240]}')
     raw,_=json.JSONDecoder().raw_decode(text[start:])
     nodes=[]; ids=set()
     for item in raw.get('nodes',[]) if isinstance(raw,dict) else []:
@@ -35,7 +35,7 @@ def infer(image):
         if not isinstance(item,dict): continue
         s=str(item.get('source','')).strip(); t=str(item.get('target','')).strip()
         if s in ids and t in ids and s!=t and (s,t) not in seen: seen.add((s,t)); edges.append({'source':s,'target':t})
-    if len(nodes)<2 or not edges: raise ValueError('model did not establish a usable visible directed graph')
+    if len(nodes)<2 or not edges: raise ValueError(f'model did not establish a usable visible directed graph; output={text[:240]}')
     return nodes,edges,text
 
 def corr(e): return {'schemaVersion':'talos-image-perception-response-correlation-v0.1','sourceRepresentationId':e['sourceRepresentationId'],'contentSha256':e['contentSha256'],'coordinateSpace':dict(e['coordinateSpace'])}
@@ -73,9 +73,13 @@ class Handler(BaseHTTPRequestHandler):
             if size<1 or size>20*1024*1024: raise ValueError('invalid request length')
             envelope=json.loads(self.rfile.read(size)); img=base64.b64decode(envelope['imageBase64'],validate=True)
             if hashlib.sha256(img).hexdigest()!=envelope['contentSha256']: raise ValueError('content hash mismatch')
-            nodes,edges,text=infer(Image.open(io.BytesIO(img))); self.send_json(200,result(envelope,nodes,edges,text))
+            nodes,edges,text=infer(Image.open(io.BytesIO(img)))
+            print(json.dumps({'status':'R0_04B_REAL_MODEL_INFERENCE','outputSha256':hashlib.sha256(text.encode()).hexdigest(),'nodes':len(nodes),'edges':len(edges)}),flush=True)
+            self.send_json(200,result(envelope,nodes,edges,text))
         except Exception as exc:
-            if isinstance(envelope,dict): self.send_json(200,base(envelope,'NO_RESULT',[{'code':'R0_04B_MODEL_NO_USABLE_GRAPH','description':f'{type(exc).__name__}: {exc}'[:500]}]))
+            diagnostic=f'{type(exc).__name__}: {exc}'[:500]
+            print(json.dumps({'status':'R0_04B_MODEL_NO_USABLE_GRAPH','diagnostic':diagnostic}),flush=True)
+            if isinstance(envelope,dict): self.send_json(200,base(envelope,'NO_RESULT',[{'code':'R0_04B_MODEL_NO_USABLE_GRAPH','description':diagnostic}]))
             else: self.send_json(400,{'status':'INVALID_REQUEST'})
 
 print(json.dumps({'status':'READY','providerId':PROVIDER,'providerVersion':VERSION,'modelRef':MODEL_ID,'modelVersion':MODEL_REV,'pipelineVersion':PIPELINE,'host':'127.0.0.1','port':PORT,'secretMaterialExposed':False}),flush=True)
