@@ -7,7 +7,6 @@ on:
       - '.github/workflows/r0-04b-live-vision.yml'
       - 'build/reference-vertical-slice/tests/image-r0-04b-*.test.ts'
       - 'build/reference-vertical-slice/tests/support/r0-04b-smolvlm-provider.py'
-      - 'build/reference-vertical-slice/tests/fixtures/r0-04b-simple-process.png'
       - 'build/reference-vertical-slice/packages/image-perception/**'
       - 'build/reference-vertical-slice/packages/application/**'
   workflow_dispatch:
@@ -91,6 +90,49 @@ jobs:
           assert PIL.__version__ == '12.3.0', PIL.__version__
           print('R0-04B pinned CPU vision runtime verified')
           PY
+
+      - name: Render exact real PNG source in pinned Pillow runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="$RUNNER_TEMP/r0-04b-process.png"
+          export IMAGE
+          python - <<'PY'
+          import hashlib, os
+          from PIL import Image, ImageDraw, ImageFont
+          path=os.environ['IMAGE']
+          img=Image.new('RGB',(1200,360),'white')
+          d=ImageDraw.Draw(img)
+          line=5
+          dark='black'
+          font=ImageFont.load_default(size=42)
+          small=ImageFont.load_default(size=30)
+          # START event
+          d.ellipse((80,120,200,240),outline=dark,width=line)
+          d.text((96,255),'START',fill=dark,font=small)
+          # REVIEW REQUEST activity
+          d.rounded_rectangle((390,95,810,265),radius=24,outline=dark,width=line)
+          label='REVIEW REQUEST'
+          bbox=d.textbbox((0,0),label,font=font)
+          d.text(((1200-(bbox[2]-bbox[0]))/2,155),label,fill=dark,font=font)
+          # END event, double ring
+          d.ellipse((1000,120,1120,240),outline=dark,width=line)
+          d.ellipse((1010,130,1110,230),outline=dark,width=3)
+          d.text((1028,255),'END',fill=dark,font=small)
+          # visible directed connectors
+          d.line((200,180,390,180),fill=dark,width=line)
+          d.polygon([(390,180),(365,165),(365,195)],fill=dark)
+          d.line((810,180,1000,180),fill=dark,width=line)
+          d.polygon([(1000,180),(975,165),(975,195)],fill=dark)
+          img.save(path,format='PNG',optimize=False)
+          check=Image.open(path); check.verify()
+          check=Image.open(path); check.load()
+          raw=open(path,'rb').read()
+          print(f'R0-04B source PNG bytes={len(raw)} sha256={hashlib.sha256(raw).hexdigest()} size={check.size} mode={check.mode}')
+          PY
+          SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
+          echo "TALOS_R0_04B_SOURCE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "TALOS_R0_04B_SOURCE_SHA256=$SHA" >> "$GITHUB_ENV"
 
       - name: Start pinned real SmolVLM provider
         shell: bash
