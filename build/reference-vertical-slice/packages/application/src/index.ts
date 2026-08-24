@@ -5,6 +5,8 @@ export * from './capability.ts';
 export * from './execution-design.ts';
 export * from './runtime-policy-design.ts';
 export * from './deployment-design.ts';
+export * from './deployment-attempt.ts';
+export * from './workflow-execution.ts';
 export * from './one-app-automation.ts';
 export * from './bpmn-workspace.ts';
 export * from './bpmn-natural-language.ts';
