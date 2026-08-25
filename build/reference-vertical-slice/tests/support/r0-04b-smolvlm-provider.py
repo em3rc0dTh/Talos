@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import base64, hashlib, io, json, os
+import base64, hashlib, io, json, os, re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import torch
 from PIL import Image
@@ -7,42 +7,85 @@ from transformers import AutoModelForMultimodalLM, AutoProcessor
 
 MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-500M-Instruct')
 MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','a7da5b986cb59b408707209984f360a5f4ad7e47')
-PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.1'
+PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.2'
 TOKEN=os.getenv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN',''); PORT=int(os.getenv('TALOS_R0_04B_PROVIDER_PORT','8765'))
 if len(TOKEN)<24: raise SystemExit('R0_04B_PROVIDER_CONFIG_INVALID')
-PROMPT='''Inspect only the visible business-process diagram in the image. Extract every visible process node and every visible directed connector. Do not invent hidden steps, roles, rules, or conditions. Return exactly one JSON object and no prose or markdown using this schema: {"nodes":[{"id":"unique-id","label":"visible text","type":"START|TASK|END|UNKNOWN"}],"edges":[{"source":"node-id","target":"node-id"}]}. Preserve visible text labels. START means a visible starting event, TASK means a visible activity box, END means a visible ending event, UNKNOWN means a visible node whose type cannot be established. Include an edge only when a directed connector is visibly present. Edge ids must reference ids in nodes.'''
+
+TYPE_PROMPT='''Inspect only the visible business-process diagram. Identify every visible process node from left to right. Do not invent hidden nodes. Return only the node types separated by | using START, TASK, END, or UNKNOWN. Example format: START|TASK|END.'''
+LABEL_PROMPT='''Inspect only the visible business-process diagram. Read the visible text label associated with each visible process node from left to right. Do not invent or paraphrase labels. Return only the labels separated by |, preserving visible wording. Include visible START and END labels when present. Example format: START|REVIEW REQUEST|END.'''
+EDGE_PROMPT='''Inspect only the visible directed connectors in the business-process diagram. Number the visible process nodes from left to right starting at 1. Return only directed source>target pairs separated by |. Include a pair only when a directed connector is visibly present. Example format: 1>2|2>3.'''
+
 print(json.dumps({'status':'LOADING_MODEL','providerId':PROVIDER,'modelRef':MODEL_ID,'modelVersion':MODEL_REV}),flush=True)
 processor=AutoProcessor.from_pretrained(MODEL_ID,revision=MODEL_REV)
 model=AutoModelForMultimodalLM.from_pretrained(MODEL_ID,revision=MODEL_REV,dtype=torch.float32); model.eval()
 
+def ask(image,prompt,max_new_tokens=96):
+    messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':prompt}]}]
+    rendered=processor.apply_chat_template(messages,add_generation_prompt=True)
+    inputs=processor(text=rendered,images=[image.convert('RGB')],return_tensors='pt')
+    with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=max_new_tokens,do_sample=False)
+    return processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
+
+def parse_types(text):
+    types=re.findall(r'(?i)\b(START|TASK|END|UNKNOWN)\b',text)
+    types=[item.upper() for item in types]
+    if len(types)<2 or len(types)>20:
+        raise ValueError(f'model type pass did not establish a bounded visible node sequence; output={text[:300]}')
+    return types
+
+def parse_labels(text,count):
+    cleaned=text.replace('```','').strip()
+    candidates=[]
+    for line in cleaned.splitlines():
+        line=line.strip().strip('`')
+        if '|' in line:
+            parts=[part.strip().strip('"\' ') for part in line.split('|')]
+            if len(parts)==count and all(parts): candidates.append(parts)
+    whole=[part.strip().strip('"\' ') for part in cleaned.split('|')]
+    if len(whole)==count and all(whole): candidates.append(whole)
+    if not candidates:
+        lines=[]
+        for line in cleaned.splitlines():
+            item=re.sub(r'^\s*(?:[-*]|\d+[.)])\s*','',line).strip().strip('"\' `')
+            if item: lines.append(item)
+        if len(lines)==count: candidates.append(lines)
+    if not candidates:
+        raise ValueError(f'model label pass did not reconcile with {count} visible nodes; output={text[:300]}')
+    labels=candidates[0]
+    if any(len(label)>160 for label in labels):
+        raise ValueError('model label pass produced an implausibly long visible label')
+    return labels
+
+def parse_edges(text,count):
+    pairs=[]; seen=set()
+    for source,target in re.findall(r'(\d+)\s*(?:->|>|→)\s*(\d+)',text):
+        s=int(source); t=int(target)
+        if s<1 or t<1 or s>count or t>count or s==t: continue
+        pair=(s,t)
+        if pair not in seen:
+            seen.add(pair); pairs.append(pair)
+    if not pairs:
+        raise ValueError(f'model connector pass did not establish a visible directed edge; output={text[:300]}')
+    return pairs
+
 def infer(image):
-    messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':PROMPT}]}]
-    prompt=processor.apply_chat_template(messages,add_generation_prompt=True)
-    inputs=processor(text=prompt,images=[image.convert('RGB')],return_tensors='pt')
-    with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=420,do_sample=False)
-    text=processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
-    start=text.find('{')
-    if start<0: raise ValueError(f'model output contains no JSON; output={text[:400]}')
-    raw,_=json.JSONDecoder().raw_decode(text[start:])
-    nodes=[]; ids=set()
-    for item in raw.get('nodes',[]) if isinstance(raw,dict) else []:
-        if not isinstance(item,dict): continue
-        i=str(item.get('id','')).strip(); label=str(item.get('label','')).strip(); typ=str(item.get('type','UNKNOWN')).upper().strip()
-        if i and label and i not in ids:
-            ids.add(i); nodes.append({'id':i,'label':label,'type':typ if typ in {'START','TASK','END','UNKNOWN'} else 'UNKNOWN'})
-    edges=[]; seen=set()
-    for item in raw.get('edges',[]) if isinstance(raw,dict) else []:
-        if not isinstance(item,dict): continue
-        s=str(item.get('source','')).strip(); t=str(item.get('target','')).strip()
-        if s in ids and t in ids and s!=t and (s,t) not in seen: seen.add((s,t)); edges.append({'source':s,'target':t})
-    if len(nodes)<2 or not edges: raise ValueError(f'model did not establish a usable visible directed graph; output={text[:400]}')
-    return nodes,edges,text
+    type_text=ask(image,TYPE_PROMPT,64)
+    types=parse_types(type_text)
+    label_text=ask(image,LABEL_PROMPT,128)
+    labels=parse_labels(label_text,len(types))
+    edge_text=ask(image,EDGE_PROMPT,96)
+    pairs=parse_edges(edge_text,len(types))
+    nodes=[{'id':f'n{index+1}','label':labels[index],'type':types[index]} for index in range(len(types))]
+    edges=[{'source':f'n{source}','target':f'n{target}'} for source,target in pairs]
+    evidence={'types':type_text,'labels':label_text,'edges':edge_text}
+    return nodes,edges,evidence
 
 def corr(e): return {'schemaVersion':'talos-image-perception-response-correlation-v0.1','sourceRepresentationId':e['sourceRepresentationId'],'contentSha256':e['contentSha256'],'coordinateSpace':dict(e['coordinateSpace'])}
 def base(e,status,diagnostics): return {'providerId':PROVIDER,'providerVersion':VERSION,'providerClass':'MODEL_PROVIDER','modelRef':MODEL_ID,'modelVersion':MODEL_REV,'pipelineVersion':PIPELINE,'evidenceMode':'MODEL_INFERENCE','status':status,'requestCorrelation':corr(e),'anchors':[],'observations':[],'occurrenceCandidates':[],'alternativeSets':[],'relationCandidates':[],'diagnostics':diagnostics}
 
-def result(e,nodes,edges,text):
-    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f"SmolVLM-500M output sha256={hashlib.sha256(text.encode()).hexdigest()}; nodes={len(nodes)}; edges={len(edges)}"}])
+def result(e,nodes,edges,evidence):
+    hashes={key:hashlib.sha256(value.encode()).hexdigest() for key,value in evidence.items()}
+    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f"SmolVLM-500M reconciled evidence hashes types={hashes['types']}, labels={hashes['labels']}, edges={hashes['edges']}; nodes={len(nodes)}; edges={len(edges)}"}])
     type_map={'START':'EVENT','TASK':'ACTION','END':'END','UNKNOWN':'SOURCE_DEFINED'}; occ={}
     for x,n in enumerate(nodes,1):
         a=f'node-anchor-{x}'; o=f'node-label-{x}'; k=f'node-{x}'; occ[n['id']]=(k,a)
@@ -58,7 +101,7 @@ def result(e,nodes,edges,text):
     return r
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='TalosR004BSmolVLM500M/0.1'
+    server_version='TalosR004BSmolVLM500M/0.2'
     def log_message(self,*_): pass
     def send_json(self,status,payload):
         b=json.dumps(payload,separators=(',',':')).encode(); self.send_response(status); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.send_header('cache-control','no-store'); self.end_headers(); self.wfile.write(b)
@@ -78,9 +121,10 @@ class Handler(BaseHTTPRequestHandler):
             print(json.dumps({'status':'R0_04B_IMAGE_OPENED','byteLength':len(img),'sha256':received_sha,'signatureHex':img[:8].hex(),'format':image.format,'size':list(image.size),'mode':image.mode}),flush=True)
             image.load()
             print(json.dumps({'status':'R0_04B_IMAGE_PIXELS_LOADED','sha256':received_sha,'size':list(image.size),'mode':image.mode}),flush=True)
-            nodes,edges,text=infer(image)
-            print(json.dumps({'status':'R0_04B_REAL_MODEL_INFERENCE','outputSha256':hashlib.sha256(text.encode()).hexdigest(),'nodes':len(nodes),'edges':len(edges)}),flush=True)
-            self.send_json(200,result(envelope,nodes,edges,text))
+            nodes,edges,evidence=infer(image)
+            evidence_hashes={key:hashlib.sha256(value.encode()).hexdigest() for key,value in evidence.items()}
+            print(json.dumps({'status':'R0_04B_REAL_MODEL_INFERENCE','evidenceHashes':evidence_hashes,'nodes':len(nodes),'edges':len(edges)}),flush=True)
+            self.send_json(200,result(envelope,nodes,edges,evidence))
         except Exception as exc:
             diagnostic=f'{type(exc).__name__}: {exc}'[:700]
             print(json.dumps({'status':'R0_04B_MODEL_NO_USABLE_GRAPH','diagnostic':diagnostic}),flush=True)
