@@ -80,11 +80,11 @@ test('R0-04B live SmolVLM plus deterministic visual geometry crosses the exact T
       receivedAt: '2026-08-24T18:45:00.000Z', perceivedAt: '2026-08-24T18:45:01.000Z', normalizedAt: '2026-08-24T18:45:02.000Z', assessedAt: '2026-08-24T18:45:03.000Z', projectedAt: '2026-08-24T18:45:04.000Z',
     });
 
-    assert.equal(result.status, 'BPMN_READY_FOR_PROCESS_REVIEW');
     if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
       const diagnostics = result.perception.attempt.diagnostics.map((item: any) => `${item.code}:${item.description}`).join(' | ');
-      throw new Error(`R0-04B live vision pipeline did not establish a BPMN review candidate: ${diagnostics}`);
+      throw new Error(`R0-04B live vision pipeline did not establish a BPMN review candidate; admission=${result.perception.admission.decision}; providerStatus=${result.perception.admission.providerStatus}; reasons=${result.perception.admission.reasonCodes.join(',')}; diagnostics=${diagnostics}`);
     }
+    assert.equal(result.status, 'BPMN_READY_FOR_PROCESS_REVIEW');
 
     assert.equal(result.intake.representation.contentHash, expectedPngSha256);
     assert.equal(result.perception.admission.decision, 'ADMITTED_FOR_REVIEW');
