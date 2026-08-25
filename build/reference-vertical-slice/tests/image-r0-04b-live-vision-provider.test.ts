@@ -15,7 +15,7 @@ import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-d
 const MODEL_ID = 'HuggingFaceTB/SmolVLM-500M-Instruct';
 const MODEL_REVISION = 'a7da5b986cb59b408707209984f360a5f4ad7e47';
 const PROVIDER_ID = 'R0_04B_SMOLVLM_500M_LOCAL';
-const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-http-v0.5';
+const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-cv-http-v0.6';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -41,7 +41,7 @@ function persistedPerceptionJson(repo: SqliteDocumentStore): string {
   return JSON.stringify(kinds.flatMap((kind) => repo.listByKind(kind)));
 }
 
-test('R0-04B real SmolVLM 500M inference crosses the exact Talos provider/correlation path into a non-executable BPMN review candidate', { timeout: 240_000 }, async () => {
+test('R0-04B live SmolVLM plus deterministic visual geometry crosses the exact Talos provider/correlation path into a non-executable BPMN review candidate', { timeout: 240_000 }, async () => {
   const endpoint = requiredEnv('TALOS_R0_04B_PROVIDER_ENDPOINT');
   const bearerToken = requiredEnv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN');
   const sourceImage = requiredEnv('TALOS_R0_04B_SOURCE_IMAGE');
@@ -83,7 +83,7 @@ test('R0-04B real SmolVLM 500M inference crosses the exact Talos provider/correl
     assert.equal(result.status, 'BPMN_READY_FOR_PROCESS_REVIEW');
     if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
       const diagnostics = result.perception.attempt.diagnostics.map((item: any) => `${item.code}:${item.description}`).join(' | ');
-      throw new Error(`R0-04B real model did not establish a BPMN review candidate: ${diagnostics}`);
+      throw new Error(`R0-04B live vision pipeline did not establish a BPMN review candidate: ${diagnostics}`);
     }
 
     assert.equal(result.intake.representation.contentHash, expectedPngSha256);
@@ -96,14 +96,15 @@ test('R0-04B real SmolVLM 500M inference crosses the exact Talos provider/correl
     assert.match(adapterJson, /R0_04B_SMOLVLM_500M_LOCAL/);
     assert.match(adapterJson, /HuggingFaceTB\/SmolVLM-500M-Instruct/);
     assert.match(adapterJson, /R0_04B_REAL_MODEL_INFERENCE/);
+    assert.match(adapterJson, /REVIEW REQUEST/, 'live model must recover the literal visible task label rather than a generic TASK token');
     assert.equal(adapterJson.includes(bearerToken), false);
 
     const process = result.semantic.normalization.processRevision;
     const nodeKinds = new Set(process.nodes.map((node) => node.kind));
-    assert.equal(nodeKinds.has('EVENT'), true, 'real model must recover a visible start event');
-    assert.equal(nodeKinds.has('ACTION'), true, 'real model must recover the visible REVIEW REQUEST task');
-    assert.equal(nodeKinds.has('END'), true, 'real model must recover a visible end event');
-    assert.ok(process.edges.length >= 2, 'real model must recover the visible directed process sequence');
+    assert.equal(nodeKinds.has('EVENT'), true, 'live vision pipeline must recover a visible start event');
+    assert.equal(nodeKinds.has('ACTION'), true, 'live vision pipeline must recover the visible REVIEW REQUEST task');
+    assert.equal(nodeKinds.has('END'), true, 'live vision pipeline must recover a visible end event');
+    assert.ok(process.edges.length >= 2, 'live vision pipeline must recover the visible directed process sequence');
     assert.equal(process.nodes.every((node) => node.truthClass === 'INFERRED'), true);
     assert.equal(process.edges.every((edge) => edge.kind === 'SEQUENCE' && edge.truthClass === 'INFERRED'), true);
     assert.equal(process.semanticClaims.every((claim) => claim.truthClass === 'INFERRED'), true);
