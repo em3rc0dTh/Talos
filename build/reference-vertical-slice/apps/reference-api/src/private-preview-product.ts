@@ -19,14 +19,26 @@ export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-function productPort(env: Environment): number {
-  const raw = env[TALOS_PRODUCT_PORT_ENV]?.trim() || '8787';
-  if (!/^\d+$/.test(raw)) throw new TypeError(`${TALOS_PRODUCT_PORT_ENV} must be an integer`);
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1 || value > 65_535) {
-    throw new TypeError(`${TALOS_PRODUCT_PORT_ENV} must be between 1 and 65535`);
+export interface TalosPrivatePreviewProductOptions {
+  /** Test/development override. Zero requests an ephemeral product-shell port. */
+  productPort?: number;
+  /** Test/development override. Zero requests an ephemeral secured authority port. */
+  authorityPort?: number;
+}
+
+function checkedPort(value: number, label: string, allowEphemeral: boolean): number {
+  const min = allowEphemeral ? 0 : 1;
+  if (!Number.isSafeInteger(value) || value < min || value > 65_535) {
+    throw new TypeError(`${label} must be between ${min} and 65535`);
   }
   return value;
+}
+
+function productPort(env: Environment, override?: number): number {
+  if (override !== undefined) return checkedPort(override, 'productPort', true);
+  const raw = env[TALOS_PRODUCT_PORT_ENV]?.trim() || '8787';
+  if (!/^\d+$/.test(raw)) throw new TypeError(`${TALOS_PRODUCT_PORT_ENV} must be an integer`);
+  return checkedPort(Number(raw), TALOS_PRODUCT_PORT_ENV, false);
 }
 
 function workerArtifact() {
@@ -38,7 +50,10 @@ function workerArtifact() {
   };
 }
 
-export async function startTalosPrivatePreviewProduct(env: Environment = process.env) {
+export async function startTalosPrivatePreviewProduct(
+  env: Environment = process.env,
+  options: TalosPrivatePreviewProductOptions = {},
+) {
   const binding = resolveTalosPrivatePreviewRuntimeBinding(env);
   const start = binding.createStartConfiguration();
   let runtimeAdapters: TalosManagedTemporalRuntimeAdapters | undefined;
@@ -59,11 +74,12 @@ export async function startTalosPrivatePreviewProduct(env: Environment = process
   let product: Awaited<ReturnType<typeof startTalosOneAppProduct>> | undefined;
   try {
     operator = await startTalosPrivatePreviewOperator(env, {
+      ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
       ...(runtimeAdapters ? { runtimeAdapters } : {}),
     });
     const artifact = workerArtifact();
     product = await startTalosOneAppProduct({
-      port: productPort(env),
+      port: productPort(env, options.productPort),
       host: '127.0.0.1',
       upstream: {
         baseUrl: operator.baseUrl,
@@ -109,6 +125,7 @@ export async function startTalosPrivatePreviewProduct(env: Environment = process
   let closed = false;
   return {
     baseUrl: product.baseUrl,
+    authorityBaseUrl: operator.baseUrl,
     runtimeDir: operator.runtimeDir,
     runtimeDescriptor: binding.descriptor,
     recoveryBeforeStart: operator.recoveryBeforeStart,
