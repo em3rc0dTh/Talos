@@ -15,7 +15,7 @@ import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-d
 const MODEL_ID = 'HuggingFaceTB/SmolVLM-500M-Instruct';
 const MODEL_REVISION = 'a7da5b986cb59b408707209984f360a5f4ad7e47';
 const PROVIDER_ID = 'R0_04B_SMOLVLM_500M_LOCAL';
-const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-http-v0.2';
+const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-http-v0.3';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
