@@ -16,3 +16,5 @@ export async function createGenericTemporalWorker(options:GenericTemporalWorkerO
   const worker=await Worker.create({...(options.connection?{connection:options.connection}:{}),...(options.namespace?{namespace:options.namespace}:{}),taskQueue:options.taskQueue,identity:options.identity??'talos-generic-worker',workflowsPath:fileURLToPath(new URL('./generic-workflow.ts',import.meta.url)),activities:createGenericActivities(ledger,options.capabilityTransport)});
   return{worker,ledger};
 }
+
+export type GenericWorkerRuntime=Awaited<ReturnType<typeof createGenericTemporalWorker>>;
