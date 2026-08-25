@@ -7,7 +7,7 @@ from transformers import AutoModelForMultimodalLM, AutoProcessor
 
 MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-500M-Instruct')
 MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','a7da5b986cb59b408707209984f360a5f4ad7e47')
-PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-cv-http-v0.6'
+PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-cv-http-v0.7'
 TOKEN=os.getenv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN',''); PORT=int(os.getenv('TALOS_R0_04B_PROVIDER_PORT','8765'))
 if len(TOKEN)<24: raise SystemExit('R0_04B_PROVIDER_CONFIG_INVALID')
 
@@ -170,7 +170,7 @@ def infer(image):
     }
     return nodes,edges,evidence
 
-def corr(e): return {'schemaVersion':'talos-image-perception-response-correlation-v0.1','sourceRepresentationId':e['sourceRepresentationId'],'contentSha256':e['contentSha256'],'coordinateSpace':dict(e['coordinateSpace'])}
+def corr(e): return {'schemaVersion':'talos-image-perception-correlation-v0.1','sourceRepresentationId':e['sourceRepresentationId'],'contentSha256':e['contentSha256'],'coordinateSpace':dict(e['coordinateSpace'])}
 def base(e,status,diagnostics): return {'providerId':PROVIDER,'providerVersion':VERSION,'providerClass':'MODEL_PROVIDER','modelRef':MODEL_ID,'modelVersion':MODEL_REV,'pipelineVersion':PIPELINE,'evidenceMode':'MODEL_INFERENCE','status':status,'requestCorrelation':corr(e),'anchors':[],'observations':[],'occurrenceCandidates':[],'alternativeSets':[],'relationCandidates':[],'diagnostics':diagnostics}
 
 def result(e,nodes,edges,evidence):
@@ -191,7 +191,7 @@ def result(e,nodes,edges,evidence):
     return r
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='TalosR004BSmolVLMCV/0.6'
+    server_version='TalosR004BSmolVLMCV/0.7'
     def log_message(self,*_): pass
     def send_json(self,status,payload):
         b=json.dumps(payload,separators=(',',':')).encode(); self.send_response(status); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.send_header('cache-control','no-store'); self.end_headers(); self.wfile.write(b)
