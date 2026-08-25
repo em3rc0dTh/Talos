@@ -102,13 +102,19 @@ jobs:
             done
           } > test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
-          if ! git diff --cached --quiet; then
-            git commit -m "test(b8): record tryable reference app CI $OVERALL"
-            git pull --rebase
-            git push
+          # Feature branches are evidence-tested but must remain immutable under CI.
+          # Only main is allowed to persist the generated B8 receipt back to Git.
+          if [ "$GITHUB_REF" = 'refs/heads/main' ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+            if ! git diff --cached --quiet; then
+              git commit -m "test(b8): record tryable reference app CI $OVERALL"
+              git pull --rebase
+              git push
+            fi
+          else
+            echo "B8 receipt generated for $GITHUB_REF; feature-branch mutation intentionally skipped."
           fi
           echo "OVERALL=$OVERALL" >> "$GITHUB_ENV"
 
