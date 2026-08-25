@@ -135,7 +135,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         const baseRevisionId = text(input.baseRevisionId, 'baseRevisionId');
         const baseBinding = bindings.get(baseRevisionId);
         if (!baseBinding) {
-          if (historyBindings.has(baseRevisionId)) throw new TypeError('one-app process review base revision is stale');
+          if (historyBindings.has(baseRevisionId)) throw new TypeError('one-app process review cannot use a stale base revision');
           throw new TypeError('one-app process review context not found for this BPMN revision');
         }
         const baseRevision = workspace.getRevision(baseRevisionId);
