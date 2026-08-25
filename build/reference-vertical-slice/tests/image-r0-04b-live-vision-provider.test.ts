@@ -15,7 +15,7 @@ import { SqliteDocumentStore } from '../packages/persistence-sqlite/src/sqlite-d
 const MODEL_ID = 'HuggingFaceTB/SmolVLM-500M-Instruct';
 const MODEL_REVISION = 'a7da5b986cb59b408707209984f360a5f4ad7e47';
 const PROVIDER_ID = 'R0_04B_SMOLVLM_500M_LOCAL';
-const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-cv-http-v0.6';
+const PIPELINE_VERSION = 'talos-r0-04b-smolvlm-500m-cv-http-v0.7';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -37,7 +37,7 @@ function providerEnv(endpoint: string, bearerToken: string): Record<string, stri
 }
 
 function persistedPerceptionJson(repo: SqliteDocumentStore): string {
-  const kinds = ['AdapterAttemptStart','AdapterAttemptCompletion','AdapterDiagnostic','AdapterResult','VisualEvidenceAnchor','PerceptionObservation','PerceptionAlternativeSet','PerceptionRelationCandidate','SourceEvidenceGraph','CandidateSemanticScope','ArtifactClassification','ImagePerceptionAdmissionRecord','ProcessRevision','BpmnProcessRevision'];
+  const kinds = ['AdapterAttemptStart','AdapterAttemptCompletion','AdapterDiagnostic','AdapterResult','VisualEvidenceAnchor','PerceptionObservation','PerceptionAlternativeSet','PerceptionRelationCandidate','SourceOccurrenceDescriptor','SourceRelationshipDescriptor','SourceEvidenceGraph','CandidateSemanticScope','ArtifactClassification','ImagePerceptionAdmissionRecord','ProcessRevision','BpmnProcessRevision'];
   return JSON.stringify(kinds.flatMap((kind) => repo.listByKind(kind)));
 }
 
@@ -88,16 +88,21 @@ test('R0-04B live SmolVLM plus deterministic visual geometry crosses the exact T
 
     assert.equal(result.intake.representation.contentHash, expectedPngSha256);
     assert.equal(result.perception.admission.decision, 'ADMITTED_FOR_REVIEW');
+    assert.equal(result.perception.admission.providerId, PROVIDER_ID);
     assert.ok(result.perception.attempt.result);
-    assert.equal(result.perception.attempt.result?.modelRef, MODEL_ID);
-    assert.equal(result.perception.attempt.result?.modelVersion, MODEL_REVISION);
 
-    const adapterJson = JSON.stringify(repo.listByKind('AdapterResult'));
-    assert.match(adapterJson, /R0_04B_SMOLVLM_500M_LOCAL/);
-    assert.match(adapterJson, /HuggingFaceTB\/SmolVLM-500M-Instruct/);
-    assert.match(adapterJson, /R0_04B_REAL_MODEL_INFERENCE/);
-    assert.match(adapterJson, /REVIEW REQUEST/, 'live model must recover the literal visible task label rather than a generic TASK token');
-    assert.equal(adapterJson.includes(bearerToken), false);
+    const observationsJson = JSON.stringify(repo.listByKind('PerceptionObservation'));
+    const diagnosticsJson = JSON.stringify(repo.listByKind('AdapterDiagnostic'));
+    const admissionJson = JSON.stringify(repo.listByKind('ImagePerceptionAdmissionRecord'));
+    assert.match(observationsJson, /HuggingFaceTB\/SmolVLM-500M-Instruct/);
+    assert.match(observationsJson, /a7da5b986cb59b408707209984f360a5f4ad7e47/);
+    assert.match(observationsJson, /talos-r0-04b-smolvlm-500m-cv-http-v0\.7/);
+    assert.match(observationsJson, /REVIEW REQUEST/, 'live model must recover the literal visible task label rather than a generic TASK token');
+    assert.match(diagnosticsJson, /R0_04B_REAL_MODEL_INFERENCE/);
+    assert.match(admissionJson, /R0_04B_SMOLVLM_500M_LOCAL/);
+    assert.equal(observationsJson.includes(bearerToken), false);
+    assert.equal(diagnosticsJson.includes(bearerToken), false);
+    assert.equal(admissionJson.includes(bearerToken), false);
 
     const process = result.semantic.normalization.processRevision;
     const nodeKinds = new Set(process.nodes.map((node) => node.kind));
