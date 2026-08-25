@@ -7,10 +7,19 @@ import {
 } from './one-app-server.ts';
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 
+export interface TalosProductUpstream {
+  baseUrl: string;
+  headers?: Readonly<Record<string, string>>;
+  runtimeDir?: string;
+  close?: () => Promise<void>;
+}
+
 export interface TalosOneAppProductOptions {
   port?: number;
   host?: string;
   oneApp?: Omit<TalosOneAppOptions, 'port' | 'host'>;
+  upstream?: TalosProductUpstream;
+  runtimeProfile?: Readonly<Record<string, unknown>>;
 }
 
 const MAX_PROXY_BYTES = 24 * 1024 * 1024;
@@ -39,16 +48,16 @@ function json(res: http.ServerResponse, status: number, payload: unknown): void 
 }
 
 async function proxy(
-  innerBaseUrl: string,
+  upstream: TalosProductUpstream,
   req: http.IncomingMessage,
   res: http.ServerResponse,
   url: URL,
 ): Promise<void> {
   const body = await readBody(req);
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(upstream.headers ?? {}) };
   const contentType = req.headers['content-type'];
   if (typeof contentType === 'string') headers['content-type'] = contentType;
-  const response = await fetch(`${innerBaseUrl}${url.pathname}${url.search}`, {
+  const response = await fetch(`${upstream.baseUrl}${url.pathname}${url.search}`, {
     method: req.method,
     headers,
     ...(body === undefined ? {} : { body }),
@@ -65,18 +74,26 @@ async function proxy(
 /**
  * R1 product shell over the certified One-App authority backend.
  *
- * The shell owns presentation only. Source intake, perception admission,
- * Canonical review state and all later authority transitions continue to live in
- * startTalosOneApp. Keeping the browser shell outside that authority service
- * prevents UI convenience code from becoming an alternate execution path.
+ * The shell owns presentation only. It may proxy either a directly embedded
+ * One-App engine for tests/development or the authenticated private-preview
+ * boundary used by the real product launcher. Secrets remain closure-held in
+ * server-side proxy headers and are never rendered into browser content.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
+  if (options.upstream && options.oneApp) {
+    throw new TypeError('R1_PRODUCT_UPSTREAM_CONFLICT: configure either upstream or embedded One-App, not both');
+  }
   const host = options.host ?? '127.0.0.1';
-  const inner = await startTalosOneApp({
+  const embedded = options.upstream ? undefined : await startTalosOneApp({
     ...(options.oneApp ?? {}),
     host: '127.0.0.1',
     port: 0,
   });
+  const upstream: TalosProductUpstream = options.upstream ?? {
+    baseUrl: embedded!.baseUrl,
+    runtimeDir: embedded!.runtimeDir,
+    close: () => embedded!.close(),
+  };
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -91,8 +108,16 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         res.end(ONE_APP_PRODUCT_PAGE);
         return;
       }
+      if (req.method === 'GET' && url.pathname === '/api/product/runtime-profile') {
+        json(res, 200, options.runtimeProfile ?? {
+          runtimeMode: 'DESIGN_ONLY',
+          temporalExecutionAvailable: false,
+          secretMaterialExposed: false,
+        });
+        return;
+      }
       if (url.pathname.startsWith('/api/')) {
-        await proxy(inner.baseUrl, req, res, url);
+        await proxy(upstream, req, res, url);
         return;
       }
       json(res, 404, { error: 'not found', code: 'R1_PRODUCT_ROUTE_NOT_FOUND' });
@@ -110,26 +135,26 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       server.listen(options.port ?? 8787, host, () => resolve());
     });
   } catch (error) {
-    await inner.close();
+    await upstream.close?.();
     throw error;
   }
 
   const address = server.address();
   if (!address || typeof address === 'string') {
-    await inner.close();
+    await upstream.close?.();
     throw new Error('Talos R1 product server did not bind a TCP address');
   }
 
   let closed = false;
   return {
     baseUrl: `http://${host}:${address.port}`,
-    innerBaseUrl: inner.baseUrl,
-    runtimeDir: inner.runtimeDir,
+    innerBaseUrl: upstream.baseUrl,
+    runtimeDir: upstream.runtimeDir,
     async close() {
       if (closed) return;
       closed = true;
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await inner.close();
+      await upstream.close?.();
     },
   };
 }
