@@ -135,7 +135,7 @@ test('R1-03 image-derived process can be reviewed, corrected append-only, revali
     assert.equal(review.status, 'PROCESS_REVIEW_REQUIRED');
     assert.equal(review.state, 'ACTIVE');
     assert.equal(review.reconciliation.processRevision.id, originalCanonicalId);
-    assert.equal(review.review.sourceRepresentationRefs.includes(originalSourceRepresentationId), true);
+    assert.equal(review.review.sourceRepresentationIds.includes(originalSourceRepresentationId), true);
     assert.equal(review.requiresBusinessProcessConfirmation, true);
     assert.equal(review.automaticAutomationDesignAuthorized, false);
     assert.equal(review.automaticExecutionAuthorized, false);
@@ -206,7 +206,7 @@ test('R1-03 image-derived process can be reviewed, corrected append-only, revali
     const currentReview = await currentReviewResponse.json() as any;
     assert.equal(currentReview.state, 'ACTIVE');
     assert.equal(currentReview.reconciliation.processRevision.id, edited.reconciliation.processRevision.id);
-    assert.equal(currentReview.review.sourceRepresentationRefs.includes(originalSourceRepresentationId), true);
+    assert.equal(currentReview.review.sourceRepresentationIds.includes(originalSourceRepresentationId), true);
 
     // The source identity captured before review/correction is evidence, not mutable process state.
     assert.equal(intake.sourceContentSha256, originalSourceSha);
