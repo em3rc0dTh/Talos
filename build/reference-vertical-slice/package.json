@@ -89,6 +89,8 @@
     "workspace": "node --experimental-strip-types ./apps/reference-api/src/workspace-server.ts",
     "workspace:test-vision": "node --experimental-strip-types ./apps/reference-api/src/test-vision-workspace.ts",
     "one-app": "node --experimental-strip-types ./apps/reference-api/src/one-app-server.ts",
+    "product": "node --experimental-strip-types ./apps/reference-api/src/private-preview-product.ts",
+    "r1:test": "node --experimental-strip-types --test ./tests/r1-*.test.ts",
     "b1:verify": "npm run architecture:verify && npm run b1:test",
     "b2:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test",
     "b3:verify": "npm run architecture:verify && npm run b1:test && npm run b2:test && npm run b3:test",
