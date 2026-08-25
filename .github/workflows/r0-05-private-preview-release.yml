@@ -1,0 +1,243 @@
+name: R0-05 Private Technical Preview release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/r0-05-private-preview-release.yml'
+      - 'brainstorming/44-R0-05-**'
+      - 'design/44-R0-05-**'
+      - 'arch/44-R0-05-**'
+      - 'plan/60-R0-05-**'
+      - 'plan/00-TALOS-ROADMAP-v0.59.md'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+env:
+  TALOS_RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  TALOS_RELEASE_SCOPE: TALOS_V0_1_PRIVATE_TECHNICAL_PREVIEW
+  TALOS_RELEASE_EVIDENCE_PR: '50'
+
+jobs:
+  certify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Assert immutable checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$TALOS_RELEASE_SHA"
+          test -z "$(git status --porcelain)"
+          echo "Talos R0-05 exact checkout: $ACTUAL"
+          echo "TALOS_R0_05_ACTUAL_SHA=$ACTUAL" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pinned SmolVLM 500M model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: r0-04b-smolvlm-500m-a7da5b986cb59b408707209984f360a5f4ad7e47
+
+      - name: Install exact Talos Node lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Verify architecture boundaries
+        working-directory: build/reference-vertical-slice
+        run: TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+
+      - name: Certify complete B1-B9 reference runtime
+        working-directory: build/reference-vertical-slice
+        run: npm run b9:verify
+
+      - name: Certify complete image I0-I9 authority chain
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i9-07:verify
+
+      - name: Certify private-preview access config and recovery
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r0-01-*.test.ts ./tests/r0-02-*.test.ts ./tests/r0-03-*.test.ts
+
+      - name: Certify restart-safe durable runtime
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
+
+      - name: Reassert explicit workflow execution authority
+        working-directory: build/reference-vertical-slice
+        run: npm run image:i9-07:test
+
+      - name: Certify real Temporal to GitHub external effect
+        working-directory: build/reference-vertical-slice
+        env:
+          R0_04_LIVE_REQUIRED: '1'
+          R0_04_GITHUB_TOKEN: ${{ github.token }}
+          R0_04_GITHUB_REPOSITORY: ${{ github.repository }}
+          R0_04_GITHUB_PR_NUMBER: '50'
+          R0_04_GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node --experimental-strip-types --test ./tests/r0-04a-*.test.ts
+
+      - name: Install pinned real-model runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            'torch==2.13.0+cpu' 'torchvision==0.28.0+cpu' \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check \
+            'transformers==5.15.0' 'Pillow==12.3.0'
+          python - <<'PY'
+          import torch, torchvision, transformers, PIL
+          assert torch.__version__ == '2.13.0+cpu', torch.__version__
+          assert torchvision.__version__ == '0.28.0+cpu', torchvision.__version__
+          assert transformers.__version__ == '5.15.0', transformers.__version__
+          assert PIL.__version__ == '12.3.0', PIL.__version__
+          print('R0-05 pinned CPU vision runtime verified')
+          PY
+
+      - name: Render exact certified PNG source
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="$RUNNER_TEMP/r0-05-process.png"
+          export IMAGE
+          python - <<'PY'
+          import hashlib, os
+          from PIL import Image, ImageDraw, ImageFont
+          path=os.environ['IMAGE']
+          img=Image.new('RGB',(1200,360),'white')
+          d=ImageDraw.Draw(img)
+          line=5
+          dark='black'
+          font=ImageFont.load_default(size=42)
+          small=ImageFont.load_default(size=30)
+          d.ellipse((80,120,200,240),outline=dark,width=line)
+          d.text((96,255),'START',fill=dark,font=small)
+          d.rounded_rectangle((390,95,810,265),radius=24,outline=dark,width=line)
+          label='REVIEW REQUEST'
+          bbox=d.textbbox((0,0),label,font=font)
+          d.text(((1200-(bbox[2]-bbox[0]))/2,155),label,fill=dark,font=font)
+          d.ellipse((1000,120,1120,240),outline=dark,width=line)
+          d.ellipse((1010,130,1110,230),outline=dark,width=3)
+          d.text((1028,255),'END',fill=dark,font=small)
+          d.line((200,180,390,180),fill=dark,width=line)
+          d.polygon([(390,180),(365,165),(365,195)],fill=dark)
+          d.line((810,180,1000,180),fill=dark,width=line)
+          d.polygon([(1000,180),(975,165),(975,195)],fill=dark)
+          img.save(path,format='PNG',optimize=False)
+          check=Image.open(path); check.verify()
+          check=Image.open(path); check.load()
+          raw=open(path,'rb').read()
+          digest=hashlib.sha256(raw).hexdigest()
+          expected='550de02e9647681bb271fa437b2822598ad0438cf4efa8481def38f67ff9d784'
+          assert digest == expected, (digest, expected)
+          print(f'R0-05 source PNG bytes={len(raw)} sha256={digest} size={check.size} mode={check.mode}')
+          PY
+          SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
+          test "$SHA" = '550de02e9647681bb271fa437b2822598ad0438cf4efa8481def38f67ff9d784'
+          echo "TALOS_R0_04B_SOURCE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "TALOS_R0_04B_SOURCE_SHA256=$SHA" >> "$GITHUB_ENV"
+
+      - name: Start pinned real SmolVLM provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="talos-r0-05-$(openssl rand -hex 24)"
+          echo "::add-mask::$TOKEN"
+          echo "TALOS_R0_04B_PROVIDER_BEARER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo 'TALOS_R0_04B_PROVIDER_ENDPOINT=http://127.0.0.1:8765/vision' >> "$GITHUB_ENV"
+          export TALOS_R0_04B_PROVIDER_BEARER_TOKEN="$TOKEN"
+          export TALOS_R0_04B_PROVIDER_PORT=8765
+          LOG="$RUNNER_TEMP/r0-05-provider.log"
+          python build/reference-vertical-slice/tests/support/r0-04b-smolvlm-provider.py > "$LOG" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r0-05-provider.pid"
+          for attempt in $(seq 1 180); do
+            if curl --fail --silent http://127.0.0.1:8765/health > "$RUNNER_TEMP/r0-05-health.json"; then
+              cat "$RUNNER_TEMP/r0-05-health.json"
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/r0-05-provider.pid")" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 2
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Certify real image to real model to Talos BPMN review
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/image-r0-04b-live-vision-provider.test.ts
+
+      - name: Prove secret-safe provider evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/r0-05-provider.log"
+          if [[ -n "${TALOS_R0_04B_PROVIDER_BEARER_TOKEN:-}" && -f "$LOG" ]] && grep -F -- "$TALOS_R0_04B_PROVIDER_BEARER_TOKEN" "$LOG"; then
+            echo 'R0-05 provider leaked bearer material to its log' >&2
+            exit 1
+          fi
+          if [[ -f "$LOG" ]]; then cat "$LOG"; fi
+
+      - name: Stop real model provider
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/r0-05-provider.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/r0-05-provider.pid")" 2>/dev/null || true
+          fi
+
+      - name: Emit exact-SHA release receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$TALOS_RELEASE_SHA"
+          AUTHORITY='CANDIDATE_ONLY'
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
+            test "$GITHUB_REF" = 'refs/heads/main'
+            AUTHORITY='CERTIFIED_MERGED_MAIN'
+          fi
+          {
+            echo '## Talos v0.1 Private Technical Preview certification'
+            echo "- scope: \`$TALOS_RELEASE_SCOPE\`"
+            echo "- exact SHA: \`$ACTUAL\`"
+            echo "- event: \`$GITHUB_EVENT_NAME\`"
+            echo "- ref: \`$GITHUB_REF\`"
+            echo '- architecture + B1–B9: **PASS**'
+            echo '- image I0–I9 authority chain: **PASS**'
+            echo '- private-preview access/config/recovery: **PASS**'
+            echo '- restart safety: **PASS**'
+            echo '- R0-04A real external effect: **PASS**'
+            echo '- R0-04B real vision/model inference: **PASS**'
+            echo '- secret-safe boundary: **PASS**'
+            echo "- release authority: **$AUTHORITY**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Talos R0-05 receipt exactSha=$ACTUAL scope=$TALOS_RELEASE_SCOPE authority=$AUTHORITY"
