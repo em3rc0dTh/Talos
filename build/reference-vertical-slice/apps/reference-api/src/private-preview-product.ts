@@ -76,8 +76,12 @@ export async function startTalosPrivatePreviewProduct(env: Environment = process
       },
       runtimeProfile: {
         launcherVersion: TALOS_PRODUCT_LAUNCHER_VERSION,
+        workspaceId: binding.descriptor.workspaceId,
+        actorId: binding.descriptor.actorId,
         runtimeMode: binding.descriptor.runtimeMode,
+        imageMode: binding.descriptor.imageMode,
         temporalExecutionAvailable: Boolean(runtimeAdapters),
+        ...(binding.descriptor.imageProvider ? { imageProvider: binding.descriptor.imageProvider } : {}),
         ...(binding.descriptor.temporalTarget ? {
           temporal: {
             namespace: binding.descriptor.temporalTarget.namespace,
