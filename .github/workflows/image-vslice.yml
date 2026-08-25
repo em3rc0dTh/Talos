@@ -15,6 +15,7 @@ on:
       - 'build/reference-vertical-slice/packages/deployment/**'
       - 'build/reference-vertical-slice/workers/reference-temporal-worker/**'
       - 'build/reference-vertical-slice/tests/image-*.test.ts'
+      - 'build/reference-vertical-slice/tests/r1-*.test.ts'
       - 'build/reference-vertical-slice/tests/b4-freeze-hardening.test.ts'
       - 'build/reference-vertical-slice/tests/helpers/**'
       - 'build/reference-vertical-slice/apps/reference-api/**'
@@ -34,6 +35,7 @@ on:
       - 'build/reference-vertical-slice/packages/deployment/**'
       - 'build/reference-vertical-slice/workers/reference-temporal-worker/**'
       - 'build/reference-vertical-slice/tests/image-*.test.ts'
+      - 'build/reference-vertical-slice/tests/r1-*.test.ts'
       - 'build/reference-vertical-slice/tests/b4-freeze-hardening.test.ts'
       - 'build/reference-vertical-slice/tests/helpers/**'
       - 'build/reference-vertical-slice/apps/reference-api/**'
@@ -97,6 +99,10 @@ jobs:
       - name: Run I4 canonical + validation gate
         working-directory: build/reference-vertical-slice
         run: npm run image:i4:test
+
+      - name: Run R1-01 truthful image-stage UX gate
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r1-01-*.test.ts
 
       - name: Run I5A-01 source-agnostic confirmation gate
         working-directory: build/reference-vertical-slice
