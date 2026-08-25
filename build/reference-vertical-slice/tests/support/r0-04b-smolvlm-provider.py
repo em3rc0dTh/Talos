@@ -7,35 +7,45 @@ from transformers import AutoModelForMultimodalLM, AutoProcessor
 
 MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-500M-Instruct')
 MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','a7da5b986cb59b408707209984f360a5f4ad7e47')
-PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.3'
+PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.4'
 TOKEN=os.getenv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN',''); PORT=int(os.getenv('TALOS_R0_04B_PROVIDER_PORT','8765'))
 if len(TOKEN)<24: raise SystemExit('R0_04B_PROVIDER_CONFIG_INVALID')
 
-NODE_PROMPT='''Inspect only this cropped region from a business-process diagram. If exactly one visible process node with a visible text label is present, return exactly TYPE|VISIBLE_LABEL and nothing else. TYPE must be START for a start-event symbol, TASK for an activity/task box, END for an end-event symbol, or UNKNOWN if the visible node type cannot be established. Copy only visible label text; do not infer or paraphrase. If no single labeled process node is clearly visible, return exactly NONE.'''
+NODE_TYPE_PROMPT='''Inspect only this cropped region from a business-process diagram. Classify the single clearly visible process node. Return exactly one token: START for a start-event symbol, TASK for an activity/task box, END for an end-event symbol, UNKNOWN if a node is visible but its type cannot be established, or NONE if no single process node is clearly visible. Do not describe the image.'''
+NODE_LABEL_PROMPT='''Inspect only this cropped region from a business-process diagram. Read the visible text label associated with the single clearly visible process node. Return only the literal visible label text, with no prefix, quotes, explanation, or paraphrase. Return exactly NONE if there is no single visible node label.'''
 CONNECTOR_PROMPT='''Inspect only this cropped corridor between two neighboring visible process nodes in a business-process diagram. Return exactly LEFT_TO_RIGHT if a clearly visible directed connector points from the left node toward the right node; RIGHT_TO_LEFT if it points from right toward left; NONE if no clear directed connector is visible. Do not infer a connector from layout alone.'''
 
 print(json.dumps({'status':'LOADING_MODEL','providerId':PROVIDER,'modelRef':MODEL_ID,'modelVersion':MODEL_REV}),flush=True)
 processor=AutoProcessor.from_pretrained(MODEL_ID,revision=MODEL_REV)
 model=AutoModelForMultimodalLM.from_pretrained(MODEL_ID,revision=MODEL_REV,dtype=torch.float32); model.eval()
 
-def ask(image,prompt,max_new_tokens=80):
+def ask(image,prompt,max_new_tokens):
     messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':prompt}]}]
     rendered=processor.apply_chat_template(messages,add_generation_prompt=True)
     inputs=processor(text=rendered,images=[image.convert('RGB')],return_tensors='pt')
     with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=max_new_tokens,do_sample=False)
     return processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
 
-def parse_node(text):
-    cleaned=text.replace('```','').strip()
-    if re.fullmatch(r'(?is)\s*NONE[.!]?\s*',cleaned): return None
-    matches=list(re.finditer(r'(?im)\b(START|TASK|END|UNKNOWN)\b\s*\|\s*([^\n|]+)',cleaned))
-    if len(matches)!=1:
-        raise ValueError(f'model node-region pass was ambiguous; output={cleaned[:300]}')
-    typ=matches[0].group(1).upper().strip()
-    label=matches[0].group(2).strip().strip('"\' `.,;:')
+def parse_node_type(text):
+    cleaned=text.replace('```','').upper().strip().strip('"\' `.,;:')
+    tokens=[]
+    for token in ('START','TASK','END','UNKNOWN','NONE'):
+        if re.search(rf'\b{token}\b',cleaned): tokens.append(token)
+    if len(tokens)!=1:
+        raise ValueError(f'model node-type pass was ambiguous; output={text[:300]}')
+    return tokens[0]
+
+def parse_node_label(text):
+    cleaned=text.replace('```','').strip().strip('"\' `')
+    cleaned=re.sub(r'(?i)^\s*(?:label|text)\s*:\s*','',cleaned).strip().strip('"\' `')
+    if re.fullmatch(r'(?is)NONE[.!]?',cleaned): return None
+    lines=[line.strip().strip('"\' `') for line in cleaned.splitlines() if line.strip()]
+    if len(lines)!=1:
+        raise ValueError(f'model node-label pass was ambiguous; output={text[:300]}')
+    label=lines[0].strip().strip('"\' `.,;:')
     if not label or len(label)>160:
-        raise ValueError(f'model node-region label was unusable; output={cleaned[:300]}')
-    return typ,label
+        raise ValueError(f'model node-label pass was unusable; output={text[:300]}')
+    return label
 
 def parse_direction(text):
     cleaned=text.replace('```','').upper().strip()
@@ -47,9 +57,9 @@ def parse_direction(text):
     return found[0]
 
 def fixture_regions(image):
-    # Certification-harness geometry only: isolate the three visual zones of the
-    # deterministic release fixture. No semantic type, label, or edge is encoded
-    # here; every admitted fact still has to come from the real model output.
+    # Certification-harness geometry only: isolate visual zones of the
+    # deterministic release fixture. No semantic type, literal label, or edge
+    # is encoded here; every admitted fact must come from real model output.
     w,h=image.size
     nodes=[
         ('left', image.crop((0,0,int(w*0.25),h))),
@@ -66,11 +76,15 @@ def infer(image):
     node_regions,connector_regions=fixture_regions(image)
     evidence={}; nodes=[]; by_region={}
     for region_index,(region_name,crop) in enumerate(node_regions):
-        text=ask(crop,NODE_PROMPT,72)
-        evidence[f'node:{region_name}']=text
-        parsed=parse_node(text)
-        if parsed is None: continue
-        typ,label=parsed
+        type_text=ask(crop,NODE_TYPE_PROMPT,8)
+        label_text=ask(crop,NODE_LABEL_PROMPT,32)
+        evidence[f'node-type:{region_name}']=type_text
+        evidence[f'node-label:{region_name}']=label_text
+        typ=parse_node_type(type_text)
+        label=parse_node_label(label_text)
+        if typ=='NONE' and label is None: continue
+        if typ=='NONE' or label is None:
+            raise ValueError(f'model node evidence conflicted in region {region_name}; type={type_text[:120]}; label={label_text[:120]}')
         node={'id':f'n{len(nodes)+1}','label':label,'type':typ,'regionIndex':region_index}
         nodes.append(node); by_region[region_index]=node
     if len(nodes)<2:
@@ -78,7 +92,7 @@ def infer(image):
 
     edges=[]
     for corridor_name,left_index,right_index,crop in connector_regions:
-        text=ask(crop,CONNECTOR_PROMPT,48)
+        text=ask(crop,CONNECTOR_PROMPT,8)
         evidence[f'connector:{corridor_name}']=text
         direction=parse_direction(text)
         if direction=='NONE': continue
@@ -98,7 +112,7 @@ def base(e,status,diagnostics): return {'providerId':PROVIDER,'providerVersion':
 def result(e,nodes,edges,evidence):
     hashes={key:hashlib.sha256(value.encode()).hexdigest() for key,value in evidence.items()}
     evidence_digest=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()
-    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f'SmolVLM-500M region-evidence digest={evidence_digest}; modelPasses={len(evidence)}; nodes={len(nodes)}; edges={len(edges)}'}])
+    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f'SmolVLM-500M independent region-evidence digest={evidence_digest}; modelPasses={len(evidence)}; nodes={len(nodes)}; edges={len(edges)}'}])
     type_map={'START':'EVENT','TASK':'ACTION','END':'END','UNKNOWN':'SOURCE_DEFINED'}; occ={}
     for x,n in enumerate(nodes,1):
         a=f'node-anchor-{x}'; o=f'node-label-{x}'; k=f'node-{x}'; occ[n['id']]=(k,a)
@@ -114,7 +128,7 @@ def result(e,nodes,edges,evidence):
     return r
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='TalosR004BSmolVLM500M/0.3'
+    server_version='TalosR004BSmolVLM500M/0.4'
     def log_message(self,*_): pass
     def send_json(self,status,payload):
         b=json.dumps(payload,separators=(',',':')).encode(); self.send_response(status); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.send_header('cache-control','no-store'); self.end_headers(); self.wfile.write(b)
