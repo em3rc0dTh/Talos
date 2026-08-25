@@ -100,7 +100,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         workspaceRevisionId: context.workspaceRevision.id,
         baselineBundleId: context.baselineBundle.id,
         semanticScopeRef: context.scopeBinding.semanticScopeRef,
-        sourceRepresentationRefs: context.workspaceDefinition.sourceRepresentationRefs,
+        sourceRepresentationIds: context.workspaceDefinition.sourceRepresentationIds,
         explanationDraftId: binding.review.explanation.draft.id,
         questions: binding.validation.questions,
         findings: binding.validation.findings,
