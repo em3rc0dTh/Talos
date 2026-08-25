@@ -32,7 +32,7 @@
   "buildGovernance": [
     {"kind":"implementation-plan","path":"plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.3.md","blobSha":"3d08efa4dc7ad96b1ea4199ee1b8cff06c1e0794"},
     {"kind":"authorization","path":"plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md","blobSha":"8cfc2d28318f8fb81519b45c0fdc542ec94a0cf9"},
-    {"kind":"plan-regression","path":"test/93-REFERENCE-VERTICAL-SLICE-PLAN-v0.3-RECIPIENT-INPUT-REGRESSION-v0.1.md","blobSha":"d3cc27259ba0905b457c2bb5bd88e331df89da55"},
+    {"kind":"plan-regression","path":"test/93-REFERENCE-VERTICAL-SLICE-PLAN-v0.3-RECIPIENT-INPUT-REGRESSION-v0.1.md","blobSha":"d564bfc3da4b47f39ef0d6175c86a1b7c2cdb93c"},
     {"kind":"opening-result","path":"test/86-POST-PHASE-5-BUILD-OPENING-REVIEW-FINAL-RESULT-v0.1.md","blobSha":"70ed071a30378597e22568e2247c7e42265e8867"}
   ]
 }

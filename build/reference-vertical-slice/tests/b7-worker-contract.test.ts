@@ -92,12 +92,22 @@ test('provider failure translation stays inside the two B6 failure classes',()=>
   assert.deepEqual(referenceTemporalFailureTranslation('UNEXPECTED_REFERENCE_PROVIDER_FAILURE').applicationFailureType,'TRANSIENT_REFERENCE_FAILURE');
 });
 
-test('pre-SDK Worker contract contains zero @temporalio imports before lock gate',()=>{
+test('post-lock Worker imports only the authorized pinned Temporal TypeScript SDK surface',()=>{
   const dir=new URL('../workers/reference-temporal-worker/src/',import.meta.url);
+  const allowed=new Set(['@temporalio/activity','@temporalio/client','@temporalio/common','@temporalio/worker','@temporalio/workflow']);
+  let temporalImportCount=0;
   for(const file of readdirSync(dir).filter((name)=>name.endsWith('.ts'))){
     const text=readFileSync(new URL(file,dir),'utf8');
-    assert.equal(text.includes("from '@temporalio/"),false,`${file} imported Temporal before lock gate`);
-    assert.equal(text.includes('from "@temporalio/'),false,`${file} imported Temporal before lock gate`);
+    for(const match of text.matchAll(/from\s+['"](@temporalio\/[^'"]+)['"]/g)){
+      temporalImportCount+=1;
+      assert.equal(allowed.has(match[1]),true,`${file} imported unauthorized Temporal package ${match[1]}`);
+    }
+  }
+  assert.ok(temporalImportCount>0,'post-lock Worker must exercise the real Temporal SDK boundary');
+  const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+  for(const name of [...allowed,'@temporalio/testing']){
+    const version=pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+    assert.equal(version,'1.22.0',`${name} must remain pinned to the certified Temporal SDK version`);
   }
 });
 
