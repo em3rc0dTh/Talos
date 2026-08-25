@@ -32,6 +32,7 @@ import {
   resolveImagePerceptionRuntimeBinding,
 } from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
+import { createOneAppReviewRouter } from './one-app-review.ts';
 
 export interface OneAppDeploymentAttemptExecutorInput {
   context: OneAppAutomationContext;
@@ -156,10 +157,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const approvalSessions = new Map<string, OneAppSession>();
   const deploymentApprovalSessions = new Map<string, OneAppSession>();
   const workflowExecutionApprovalSessions = new Map<string, OneAppSession>();
+  const processReview = createOneAppReviewRouter({ repo, workspace, bindings });
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
+      if (await processReview.handle(req, res, url)) return;
 
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/status')) {
         const imageConfigured = imageRuntime.status === 'CONFIGURED';
