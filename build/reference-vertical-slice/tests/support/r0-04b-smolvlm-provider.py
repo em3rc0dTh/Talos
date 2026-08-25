@@ -7,7 +7,7 @@ from transformers import AutoModelForMultimodalLM, AutoProcessor
 
 MODEL_ID=os.getenv('TALOS_R0_04B_MODEL_ID','HuggingFaceTB/SmolVLM-500M-Instruct')
 MODEL_REV=os.getenv('TALOS_R0_04B_MODEL_REVISION','a7da5b986cb59b408707209984f360a5f4ad7e47')
-PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.4'
+PROVIDER='R0_04B_SMOLVLM_500M_LOCAL'; VERSION='1.0.0'; PIPELINE='talos-r0-04b-smolvlm-500m-http-v0.5'
 TOKEN=os.getenv('TALOS_R0_04B_PROVIDER_BEARER_TOKEN',''); PORT=int(os.getenv('TALOS_R0_04B_PROVIDER_PORT','8765'))
 if len(TOKEN)<24: raise SystemExit('R0_04B_PROVIDER_CONFIG_INVALID')
 
@@ -19,12 +19,21 @@ print(json.dumps({'status':'LOADING_MODEL','providerId':PROVIDER,'modelRef':MODE
 processor=AutoProcessor.from_pretrained(MODEL_ID,revision=MODEL_REV)
 model=AutoModelForMultimodalLM.from_pretrained(MODEL_ID,revision=MODEL_REV,dtype=torch.float32); model.eval()
 
-def ask(image,prompt,max_new_tokens):
-    messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':prompt}]}]
-    rendered=processor.apply_chat_template(messages,add_generation_prompt=True)
-    inputs=processor(text=rendered,images=[image.convert('RGB')],return_tensors='pt')
-    with torch.inference_mode(): out=model.generate(**inputs,max_new_tokens=max_new_tokens,do_sample=False)
-    return processor.decode(out[0][inputs['input_ids'].shape[-1]:],skip_special_tokens=True).strip()
+def ask_batch(images,prompt,max_new_tokens):
+    rendered=[]
+    for _ in images:
+        messages=[{'role':'user','content':[{'type':'image'},{'type':'text','text':prompt}]}]
+        rendered.append(processor.apply_chat_template(messages,add_generation_prompt=True))
+    inputs=processor(
+        text=rendered,
+        images=[image.convert('RGB') for image in images],
+        padding=True,
+        return_tensors='pt',
+    )
+    with torch.inference_mode():
+        out=model.generate(**inputs,max_new_tokens=max_new_tokens,do_sample=False)
+    prompt_width=inputs['input_ids'].shape[-1]
+    return [processor.decode(row[prompt_width:],skip_special_tokens=True).strip() for row in out]
 
 def parse_node_type(text):
     cleaned=text.replace('```','').upper().strip().strip('"\' `.,;:')
@@ -75,9 +84,15 @@ def fixture_regions(image):
 def infer(image):
     node_regions,connector_regions=fixture_regions(image)
     evidence={}; nodes=[]; by_region={}
-    for region_index,(region_name,crop) in enumerate(node_regions):
-        type_text=ask(crop,NODE_TYPE_PROMPT,8)
-        label_text=ask(crop,NODE_LABEL_PROMPT,32)
+    node_crops=[item[1] for item in node_regions]
+    type_texts=ask_batch(node_crops,NODE_TYPE_PROMPT,6)
+    label_texts=ask_batch(node_crops,NODE_LABEL_PROMPT,12)
+    print(json.dumps({'status':'R0_04B_NODE_TYPE_EVIDENCE','outputs':type_texts}),flush=True)
+    print(json.dumps({'status':'R0_04B_NODE_LABEL_EVIDENCE','outputs':label_texts}),flush=True)
+
+    for region_index,(region_name,_crop) in enumerate(node_regions):
+        type_text=type_texts[region_index]
+        label_text=label_texts[region_index]
         evidence[f'node-type:{region_name}']=type_text
         evidence[f'node-label:{region_name}']=label_text
         typ=parse_node_type(type_text)
@@ -90,9 +105,12 @@ def infer(image):
     if len(nodes)<2:
         raise ValueError(f'model region evidence established fewer than two labeled nodes; count={len(nodes)}')
 
+    corridor_crops=[item[3] for item in connector_regions]
+    direction_texts=ask_batch(corridor_crops,CONNECTOR_PROMPT,6)
+    print(json.dumps({'status':'R0_04B_CONNECTOR_EVIDENCE','outputs':direction_texts}),flush=True)
     edges=[]
-    for corridor_name,left_index,right_index,crop in connector_regions:
-        text=ask(crop,CONNECTOR_PROMPT,8)
+    for corridor_index,(corridor_name,left_index,right_index,_crop) in enumerate(connector_regions):
+        text=direction_texts[corridor_index]
         evidence[f'connector:{corridor_name}']=text
         direction=parse_direction(text)
         if direction=='NONE': continue
@@ -112,7 +130,7 @@ def base(e,status,diagnostics): return {'providerId':PROVIDER,'providerVersion':
 def result(e,nodes,edges,evidence):
     hashes={key:hashlib.sha256(value.encode()).hexdigest() for key,value in evidence.items()}
     evidence_digest=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()
-    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f'SmolVLM-500M independent region-evidence digest={evidence_digest}; modelPasses={len(evidence)}; nodes={len(nodes)}; edges={len(edges)}'}])
+    r=base(e,'SUCCEEDED',[{'code':'R0_04B_REAL_MODEL_INFERENCE','description':f'SmolVLM-500M batched independent region-evidence digest={evidence_digest}; modelPasses={len(evidence)}; nodes={len(nodes)}; edges={len(edges)}'}])
     type_map={'START':'EVENT','TASK':'ACTION','END':'END','UNKNOWN':'SOURCE_DEFINED'}; occ={}
     for x,n in enumerate(nodes,1):
         a=f'node-anchor-{x}'; o=f'node-label-{x}'; k=f'node-{x}'; occ[n['id']]=(k,a)
@@ -128,7 +146,7 @@ def result(e,nodes,edges,evidence):
     return r
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='TalosR004BSmolVLM500M/0.4'
+    server_version='TalosR004BSmolVLM500M/0.5'
     def log_message(self,*_): pass
     def send_json(self,status,payload):
         b=json.dumps(payload,separators=(',',':')).encode(); self.send_response(status); self.send_header('content-type','application/json'); self.send_header('content-length',str(len(b))); self.send_header('cache-control','no-store'); self.end_headers(); self.wfile.write(b)
