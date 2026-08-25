@@ -39,6 +39,10 @@ export interface TalosProductCapabilityTransportResolver {
 
 export interface TalosProductTemporalRuntimeOptions {
   capabilityTransportResolver?: TalosProductCapabilityTransportResolver;
+  /** Integration-test seam. Production callers omit these and use target.address. */
+  client?: Client;
+  /** Integration-test seam. Production callers omit these and use target.address. */
+  nativeConnection?: NativeConnection;
 }
 
 export interface TalosManagedTemporalRuntimeAdapters extends TalosPrivatePreviewRuntimeAdapters {
@@ -78,10 +82,7 @@ function waitDurationMs(context: OneAppAutomationContext, executionElementId: st
   return { durationMs, sourceRef: semanticNode.id };
 }
 
-/**
- * Build the runtime semantic snapshot only from the exact confirmed Canonical process.
- * No runtime defaults are synthesized. Missing material wait semantics fail closed.
- */
+/** Build runtime semantics from the exact confirmed Canonical process only. */
 export function buildOneAppRuntimeSemanticSnapshot(context: OneAppAutomationContext): GenericRuntimeSemanticSnapshot {
   if (!context.executionReview) throw new TypeError('TALOS_RUNTIME_EXECUTION_PLAN_REQUIRED: runtime semantic snapshot needs an ExecutionPlan');
   const conditionRules = context.process.rules.map((rule) => ({ ref: rule.id, expression: rule.expression }));
@@ -136,7 +137,6 @@ function compileApprovedProgram(context: OneAppAutomationContext): CompiledGener
 
 /**
  * Concrete trusted runtime for the local/private Talos product.
- *
  * Deployment compiles the exact approved design and starts a Worker only.
  * Workflow execution remains a separate one-start authority operation.
  */
@@ -145,22 +145,26 @@ export function createTalosProductTemporalRuntimeAdapters(
   options: TalosProductTemporalRuntimeOptions = {},
 ): TalosManagedTemporalRuntimeAdapters {
   let clientConnection: Connection | undefined;
-  let nativeConnection: NativeConnection | undefined;
-  let client: Client | undefined;
+  let nativeConnection: NativeConnection | undefined = options.nativeConnection;
+  let client: Client | undefined = options.client;
+  const ownsNativeConnection = !options.nativeConnection;
+  const ownsClientConnection = !options.client;
   const deployments = new Map<string, ActiveDeployment>();
   let closing = false;
 
-  async function ensureConnections(): Promise<{ clientConnection: Connection; nativeConnection: NativeConnection; client: Client }> {
+  async function ensureConnections(): Promise<{ nativeConnection: NativeConnection; client: Client }> {
     if (closing) throw new TypeError('TALOS_RUNTIME_CLOSING: runtime adapter is shutting down');
-    if (!clientConnection) clientConnection = await Connection.connect({ address: target.address });
+    if (!client) {
+      clientConnection = await Connection.connect({ address: target.address });
+      client = new Client({ connection: clientConnection, namespace: target.namespace });
+    }
     if (!nativeConnection) nativeConnection = await NativeConnection.connect({ address: target.address });
-    if (!client) client = new Client({ connection: clientConnection, namespace: target.namespace });
-    return { clientConnection, nativeConnection, client };
+    return { nativeConnection, client };
   }
 
   async function assertReachable() {
     const connections = await ensureConnections();
-    await connections.clientConnection.workflowService.describeNamespace({ namespace: target.namespace });
+    await connections.client.workflowService.describeNamespace({ namespace: target.namespace });
     return {
       namespace: target.namespace,
       workerIdentity: `talos-product-runtime@${target.address}`,
@@ -284,8 +288,8 @@ export function createTalosProductTemporalRuntimeAdapters(
     for (const active of deployments.values()) active.runtime.worker.shutdown();
     await Promise.allSettled([...deployments.values()].map((item) => item.runPromise));
     deployments.clear();
-    if (nativeConnection) await nativeConnection.close();
-    if (clientConnection) await clientConnection.close();
+    if (ownsNativeConnection && nativeConnection) await nativeConnection.close();
+    if (ownsClientConnection && clientConnection) await clientConnection.close();
     nativeConnection = undefined;
     clientConnection = undefined;
     client = undefined;
