@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveTalosPrivatePreviewRuntimeBinding } from './private-preview-config.ts';
 import { startTalosPrivatePreviewOperator } from './private-preview-operator.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
+import { createTalosProductCapabilityTransportResolver } from './private-preview-capability-transports.ts';
 import {
   createTalosProductTemporalRuntimeAdapters,
   TALOS_PRODUCT_ACTIVITY_TYPE,
@@ -14,7 +15,7 @@ import {
   type TalosManagedTemporalRuntimeAdapters,
 } from './private-preview-temporal-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.1';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.2';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -61,7 +62,9 @@ export async function startTalosPrivatePreviewProduct(
   if (binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION') {
     const target = binding.descriptor.temporalTarget;
     if (!target) throw new TypeError('TALOS_PRODUCT_TEMPORAL_TARGET_REQUIRED');
-    runtimeAdapters = createTalosProductTemporalRuntimeAdapters(target);
+    runtimeAdapters = createTalosProductTemporalRuntimeAdapters(target, {
+      capabilityTransportResolver: createTalosProductCapabilityTransportResolver(env),
+    });
     try {
       await runtimeAdapters.assertReachable();
     } catch (error) {
