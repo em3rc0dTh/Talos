@@ -11,6 +11,11 @@ export interface GenericExternalCapabilityEffect {
 }
 export interface GenericCapabilityTransport {
   readonly transportRef:string;
+  /**
+   * Optional concrete transport refs a governed dispatcher is allowed to return.
+   * Direct transports omit this and must return their own exact transportRef.
+   */
+  readonly acceptedExternalTransportRefs?:readonly string[];
   execute(input:GenericCapabilityActivityInput,identity:GenericEffectIdentity):Promise<GenericExternalCapabilityEffect>;
 }
 export interface GenericEffectRecord {
@@ -77,6 +82,10 @@ export class GenericEffectLedger {
   }
 }
 
+function transportEvidenceAccepted(transport:GenericCapabilityTransport,externalRef:string):boolean{
+  return externalRef===transport.transportRef||(transport.acceptedExternalTransportRefs?.includes(externalRef)??false);
+}
+
 export function createGenericActivities(ledger:GenericEffectLedger,transport?:GenericCapabilityTransport){
   return{async executeGenericCapability(input:GenericCapabilityActivityInput):Promise<GenericCapabilityActivityResult>{
     if(!input.executionId||!input.capabilityUseOccurrenceRef)throw ApplicationFailure.nonRetryable('Generic capability Activity input is incomplete','INVALID_GENERIC_CAPABILITY_REQUEST');
@@ -85,7 +94,7 @@ export function createGenericActivities(ledger:GenericEffectLedger,transport?:Ge
     if(!transport)return ledger.record(input);
     const identity=genericEffectIdentity(input);
     const external=await transport.execute(input,identity);
-    if(external.transportRef!==transport.transportRef)throw ApplicationFailure.nonRetryable('External capability transport returned a mismatched transport reference','INVALID_EXTERNAL_CAPABILITY_EVIDENCE');
+    if(!transportEvidenceAccepted(transport,external.transportRef))throw ApplicationFailure.nonRetryable('External capability transport returned a mismatched transport reference','INVALID_EXTERNAL_CAPABILITY_EVIDENCE');
     if(!external.externalEffectRef||!Array.isArray(external.evidenceRefs)||external.evidenceRefs.length===0)throw ApplicationFailure.nonRetryable('External capability transport did not return concrete effect evidence','INVALID_EXTERNAL_CAPABILITY_EVIDENCE');
     return ledger.record(input,external);
   }};
