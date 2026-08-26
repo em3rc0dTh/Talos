@@ -25,16 +25,31 @@ import {
 import {
   GenericEffectLedger,
   type GenericCapabilityTransport,
+  type GenericEffectIdentity,
+  type GenericExternalCapabilityEffect,
 } from '../../../workers/reference-temporal-worker/src/generic-activities.ts';
+import type { GenericCapabilityActivityInput } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 
-export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.1';
+export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.2';
 export const TALOS_PRODUCT_WORKFLOW_TYPE = 'TalosGenericWorkflow';
 export const TALOS_PRODUCT_ACTIVITY_TYPE = 'executeGenericCapability';
 export const TALOS_PRODUCT_SDK_VERSION = '1.22.0';
+export const TALOS_PRODUCT_CAPABILITY_DISPATCH_REF = 'TALOS_PRODUCT_CAPABILITY_DISPATCH_V1';
 
+export interface TalosProductCapabilityTransportResolutionInput {
+  context: OneAppAutomationContext;
+  capabilityUseOccurrenceRef: string;
+  implementationRef: string;
+}
+
+/**
+ * Product runtime adapter registry. A concrete transport is selected only from
+ * the exact approved capability binding lineage; business labels are never used
+ * as dispatch keys.
+ */
 export interface TalosProductCapabilityTransportResolver {
-  resolve(context: OneAppAutomationContext): GenericCapabilityTransport | undefined;
+  resolve(input: TalosProductCapabilityTransportResolutionInput): GenericCapabilityTransport | undefined;
 }
 
 export interface TalosProductTemporalRuntimeOptions {
@@ -61,6 +76,31 @@ interface ActiveDeployment {
   runPromise: Promise<void>;
   ledger: GenericEffectLedger;
   taskQueue: string;
+}
+
+interface ResolvedProductCapabilityTransport {
+  capabilityUseOccurrenceRef: string;
+  implementationRef: string;
+  transport: GenericCapabilityTransport;
+}
+
+class ProductCapabilityDispatchTransport implements GenericCapabilityTransport {
+  readonly transportRef = TALOS_PRODUCT_CAPABILITY_DISPATCH_REF;
+  readonly acceptedExternalTransportRefs: readonly string[];
+  readonly #byCapabilityUse: Map<string, GenericCapabilityTransport>;
+
+  constructor(resolutions: ResolvedProductCapabilityTransport[]) {
+    this.#byCapabilityUse = new Map(resolutions.map((item) => [item.capabilityUseOccurrenceRef, item.transport]));
+    this.acceptedExternalTransportRefs = [...new Set(resolutions.map((item) => item.transport.transportRef))].sort();
+  }
+
+  async execute(input: GenericCapabilityActivityInput, identity: GenericEffectIdentity): Promise<GenericExternalCapabilityEffect> {
+    const transport = this.#byCapabilityUse.get(input.capabilityUseOccurrenceRef);
+    if (!transport) {
+      throw new TypeError(`TALOS_RUNTIME_CAPABILITY_DISPATCH_MISSING: ${input.capabilityUseOccurrenceRef}`);
+    }
+    return transport.execute(input, identity);
+  }
 }
 
 function waitDurationMs(context: OneAppAutomationContext, executionElementId: string): { durationMs: number; sourceRef: string } {
@@ -135,6 +175,58 @@ function compileApprovedProgram(context: OneAppAutomationContext): CompiledGener
   );
 }
 
+function implementationRefForCapabilityUse(context: OneAppAutomationContext, capabilityUseOccurrenceRef: string): string {
+  const execution = context.executionReview?.execution;
+  const selection = context.selection;
+  if (!execution || !selection) {
+    throw new TypeError('TALOS_RUNTIME_CAPABILITY_LINEAGE_REQUIRED: approved execution and capability selection are required');
+  }
+  const use = execution.capabilityUses.find((item) => item.id === capabilityUseOccurrenceRef);
+  if (!use) throw new TypeError(`TALOS_RUNTIME_CAPABILITY_USE_MISSING: ${capabilityUseOccurrenceRef}`);
+  const binding = selection.resolution.bindingRevisions.find((item) => item.id === use.capabilityBindingRevisionRef);
+  if (!binding) throw new TypeError(`TALOS_RUNTIME_CAPABILITY_BINDING_MISSING: ${use.capabilityBindingRevisionRef}`);
+  const offering = selection.resolution.offeringRevisions.find((item) => item.id === binding.capabilityOfferingRevisionId);
+  if (!offering?.implementationRef?.trim()) {
+    throw new TypeError(`TALOS_RUNTIME_IMPLEMENTATION_REF_MISSING: ${capabilityUseOccurrenceRef}`);
+  }
+  return offering.implementationRef.trim();
+}
+
+function resolveProductCapabilityTransport(
+  context: OneAppAutomationContext,
+  program: CompiledGenericRuntimeProgram,
+  resolver?: TalosProductCapabilityTransportResolver,
+): { transport?: GenericCapabilityTransport; evidenceRefs: string[] } {
+  const invocationUseRefs = program.graph.elements
+    .filter((element) => element.kind === 'CAPABILITY_INVOCATION')
+    .flatMap((element) => element.capabilityUseOccurrenceRefs);
+  if (invocationUseRefs.length === 0) return { evidenceRefs: [] };
+  if (!resolver) {
+    throw new TypeError('TALOS_RUNTIME_CAPABILITY_TRANSPORT_REQUIRED: approved capability work has no configured product runtime adapter');
+  }
+
+  const uniqueUseRefs = [...new Set(invocationUseRefs)];
+  const resolutions: ResolvedProductCapabilityTransport[] = uniqueUseRefs.map((capabilityUseOccurrenceRef) => {
+    const implementationRef = implementationRefForCapabilityUse(context, capabilityUseOccurrenceRef);
+    const transport = resolver.resolve({ context, capabilityUseOccurrenceRef, implementationRef });
+    if (!transport) {
+      throw new TypeError(
+        `TALOS_RUNTIME_CAPABILITY_TRANSPORT_UNRESOLVED: no runtime adapter is configured for approved implementation ${implementationRef}`,
+      );
+    }
+    return { capabilityUseOccurrenceRef, implementationRef, transport };
+  });
+
+  return {
+    transport: new ProductCapabilityDispatchTransport(resolutions),
+    evidenceRefs: resolutions.flatMap((item) => [
+      `capability-use:${item.capabilityUseOccurrenceRef}`,
+      `implementation-ref:${item.implementationRef}`,
+      `capability-transport:${item.transport.transportRef}`,
+    ]),
+  };
+}
+
 /**
  * Concrete trusted runtime for the local/private Talos product.
  * Deployment compiles the exact approved design and starts a Worker only.
@@ -189,16 +281,16 @@ export function createTalosProductTemporalRuntimeAdapters(
     if (program.deploymentRevisionRef !== realization.revision.parentDeploymentRevisionRef) {
       throw new TypeError('TALOS_RUNTIME_PROGRAM_DEPLOYMENT_MISMATCH: compiled program is not based on the realized deployment parent');
     }
+    const capability = resolveProductCapabilityTransport(context, program, options.capabilityTransportResolver);
     const connections = await ensureConnections();
     const ledger = new GenericEffectLedger();
-    const capabilityTransport = options.capabilityTransportResolver?.resolve(context);
     const runtime = await createGenericTemporalWorker({
       connection: connections.nativeConnection,
       namespace: target.namespace,
       taskQueue: target.taskQueue,
       identity: `talos-product-worker:${realization.revision.id}`,
       ledger,
-      ...(capabilityTransport ? { capabilityTransport } : {}),
+      ...(capability.transport ? { capabilityTransport: capability.transport } : {}),
     });
     const runPromise = runtime.worker.run();
     const startupState = await Promise.race([
@@ -228,6 +320,7 @@ export function createTalosProductTemporalRuntimeAdapters(
         `task-queue:${target.taskQueue}`,
         `runtime-program:${program.programDigest}`,
         `worker-artifact-sha256:${workerArtifactDigest()}`,
+        ...capability.evidenceRefs,
         `started:${startedAt}`,
       ],
       orchestratorRef: TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION,
