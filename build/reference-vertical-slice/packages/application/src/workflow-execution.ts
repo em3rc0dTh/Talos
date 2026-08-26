@@ -1,6 +1,10 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import { workflowExecutionInputDigest } from '../../deployment/src/generic-workflow-execution.ts';
-import type { WorkflowExecutionApprovalRecord, WorkflowExecutionObservation } from '../../deployment/src/types.ts';
+import type {
+  WorkflowExecutionApprovalRecord,
+  WorkflowExecutionObservation,
+  WorkflowExecutionStartRecord,
+} from '../../deployment/src/types.ts';
 
 function append(repo:ImmutableDocumentRepository,aggregateKind:string,payload:any,createdAt:string):void{
   repo.append({
@@ -26,6 +30,13 @@ export function persistOneAppWorkflowExecutionApproval(
   approval:WorkflowExecutionApprovalRecord,
 ):void{
   append(repo,'WorkflowExecutionApprovalRecord',approval,approval.approvedAt);
+}
+
+export function persistOneAppWorkflowExecutionStart(
+  repo:ImmutableDocumentRepository,
+  start:WorkflowExecutionStartRecord,
+):void{
+  append(repo,'WorkflowExecutionStartRecord',start,start.startedAt);
 }
 
 export function persistOneAppWorkflowExecutionObservation(
