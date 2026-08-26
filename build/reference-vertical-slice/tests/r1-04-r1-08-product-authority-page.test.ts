@@ -50,6 +50,18 @@ test('R1-04 through R1-08 product page exposes the full governed journey as sepa
   assert.doesNotMatch(ONE_APP_PRODUCT_PAGE, /TALOS_PRIVATE_PREVIEW_BEARER_TOKEN/);
 });
 
+test('R1-06 blocked ExecutionPlan exposes explicit subprocess/relation decisions and never invents unknown blocker semantics', () => {
+  assert.match(ONE_APP_PRODUCT_PAGE, /Execution-design decisions required/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /Rebuild ExecutionPlan with decisions/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /subprocessResolutions/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /relationResolutions/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /INLINE_COORDINATION/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /SEPARATE_EXECUTION_BOUNDARY/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /WAIT_RESUME/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /This blocker has no safe execution-only decision and must be corrected upstream/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /No execution-design authority inferred/);
+});
+
 test('R1-04 through R1-08 page keeps truth classes distinct from authority classes', () => {
   assert.match(ONE_APP_PRODUCT_PAGE, /SOURCE TRUTH/);
   assert.match(ONE_APP_PRODUCT_PAGE, /INFERRED/);
