@@ -10,6 +10,36 @@ import {
   TALOS_PRODUCT_ACTIVITY_TYPE,
   TALOS_PRODUCT_WORKFLOW_TYPE,
 } from '../apps/reference-api/src/private-preview-temporal-runtime.ts';
+import type { GenericCapabilityActivityInput } from '../workers/reference-temporal-worker/src/generic-contracts.ts';
+import type {
+  GenericCapabilityTransport,
+  GenericEffectIdentity,
+  GenericExternalCapabilityEffect,
+} from '../workers/reference-temporal-worker/src/generic-activities.ts';
+
+const TEST_TRANSPORT_REF = 'R1_07_EXPLICIT_PRODUCT_TEST_TRANSPORT';
+
+class R1ProductTestTransport implements GenericCapabilityTransport {
+  readonly transportRef = TEST_TRANSPORT_REF;
+  readonly calls: Array<{ capabilityUseOccurrenceRef: string; executionId: string }> = [];
+
+  async execute(input: GenericCapabilityActivityInput, identity: GenericEffectIdentity): Promise<GenericExternalCapabilityEffect> {
+    this.calls.push({
+      capabilityUseOccurrenceRef: input.capabilityUseOccurrenceRef,
+      executionId: input.executionId,
+    });
+    return {
+      effectStatus: 'INSERTED',
+      transportRef: this.transportRef,
+      externalEffectRef: `r1-07:test-effect:${identity.effectKey}`,
+      evidenceRefs: [
+        `r1-07:test-transport:${this.transportRef}`,
+        `talos:effect-key:${identity.effectKey}`,
+        `talos:input-digest:${identity.inputDigest}`,
+      ],
+    };
+  }
+}
 
 const BPMN = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_R107" targetNamespace="https://talos.local/r1-07">
@@ -117,7 +147,7 @@ async function buildApprovedRuntime(baseUrl: string, namespace: string, taskQueu
       requirement: 'REQUIRED',
       strategyKind: 'IDEMPOTENCY_KEY',
       keyContract: 'sha256(executionId + capabilityUseOccurrenceRef)',
-      enforcementRef: 'ONE_APP_EFFECT_LEDGER',
+      enforcementRef: TEST_TRANSPORT_REF,
     },
     failureClassifications: [
       { failureType: 'TRANSIENT_FAILURE', retryable: true, businessFailure: false },
@@ -180,7 +210,7 @@ async function buildApprovedRuntime(baseUrl: string, namespace: string, taskQueu
   };
 }
 
-test('R1-07 trusted product runtime deploys a Worker without starting business work, then consumes one exact workflow-start approval', { timeout: 120_000 }, async () => {
+test('R1-07 trusted product runtime deploys only with an explicitly resolved capability transport, then consumes one exact workflow-start approval', { timeout: 120_000 }, async () => {
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-07-temporal-'));
   const temporal = await TestWorkflowEnvironment.createLocal({ server: { namespace: 'talos-r1-07' } });
   const taskQueue = 'talos-r1-07-product-runtime';
@@ -189,9 +219,15 @@ test('R1-07 trusted product runtime deploys a Worker without starting business w
     namespace: temporal.namespace,
     taskQueue,
   };
+  const transport = new R1ProductTestTransport();
   const runtime = createTalosProductTemporalRuntimeAdapters(target, {
     client: temporal.client,
     nativeConnection: temporal.nativeConnection,
+    capabilityTransportResolver: {
+      resolve({ implementationRef }) {
+        return implementationRef.startsWith('r1-07:operation:') ? transport : undefined;
+      },
+    },
   });
   const app = await startTalosOneApp({
     port: 0,
@@ -225,6 +261,8 @@ test('R1-07 trusted product runtime deploys a Worker without starting business w
     assert.equal(deploymentAttempt.body.deploymentAttempt.result, 'SUCCEEDED');
     assert.equal(deploymentAttempt.body.workflowExecutionAuthorized, false, 'Worker deployment must not create business workflow authority');
     assert.ok(deploymentAttempt.body.deploymentAttempt.evidenceRefs.some((ref: string) => ref.startsWith('runtime-program:')));
+    assert.ok(deploymentAttempt.body.deploymentAttempt.evidenceRefs.includes(`capability-transport:${TEST_TRANSPORT_REF}`));
+    assert.equal(transport.calls.length, 0, 'Worker deployment must not execute the selected business capability');
 
     const executionId = 'R1-07-PRODUCT-RUN-001';
     const facts = { approved: true };
@@ -255,6 +293,7 @@ test('R1-07 trusted product runtime deploys a Worker without starting business w
       capabilityInputs,
     });
     assert.equal(driftedStart.response.status, 409, 'input drift must be rejected before Temporal workflow.start');
+    assert.equal(transport.calls.length, 0, 'drifted approved input must be rejected before the capability transport is invoked');
 
     const started = await post(app.baseUrl, '/api/automation/execution/start', {
       workflowExecutionApprovalId: executionApproval.body.workflowExecutionApproval.id,
@@ -271,6 +310,9 @@ test('R1-07 trusted product runtime deploys a Worker without starting business w
     assert.equal(observation.executionApprovalRef, executionApproval.body.workflowExecutionApproval.id);
     assert.equal(observation.startingDeploymentRevisionRef, built.realized.revision.id);
     assert.ok(observation.evidenceRefs.some((ref: string) => ref.startsWith('runtime-program:')));
+    assert.ok(observation.evidenceRefs.includes(`transport:${TEST_TRANSPORT_REF}`));
+    assert.ok(observation.evidenceRefs.some((ref: string) => ref.startsWith('external-effect:r1-07:test-effect:')));
+    assert.equal(transport.calls.length, built.execution.capabilityUses.length, 'every approved capability invocation must pass through the concrete runtime transport');
 
     const duplicateStart = await post(app.baseUrl, '/api/automation/execution/start', {
       workflowExecutionApprovalId: executionApproval.body.workflowExecutionApproval.id,
