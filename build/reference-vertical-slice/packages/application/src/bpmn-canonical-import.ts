@@ -34,6 +34,8 @@ const BPMN_WORKSPACE_SCHEMA = 'talos-bpmn-workspace-v0.1';
 export interface BpmnCanonicalDiagnostic {
   code:
     | 'MULTIPLE_PROCESS_SCOPES_UNSUPPORTED'
+    | 'COLLABORATION_PARTICIPANT_PROCESS_UNRESOLVED'
+    | 'MESSAGE_FLOW_ENDPOINT_UNSUPPORTED'
     | 'UNSUPPORTED_BPMN_ELEMENT'
     | 'UNSUPPORTED_PARALLEL_GATEWAY_SHAPE'
     | 'FLOW_ENDPOINT_UNSUPPORTED'
@@ -65,7 +67,7 @@ export type BpmnCanonicalReconciliationResult =
       diagnostics: BpmnCanonicalDiagnostic[];
     };
 
-export type NativeBpmnCanonicalReconciliationResult = BpmnCanonicalReconciliationResult;
+export type NativeBpmnCanonicalDiagnostic = BpmnCanonicalDiagnostic;
 
 interface ReconciliationPolicy {
   allowedRoutes: readonly BpmnProcessRevision['sourceRoute'][];
@@ -249,18 +251,40 @@ async function reconcileWithPolicy(
   if (sourceView.semanticDigest !== sourceRevision.semanticDigest) {
     throw new TypeError('BPMN revision semantic digest does not match its current XML');
   }
-  if (sourceView.processes.length !== 1) {
+  if (sourceView.processes.length === 0) {
     return {
       status: 'BLOCKED',
       sourceBpmnRevision: sourceRevision,
       diagnostics: [{
         code: 'MULTIPLE_PROCESS_SCOPES_UNSUPPORTED',
-        message: `BPMN reconciliation currently requires exactly one bpmn:Process; received ${sourceView.processes.length}.`,
+        message: 'BPMN reconciliation requires at least one bpmn:Process.',
       }],
     };
   }
 
-  const process = sourceView.processes[0]!;
+  const processIds = new Set(sourceView.processes.map((process) => process.id));
+  const coveringCollaborations = sourceView.collaborations.filter((collaboration) => {
+    const referenced = new Set(
+      collaboration.participants
+        .map((participant) => participant.processRef)
+        .filter((ref): ref is string => Boolean(ref)),
+    );
+    return sourceView.processes.every((process) => referenced.has(process.id));
+  });
+  if (sourceView.processes.length > 1 && coveringCollaborations.length !== 1) {
+    return {
+      status: 'BLOCKED',
+      sourceBpmnRevision: sourceRevision,
+      diagnostics: [{
+        code: 'MULTIPLE_PROCESS_SCOPES_UNSUPPORTED',
+        message: `BPMN contains ${sourceView.processes.length} process scopes. Talos requires exactly one Collaboration whose participants reference every process scope before those scopes can be normalized together.`,
+      }],
+    };
+  }
+
+  const collaboration = sourceView.processes.length > 1
+    ? coveringCollaborations[0]
+    : sourceView.collaborations.find((candidate) => candidate.participants.some((participant) => participant.processRef === sourceView.processes[0]!.id));
   const diagnostics: BpmnCanonicalDiagnostic[] = [];
   const semanticDigest = sourceRevision.semanticDigest;
   const prefix = seedPrefix(sourceRevision, policy);
@@ -269,49 +293,83 @@ async function reconcileWithPolicy(
   const actorIdsByNode = new Map<string, CanonicalId[]>();
   const actors: Actor[] = [];
 
-  for (const lane of process.lanes) {
-    const actorId = canonical(`${prefix}:${semanticDigest}:lane:${lane.id}`);
-    actors.push({
-      id: actorId,
-      kind: 'UNKNOWN',
-      name: lane.name ?? lane.id,
-      sourceReferences: [lane.id],
-      provenanceRefs: [],
-    });
-    for (const flowNodeId of lane.flowNodeIds) {
-      const current = actorIdsByNode.get(flowNodeId) ?? [];
-      if (!current.includes(actorId)) current.push(actorId);
-      actorIdsByNode.set(flowNodeId, current);
+  if (collaboration) {
+    for (const participant of collaboration.participants) {
+      if (!participant.processRef) continue;
+      if (!processIds.has(participant.processRef)) {
+        diagnostics.push({
+          code: 'COLLABORATION_PARTICIPANT_PROCESS_UNRESOLVED',
+          message: `Participant ${participant.id} references process ${participant.processRef}, which is not present in the BPMN source view.`,
+          bpmnElementId: participant.id,
+          bpmnType: 'bpmn:Participant',
+        });
+        continue;
+      }
+      const actorId = canonical(`${prefix}:${semanticDigest}:participant:${participant.id}`);
+      actors.push({
+        id: actorId,
+        kind: 'UNKNOWN',
+        name: participant.name ?? participant.id,
+        sourceReferences: [participant.id, participant.processRef],
+        provenanceRefs: [],
+      });
+      const process = sourceView.processes.find((candidate) => candidate.id === participant.processRef)!;
+      for (const element of process.nodes) {
+        const current = actorIdsByNode.get(element.id) ?? [];
+        if (!current.includes(actorId)) current.push(actorId);
+        actorIdsByNode.set(element.id, current);
+      }
+    }
+  }
+
+  for (const process of sourceView.processes) {
+    for (const lane of process.lanes) {
+      const actorId = canonical(`${prefix}:${semanticDigest}:lane:${lane.id}`);
+      actors.push({
+        id: actorId,
+        kind: 'UNKNOWN',
+        name: lane.name ?? lane.id,
+        sourceReferences: [lane.id, process.id],
+        provenanceRefs: [],
+      });
+      for (const flowNodeId of lane.flowNodeIds) {
+        const current = actorIdsByNode.get(flowNodeId) ?? [];
+        if (!current.includes(actorId)) current.push(actorId);
+        actorIdsByNode.set(flowNodeId, current);
+      }
     }
   }
 
   const nodes: ProcessNode[] = [];
-  for (const element of process.nodes) {
-    const mapping = nodeKind(element, policy.adapterVersion);
-    if (!mapping.kind) {
-      diagnostics.push(mapping.diagnostic!);
-      continue;
+  for (const process of sourceView.processes) {
+    for (const element of process.nodes) {
+      const mapping = nodeKind(element, policy.adapterVersion);
+      if (!mapping.kind) {
+        diagnostics.push(mapping.diagnostic!);
+        continue;
+      }
+      const id = canonical(`${prefix}:${semanticDigest}:node:${element.id}`);
+      nodeIdByBpmnId.set(element.id, id);
+      nodes.push({
+        id,
+        kind: mapping.kind,
+        ...(element.name ? { name: element.name } : {}),
+        actorRefs: [...(actorIdsByNode.get(element.id) ?? [])],
+        inputRefs: [],
+        outputRefs: [],
+        ruleRefs: [],
+        details: {
+          ...(mapping.details ?? {}),
+          bpmnElementId: element.id,
+          bpmnType: element.type,
+          bpmnProcessId: process.id,
+          sourceBpmnRevisionId: sourceRevision.id,
+        },
+        truthClass,
+        provenanceRefs: [],
+        sourceExtensionRefs: [],
+      });
     }
-    const id = canonical(`${prefix}:${semanticDigest}:node:${element.id}`);
-    nodeIdByBpmnId.set(element.id, id);
-    nodes.push({
-      id,
-      kind: mapping.kind,
-      ...(element.name ? { name: element.name } : {}),
-      actorRefs: [...(actorIdsByNode.get(element.id) ?? [])],
-      inputRefs: [],
-      outputRefs: [],
-      ruleRefs: [],
-      details: {
-        ...(mapping.details ?? {}),
-        bpmnElementId: element.id,
-        bpmnType: element.type,
-        sourceBpmnRevisionId: sourceRevision.id,
-      },
-      truthClass,
-      provenanceRefs: [],
-      sourceExtensionRefs: [],
-    });
   }
 
   if (diagnostics.length > 0) {
@@ -321,58 +379,86 @@ async function reconcileWithPolicy(
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const rules: BusinessRule[] = [];
   const edges: ProcessEdge[] = [];
-  for (const flow of process.flows) {
-    const sourceNodeId = nodeIdByBpmnId.get(flow.sourceId);
-    const targetNodeId = nodeIdByBpmnId.get(flow.targetId);
-    if (!sourceNodeId || !targetNodeId) {
-      diagnostics.push({
-        code: 'FLOW_ENDPOINT_UNSUPPORTED',
-        message: `Sequence flow ${flow.id} references a BPMN element that was not canonically mapped.`,
-        bpmnElementId: flow.id,
-        bpmnType: 'bpmn:SequenceFlow',
-      });
-      continue;
-    }
-
-    const sourceNode = nodeById.get(sourceNodeId)!;
-    let kind: ProcessEdgeKind = 'SEQUENCE';
-    let conditionRuleRef: CanonicalId | undefined;
-
-    if (flow.isDefault) {
-      kind = 'DEFAULT';
-    } else if (sourceNode.kind === 'DECISION') {
-      kind = 'CONDITIONAL';
-      if (flow.conditionBody) {
-        conditionRuleRef = canonical(`${prefix}:${semanticDigest}:rule:${flow.id}`);
-        rules.push({
-          id: conditionRuleRef,
-          naturalLanguage: flow.conditionBody,
-          expression: {
-            body: flow.conditionBody,
-            ...(flow.conditionLanguage ? { language: flow.conditionLanguage } : {}),
-          },
-          inputs: [],
-          truthClass,
-          unresolvedTerms: [],
-          provenanceRefs: [],
+  for (const process of sourceView.processes) {
+    for (const flow of process.flows) {
+      const sourceNodeId = nodeIdByBpmnId.get(flow.sourceId);
+      const targetNodeId = nodeIdByBpmnId.get(flow.targetId);
+      if (!sourceNodeId || !targetNodeId) {
+        diagnostics.push({
+          code: 'FLOW_ENDPOINT_UNSUPPORTED',
+          message: `Sequence flow ${flow.id} references a BPMN element that was not canonically mapped.`,
+          bpmnElementId: flow.id,
+          bpmnType: 'bpmn:SequenceFlow',
         });
-        sourceNode.ruleRefs.push(conditionRuleRef);
+        continue;
       }
-    } else if (sourceNode.kind === 'PARALLEL_SPLIT' || nodeById.get(targetNodeId)?.kind === 'JOIN') {
-      kind = 'PARALLEL';
-    }
 
-    edges.push({
-      id: canonical(`${prefix}:${semanticDigest}:edge:${flow.id}`),
-      sourceNodeId,
-      targetNodeId,
-      kind,
-      ...(conditionRuleRef ? { conditionRuleRef } : {}),
-      ...(flow.name ? { label: flow.name } : {}),
-      truthClass,
-      provenanceRefs: [],
-      sourceExtensionRefs: [],
-    });
+      const sourceNode = nodeById.get(sourceNodeId)!;
+      let kind: ProcessEdgeKind = 'SEQUENCE';
+      let conditionRuleRef: CanonicalId | undefined;
+
+      if (flow.isDefault) {
+        kind = 'DEFAULT';
+      } else if (sourceNode.kind === 'DECISION') {
+        kind = 'CONDITIONAL';
+        if (flow.conditionBody) {
+          conditionRuleRef = canonical(`${prefix}:${semanticDigest}:rule:${flow.id}`);
+          rules.push({
+            id: conditionRuleRef,
+            naturalLanguage: flow.conditionBody,
+            expression: {
+              body: flow.conditionBody,
+              ...(flow.conditionLanguage ? { language: flow.conditionLanguage } : {}),
+            },
+            inputs: [],
+            truthClass,
+            unresolvedTerms: [],
+            provenanceRefs: [],
+          });
+          sourceNode.ruleRefs.push(conditionRuleRef);
+        }
+      } else if (sourceNode.kind === 'PARALLEL_SPLIT' || nodeById.get(targetNodeId)?.kind === 'JOIN') {
+        kind = 'PARALLEL';
+      }
+
+      edges.push({
+        id: canonical(`${prefix}:${semanticDigest}:edge:${flow.id}`),
+        sourceNodeId,
+        targetNodeId,
+        kind,
+        ...(conditionRuleRef ? { conditionRuleRef } : {}),
+        ...(flow.name ? { label: flow.name } : {}),
+        truthClass,
+        provenanceRefs: [],
+        sourceExtensionRefs: [],
+      });
+    }
+  }
+
+  if (collaboration) {
+    for (const flow of collaboration.messageFlows) {
+      const sourceNodeId = nodeIdByBpmnId.get(flow.sourceId);
+      const targetNodeId = nodeIdByBpmnId.get(flow.targetId);
+      if (!sourceNodeId || !targetNodeId) {
+        diagnostics.push({
+          code: 'MESSAGE_FLOW_ENDPOINT_UNSUPPORTED',
+          message: `Message flow ${flow.id} must reference canonically mapped flow nodes. Participant-level or unsupported endpoints remain preserved in source but are not guessed into Canonical node relations.`,
+          bpmnElementId: flow.id,
+          bpmnType: 'bpmn:MessageFlow',
+        });
+        continue;
+      }
+      edges.push({
+        id: canonical(`${prefix}:${semanticDigest}:edge:${flow.id}`),
+        sourceNodeId,
+        targetNodeId,
+        kind: 'MESSAGE',
+        ...(flow.name ? { label: flow.name } : {}),
+        truthClass,
+        provenanceRefs: [],
+        sourceExtensionRefs: [],
+      });
+    }
   }
 
   if (diagnostics.length > 0) {
@@ -380,11 +466,19 @@ async function reconcileWithPolicy(
   }
 
   const reconciledAt = input.reconciledAt ?? new Date().toISOString();
-  const processDefinitionId = canonical(`${prefix}:${semanticDigest}:process-definition:${process.id}`);
+  const isCollaboration = sourceView.processes.length > 1 && Boolean(collaboration);
+  const primaryProcess = sourceView.processes[0]!;
+  const definitionScopeKey = isCollaboration ? `collaboration:${collaboration!.id}` : primaryProcess.id;
+  const collaborationParticipantNames = collaboration?.participants
+    .map((participant) => participant.name)
+    .filter((name): name is string => Boolean(name)) ?? [];
+  const processDefinitionId = canonical(`${prefix}:${semanticDigest}:process-definition:${definitionScopeKey}`);
   const processRevisionId = canonical(`${prefix}:${semanticDigest}:process-revision:v1`);
   const processDefinition: ProcessDefinition = {
     id: processDefinitionId,
-    canonicalName: process.name ?? process.id,
+    canonicalName: isCollaboration
+      ? collaboration!.name ?? (collaborationParticipantNames.length > 0 ? collaborationParticipantNames.join(' ↔ ') : collaboration!.id)
+      : primaryProcess.name ?? primaryProcess.id,
     lifecycleStatus: 'ACTIVE',
     revisionIds: [processRevisionId],
   };
@@ -434,6 +528,10 @@ async function reconcileWithPolicy(
       sourceSemanticDigest: sourceRevision.semanticDigest,
       sourceArtifactRefs: sourceRevision.sourceArtifactRefs,
       sourceRepresentationRefs: sourceRevision.sourceRepresentationRefs,
+      bpmnProcessIds: sourceView.processes.map((process) => process.id),
+      bpmnCollaborationIds: sourceView.collaborations.map((candidate) => candidate.id),
+      bpmnParticipantIds: collaboration?.participants.map((participant) => participant.id) ?? [],
+      bpmnMessageFlowIds: collaboration?.messageFlows.map((flow) => flow.id) ?? [],
       truthClass,
     }],
     provenanceLinks: [],
