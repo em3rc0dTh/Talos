@@ -36,7 +36,7 @@ import {
 } from './private-preview-worker-recovery.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.7';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.8';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -122,7 +122,7 @@ export async function startTalosPrivatePreviewProduct(
       ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
       ...(operatorRuntimeAdapters ? { runtimeAdapters: operatorRuntimeAdapters } : {}),
     });
-    if (temporalTarget && runtimeRegistry && capabilityTransportResolver) {
+    if (temporalTarget && runtimeRegistry && capabilityTransportResolver && runtimeAdapters) {
       executionRecovery = createTalosProductExecutionRecovery(
         operator.runtimeDir,
         createTalosTemporalExecutionInspector(temporalTarget),
@@ -138,6 +138,7 @@ export async function startTalosPrivatePreviewProduct(
         temporalTarget,
         runtimeRegistry,
         capabilityTransportResolver,
+        { runtimeAdapters },
       );
       workerRecoveryResult = await workerRecovery.recover(activeDeploymentRevisionIds);
       if (workerRecoveryResult.recoveredDeploymentRevisionIds.length !== activeDeploymentRevisionIds.length) {
