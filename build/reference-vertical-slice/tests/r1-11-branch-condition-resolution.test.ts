@@ -108,7 +108,7 @@ test('R1-11 named BPMN decision branches remain review blockers until explicit n
     assert.equal(design.response.status, 201);
     assert.equal(design.body.automationDesignOpened, true);
     assert.ok(design.body.automationDesign?.workspace?.id);
-    assert.ok(Array.isArray(design.body.automationDesign?.requirements));
+    assert.ok(Array.isArray(design.body.automationDesign?.workspace?.requirements));
   } finally {
     await app.close();
     rmSync(runtimeDir, { recursive: true, force: true });
