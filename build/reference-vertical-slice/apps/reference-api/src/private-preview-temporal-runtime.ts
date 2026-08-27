@@ -32,14 +32,15 @@ import type { GenericCapabilityActivityInput } from '../../../workers/reference-
 import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { buildOneAppHumanRuntimeSnapshots } from './private-preview-human-runtime.ts';
 
-export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.3';
+export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.4';
 export const TALOS_PRODUCT_WORKFLOW_TYPE = 'TalosGenericWorkflow';
 export const TALOS_PRODUCT_ACTIVITY_TYPE = 'executeGenericCapability';
 export const TALOS_PRODUCT_SDK_VERSION = '1.22.0';
 export const TALOS_PRODUCT_CAPABILITY_DISPATCH_REF = 'TALOS_PRODUCT_CAPABILITY_DISPATCH_V1';
 
 export interface TalosProductCapabilityTransportResolutionInput {
-  context: OneAppAutomationContext;
+  /** Present during fresh deployment; absent during restart recovery. */
+  context?: OneAppAutomationContext;
   capabilityUseOccurrenceRef: string;
   implementationRef: string;
 }
@@ -47,7 +48,8 @@ export interface TalosProductCapabilityTransportResolutionInput {
 /**
  * Product runtime adapter registry. A concrete transport is selected only from
  * the exact approved capability binding lineage; business labels are never used
- * as dispatch keys.
+ * as dispatch keys. Restart recovery resolves from the persisted exact
+ * implementationRef and therefore does not need mutable One-App context.
  */
 export interface TalosProductCapabilityTransportResolver {
   resolve(input: TalosProductCapabilityTransportResolutionInput): GenericCapabilityTransport | undefined;
@@ -350,36 +352,20 @@ export function createTalosProductTemporalRuntimeAdapters(
       args: [{ executionId, facts, ...(capabilityInputs ? { capabilityInputs } : {}), program: active.program }],
       retry: { maximumAttempts: active.program.workflow.workflowMaximumAttempts },
     });
-    const result = await handle.result();
-    if (result.outcome !== 'COMPLETED' || result.executionId !== executionId) {
-      throw new TypeError('TALOS_RUNTIME_WORKFLOW_RESULT_INVALID: Temporal returned an unexpected terminal result');
-    }
     const description = await handle.describe();
     const runId = (description as any).runId ?? (handle as any).firstExecutionRunId;
     if (!runId) throw new TypeError('TALOS_RUNTIME_RUN_ID_MISSING: Temporal execution did not expose a concrete run id');
-    const effectEvidence = result.capabilityResults.flatMap((item) => [
-      ...(item.transportRef ? [`transport:${item.transportRef}`] : []),
-      ...(item.externalEffectRef ? [`external-effect:${item.externalEffectRef}`] : []),
-      ...(item.evidenceRefs ?? []),
-    ]);
     return {
-      completedAt: new Date().toISOString(),
       workflowExecutionRef: `temporal:${workflowId}:${runId}`,
       workflowIdRef: workflowId,
       runIdRef: String(runId),
-      executionStatus: 'COMPLETED',
+      executionStatus: 'RUNNING',
       evidenceRefs: [
         `workflow-id:${workflowId}`,
         `run-id:${runId}`,
         `runtime-program:${active.program.programDigest}`,
         `started:${startedAt}`,
-        `outcome:${result.outcome}`,
-        ...(result.humanSubmissions ?? []).flatMap((submission) => [
-          `human-submission:${submission.submissionId}`,
-          `human-outcome:${submission.outcomeCode}`,
-          `human-element:${submission.executionElementRef}`,
-        ]),
-        ...effectEvidence,
+        'temporal-status:RUNNING',
       ],
     };
   }
