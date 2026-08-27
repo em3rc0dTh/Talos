@@ -94,17 +94,19 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
         var targetId=row.target&&row.target.details&&row.target.details.bpmnElementId;
         if(!sourceId||!targetId)return;
         var flows=Array.prototype.filter.call(doc.getElementsByTagNameNS('*','sequenceFlow'),function(flow){return flow.getAttribute('sourceRef')===sourceId&&flow.getAttribute('targetRef')===targetId});
-        var flow=flows[0];if(!flow)return;
+        if(flows.length!==1)return;
+        var flow=flows[0];
         Array.prototype.slice.call(flow.getElementsByTagNameNS('*','conditionExpression')).forEach(function(node){if(node.parentNode===flow)flow.removeChild(node)});
         var prefix=flow.prefix||doc.documentElement.prefix||'bpmn';
         var ns=flow.namespaceURI||'http://www.omg.org/spec/BPMN/20100524/MODEL';
+        if(!doc.documentElement.lookupNamespaceURI(prefix))doc.documentElement.setAttributeNS(xmlns,'xmlns:'+prefix,ns);
         var condition=doc.createElementNS(ns,prefix+':conditionExpression');
         condition.setAttributeNS(xsi,'xsi:type',prefix+':tFormalExpression');
         condition.setAttribute('language','urn:talos:natural-language-condition');
         condition.textContent=row.input.value.trim();
         flow.appendChild(condition);changed++;
       });
-      if(changed!==rows.length){state.textContent='One or more source branches could not be matched safely';state.className='pill bad';return}
+      if(changed!==rows.length){state.textContent='One or more source branches could not be matched uniquely and safely';state.className='pill bad';return}
       editor.value=new XMLSerializer().serializeToString(doc);
       editor.dispatchEvent(new Event('input',{bubbles:true}));
       state.textContent='Prepared · Save correction to create the new immutable review';state.className='pill good';
