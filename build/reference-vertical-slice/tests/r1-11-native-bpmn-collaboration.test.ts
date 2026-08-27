@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startTalosOneApp } from '../apps/reference-api/src/one-app-server.ts';
 import { ONE_APP_PRODUCT_PAGE } from '../apps/reference-api/src/one-app-product-page.ts';
+import { ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT } from '../apps/reference-api/src/one-app-product-review-resolution-page.ts';
 
 const COLLABORATION_BPMN = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_R111_Collaboration" targetNamespace="https://talos.local/r1-11">
@@ -43,11 +44,20 @@ async function post(baseUrl: string, pathname: string, payload: Record<string, u
   return { response, body: await response.json() as any };
 }
 
-test('R1-11 native BPMN Collaboration normalizes multiple participant process scopes and MESSAGE edges without erasing source ownership', async () => {
+async function getJson(baseUrl: string, pathname: string) {
+  const response = await fetch(`${baseUrl}${pathname}`);
+  return { response, body: await response.json() as any };
+}
+
+test('R1-11 native BPMN Collaboration preserves ownership and a confirmed active head may derive a new DRAFT that requires reconfirmation', async () => {
   assert.match(ONE_APP_PRODUCT_PAGE, /SOURCE TRUTH · NOT BUSINESS-CONFIRMED/);
   assert.match(ONE_APP_PRODUCT_PAGE, /INFERRED · NOT BUSINESS-CONFIRMED/);
   assert.match(ONE_APP_PRODUCT_PAGE, /No BPMN changes to save/);
   assert.match(ONE_APP_PRODUCT_PAGE, /body\.confirmation\.canonicalProcessRevisionId/);
+  assert.match(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT, /SV-CFL-001/);
+  assert.match(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT, /Apply branch conditions to BPMN correction/);
+  assert.match(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT, /R1_AUTOMATION_DESIGN_SEMANTIC_BLOCK/);
+  assert.match(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT, /No correction created automatically/);
 
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-11-collaboration-'));
   const app = await startTalosOneApp({ runtimeDir });
@@ -87,13 +97,12 @@ test('R1-11 native BPMN Collaboration normalizes multiple participant process sc
     const paymentMessage = process.edges.find((edge: any) => edge.kind === 'MESSAGE' && edge.id);
     assert.ok(paymentMessage);
 
-    const reviewResponse = await fetch(`${app.baseUrl}/api/process-review?revisionId=${encodeURIComponent(imported.body.revision.id)}`);
-    const review = await reviewResponse.json() as any;
-    assert.equal(reviewResponse.status, 200);
-    assert.equal(review.status, 'PROCESS_REVIEW_REQUIRED');
-    assert.equal(review.reconciliation.processRevision.id, process.id);
-    assert.equal(review.requiresBusinessProcessConfirmation, true);
-    assert.equal(review.automaticConfirmationAuthorized, false);
+    const initialReview = await getJson(app.baseUrl, `/api/process-review?revisionId=${encodeURIComponent(imported.body.revision.id)}`);
+    assert.equal(initialReview.response.status, 200);
+    assert.equal(initialReview.body.status, 'PROCESS_REVIEW_REQUIRED');
+    assert.equal(initialReview.body.reconciliation.processRevision.id, process.id);
+    assert.equal(initialReview.body.requiresBusinessProcessConfirmation, true);
+    assert.equal(initialReview.body.automaticConfirmationAuthorized, false);
 
     const confirmed = await post(app.baseUrl, '/api/bpmn/confirm', {
       revisionId: imported.body.revision.id,
@@ -109,8 +118,7 @@ test('R1-11 native BPMN Collaboration normalizes multiple participant process sc
     assert.equal(confirmed.body.automaticAutomationDesignAuthorized, false);
     assert.equal(confirmed.body.automaticExecutionAuthorized, false);
 
-    // This reproduces the field-trial symptom: the first confirmation is real.
-    // A second click must be rejected because the immutable revision is no longer DRAFT.
+    // A second confirmation never creates another authority record for the same revision.
     const duplicate = await post(app.baseUrl, '/api/bpmn/confirm', {
       revisionId: imported.body.revision.id,
       canonicalProcessRevisionId: process.id,
@@ -120,6 +128,48 @@ test('R1-11 native BPMN Collaboration normalizes multiple participant process sc
     });
     assert.equal(duplicate.response.status, 409);
     assert.match(String(duplicate.body.error), /Only a DRAFT BPMN revision may be confirmed/);
+
+    // A confirmed active review is not a dead end. Editing it derives a new DRAFT
+    // lineage; the old confirmation remains immutable and never transfers.
+    const correctedXml = COLLABORATION_BPMN.replace('name="Pay"', 'name="Pay at kiosk"');
+    const corrected = await post(app.baseUrl, '/api/bpmn/edit', {
+      baseRevisionId: imported.body.revision.id,
+      bpmnXml: correctedXml,
+      editMode: 'XML_EDIT',
+      editedBy: 'r1-11-field-user',
+    });
+    assert.equal(corrected.response.status, 201);
+    assert.equal(corrected.body.status, 'CORRECTED_PROCESS_REVIEW_REQUIRED');
+    assert.equal(corrected.body.changeClass, 'SEMANTIC');
+    assert.equal(corrected.body.revision.state, 'DRAFT');
+    assert.equal(corrected.body.requiresProcessReconfirmation, true);
+    assert.equal(corrected.body.previousConfirmationStillApplies, false);
+    assert.notEqual(corrected.body.revision.id, imported.body.revision.id);
+    assert.notEqual(corrected.body.reconciliation.processRevision.id, process.id);
+
+    const oldReview = await getJson(app.baseUrl, `/api/process-review?revisionId=${encodeURIComponent(imported.body.revision.id)}`);
+    assert.equal(oldReview.response.status, 200);
+    assert.equal(oldReview.body.status, 'PROCESS_REVIEW_SUPERSEDED');
+    assert.equal(oldReview.body.state, 'SUPERSEDED');
+
+    const nextReview = await getJson(app.baseUrl, `/api/process-review?revisionId=${encodeURIComponent(corrected.body.revision.id)}`);
+    assert.equal(nextReview.response.status, 200);
+    assert.equal(nextReview.body.status, 'PROCESS_REVIEW_REQUIRED');
+    assert.equal(nextReview.body.revision.state, 'DRAFT');
+    assert.equal(nextReview.body.requiresBusinessProcessConfirmation, true);
+
+    const reconfirmed = await post(app.baseUrl, '/api/bpmn/confirm', {
+      revisionId: corrected.body.revision.id,
+      canonicalProcessRevisionId: corrected.body.reconciliation.processRevision.id,
+      confirmedBy: 'r1-11-field-user',
+      authorityRef: 'authority:r1-11:corrected-business-confirmation',
+      rationale: 'Field user explicitly reconfirms the corrected immutable business process revision.',
+    });
+    assert.equal(reconfirmed.response.status, 201);
+    assert.equal(reconfirmed.body.revision.state, 'CONFIRMED');
+    assert.equal(reconfirmed.body.confirmation.status, 'CONFIRMED');
+    assert.notEqual(reconfirmed.body.confirmation.id, confirmed.body.confirmation.id);
+    assert.equal(reconfirmed.body.confirmation.bpmnRevisionId, corrected.body.revision.id);
   } finally {
     await app.close();
     rmSync(runtimeDir, { recursive: true, force: true });
