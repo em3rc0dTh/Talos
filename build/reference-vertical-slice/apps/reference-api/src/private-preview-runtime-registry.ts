@@ -12,7 +12,7 @@ import path from 'node:path';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
 import type { CompiledGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 
-export const TALOS_PRODUCT_RUNTIME_REGISTRY_VERSION = 'talos-product-runtime-registry-v0.1';
+export const TALOS_PRODUCT_RUNTIME_REGISTRY_VERSION = 'talos-product-runtime-registry-v0.2';
 
 export interface TalosProductRuntimeCapabilityBinding {
   capabilityUseOccurrenceRef: string;
@@ -23,6 +23,7 @@ export interface TalosProductRuntimeRegistryRecord {
   schemaVersion: typeof TALOS_PRODUCT_RUNTIME_REGISTRY_VERSION;
   realizedDeploymentRevisionId: string;
   program: CompiledGenericRuntimeProgram;
+  namespace: string;
   taskQueue: string;
   capabilityBindings: TalosProductRuntimeCapabilityBinding[];
   recordedAt: string;
@@ -67,6 +68,7 @@ function verifyRecord(record: TalosProductRuntimeRegistryRecord): TalosProductRu
   if (record.schemaVersion !== TALOS_PRODUCT_RUNTIME_REGISTRY_VERSION) throw new TypeError('TALOS_RUNTIME_REGISTRY_SCHEMA_UNSUPPORTED');
   verifyProgram(record.program);
   required(record.realizedDeploymentRevisionId, 'realizedDeploymentRevisionId');
+  required(record.namespace, 'namespace');
   required(record.taskQueue, 'taskQueue');
   required(record.recordedAt, 'recordedAt');
   const capabilityBindings = normalizedBindings(record.capabilityBindings ?? []);
@@ -74,6 +76,7 @@ function verifyRecord(record: TalosProductRuntimeRegistryRecord): TalosProductRu
     schemaVersion: record.schemaVersion,
     realizedDeploymentRevisionId: record.realizedDeploymentRevisionId,
     program: record.program,
+    namespace: record.namespace,
     taskQueue: record.taskQueue,
     capabilityBindings,
     recordedAt: record.recordedAt,
@@ -117,6 +120,7 @@ export function createTalosProductRuntimeRegistry(runtimeDirInput: string): Talo
       schemaVersion: TALOS_PRODUCT_RUNTIME_REGISTRY_VERSION,
       realizedDeploymentRevisionId: required(input.realizedDeploymentRevisionId, 'realizedDeploymentRevisionId'),
       program: input.program,
+      namespace: required(input.namespace, 'namespace'),
       taskQueue: required(input.taskQueue, 'taskQueue'),
       capabilityBindings: normalizedBindings(input.capabilityBindings),
       recordedAt: required(input.recordedAt, 'recordedAt'),
