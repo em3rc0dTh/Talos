@@ -118,7 +118,7 @@ test('R1-11 native BPMN Collaboration normalizes multiple participant process sc
       authorityRef: 'authority:r1-11:duplicate-click',
       rationale: 'Duplicate UI click must not create a second authority record.',
     });
-    assert.equal(duplicate.response.status, 400);
+    assert.equal(duplicate.response.status, 409);
     assert.match(String(duplicate.body.error), /Only a DRAFT BPMN revision may be confirmed/);
   } finally {
     await app.close();
