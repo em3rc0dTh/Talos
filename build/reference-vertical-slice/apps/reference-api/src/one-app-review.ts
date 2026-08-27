@@ -67,12 +67,14 @@ function reviewAuthorityEnvelope() {
 }
 
 /**
- * R1-03/R1-10 review and correction routes over the same One-App repository.
+ * R1-03/R1-10/R1-11 review and correction routes over the same One-App repository.
  *
- * A reconciled review head may be edited normally. A preserved DRAFT BPMN that
- * failed Canonical reconciliation may also be edited, but it gains no review or
- * confirmation authority until the corrected revision reconciles successfully.
- * This keeps source correction possible without manufacturing Canonical truth.
+ * A reconciled active review head may be edited whether it is still DRAFT or has
+ * an append-only business confirmation. Editing a confirmed head creates a new
+ * immutable DRAFT child and therefore requires explicit reconfirmation; the old
+ * confirmation never transfers. Historical/superseded heads remain read-only.
+ * A preserved DRAFT BPMN that failed Canonical reconciliation may also be edited,
+ * but it gains no review or confirmation authority until reconciliation succeeds.
  */
 export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDependencies) {
   const { repo, workspace, bindings } = dependencies;
@@ -138,7 +140,8 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         }
         const baseRevision = workspace.getRevision(baseRevisionId);
         if (!baseRevision) throw new TypeError('one-app process review BPMN revision not found');
-        if (baseRevision.state !== 'DRAFT') throw new TypeError('one-app process correction requires a DRAFT BPMN review revision');
+        if (baseRevision.state === 'SUPERSEDED') throw new TypeError('one-app process correction cannot use a SUPERSEDED BPMN review revision');
+        const baseWasConfirmed = baseRevision.state === 'CONFIRMED';
 
         const editMode = text(input.editMode, 'editMode');
         if (editMode !== 'GRAPH_EDIT' && editMode !== 'XML_EDIT') {
@@ -173,6 +176,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
               hasActiveCanonicalReview: Boolean(baseBinding),
               sourceTruthChanged: false,
               requiresBusinessProcessConfirmation: true,
+              requiresProcessReconfirmation: baseWasConfirmed,
               ...reviewAuthorityEnvelope(),
             });
             return true;
@@ -188,8 +192,9 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             reconciliation: publicBinding(reconciled),
             sourceTruthChanged: false,
             requiresBusinessProcessConfirmation: true,
-            requiresProcessReconfirmation: Boolean(baseBinding),
+            requiresProcessReconfirmation: baseWasConfirmed,
             createdCanonicalReviewFromSourceCorrection: !baseBinding,
+            previousConfirmationStillApplies: false,
             ...reviewAuthorityEnvelope(),
           });
           return true;
@@ -205,6 +210,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             hasActiveCanonicalReview: false,
             sourceTruthChanged: false,
             requiresBusinessProcessConfirmation: true,
+            requiresProcessReconfirmation: baseWasConfirmed,
             ...reviewAuthorityEnvelope(),
           });
           return true;
@@ -226,7 +232,8 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
           reconciliation: publicBinding(nextBinding),
           sourceTruthChanged: false,
           requiresBusinessProcessConfirmation: true,
-          requiresProcessReconfirmation: false,
+          requiresProcessReconfirmation: baseWasConfirmed,
+          previousConfirmationStillApplies: false,
           ...reviewAuthorityEnvelope(),
         });
         return true;
