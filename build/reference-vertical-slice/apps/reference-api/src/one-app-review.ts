@@ -67,13 +67,12 @@ function reviewAuthorityEnvelope() {
 }
 
 /**
- * R1-03 review/correction routes over the same One-App repository and binding map.
+ * R1-03/R1-10 review and correction routes over the same One-App repository.
  *
- * The router does not own a parallel semantic engine. Semantic BPMN corrections
- * are appended by BpmnWorkspaceService and immediately re-enter the certified
- * source-aware structured BPMN reconciler. When a correction succeeds, the old
- * review head is retired from the active binding map so stale confirmation cannot
- * bypass the corrected revision.
+ * A reconciled review head may be edited normally. A preserved DRAFT BPMN that
+ * failed Canonical reconciliation may also be edited, but it gains no review or
+ * confirmation authority until the corrected revision reconciles successfully.
+ * This keeps source correction possible without manufacturing Canonical truth.
  */
 export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDependencies) {
   const { repo, workspace, bindings } = dependencies;
@@ -134,9 +133,8 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         const input = await jsonBody(req);
         const baseRevisionId = text(input.baseRevisionId, 'baseRevisionId');
         const baseBinding = bindings.get(baseRevisionId);
-        if (!baseBinding) {
-          if (historyBindings.has(baseRevisionId)) throw new TypeError('one-app process review cannot use a stale base revision');
-          throw new TypeError('one-app process review context not found for this BPMN revision');
+        if (!baseBinding && historyBindings.has(baseRevisionId)) {
+          throw new TypeError('one-app process review cannot use a stale base revision');
         }
         const baseRevision = workspace.getRevision(baseRevisionId);
         if (!baseRevision) throw new TypeError('one-app process review BPMN revision not found');
@@ -164,13 +162,15 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
           if (reconciled.status !== 'RECONCILED') {
             json(res, 200, {
               status: 'CORRECTION_BLOCKED',
-              activeReviewRevisionId: baseRevisionId,
+              ...(baseBinding ? { activeReviewRevisionId: baseRevisionId } : {}),
+              sourceCorrectionBaseRevisionId: baseRevisionId,
               attemptedRevision: edited.revision,
               changeClass: edited.changeClass,
               reconciliation: {
                 status: reconciled.status,
                 diagnostics: reconciled.diagnostics,
               },
+              hasActiveCanonicalReview: Boolean(baseBinding),
               sourceTruthChanged: false,
               requiresBusinessProcessConfirmation: true,
               ...reviewAuthorityEnvelope(),
@@ -178,7 +178,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             return true;
           }
 
-          retireActiveHead(baseRevisionId, baseBinding);
+          if (baseBinding) retireActiveHead(baseRevisionId, baseBinding);
           bindings.set(reconciled.alignedBpmnRevision.id, reconciled);
           json(res, 201, {
             status: 'CORRECTED_PROCESS_REVIEW_REQUIRED',
@@ -188,7 +188,23 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             reconciliation: publicBinding(reconciled),
             sourceTruthChanged: false,
             requiresBusinessProcessConfirmation: true,
-            requiresProcessReconfirmation: true,
+            requiresProcessReconfirmation: Boolean(baseBinding),
+            createdCanonicalReviewFromSourceCorrection: !baseBinding,
+            ...reviewAuthorityEnvelope(),
+          });
+          return true;
+        }
+
+        if (!baseBinding) {
+          json(res, 200, {
+            status: 'SOURCE_CORRECTION_NOT_RECONCILED',
+            sourceCorrectionBaseRevisionId: baseRevisionId,
+            attemptedRevision: edited.revision,
+            changeClass: edited.changeClass,
+            message: 'The edit was preserved, but no semantic change created a Canonical review candidate.',
+            hasActiveCanonicalReview: false,
+            sourceTruthChanged: false,
+            requiresBusinessProcessConfirmation: true,
             ...reviewAuthorityEnvelope(),
           });
           return true;
