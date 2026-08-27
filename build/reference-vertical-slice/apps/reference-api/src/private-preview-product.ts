@@ -36,7 +36,7 @@ import {
 } from './private-preview-worker-recovery.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.8';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.9';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -228,8 +228,8 @@ export async function startTalosPrivatePreviewProduct(
       await product.close();
       await workerRecovery?.close();
       await operator.close();
-      await humanRuntimeControl?.close();
-      await runtimeAdapters?.close();
+      await humanRuntimeControl?.close().catch(() => undefined);
+      await runtimeAdapters?.close().catch(() => undefined);
     },
   };
 }
@@ -258,20 +258,15 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     await app.close();
+    process.exit(0);
   };
-  const onSignal = () => {
-    stop().then(() => process.exit(0), (error) => {
-      console.error(error);
-      process.exit(1);
-    });
-  };
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
+  process.once('SIGINT', () => void stop());
+  process.once('SIGTERM', () => void stop());
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    console.error(error);
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
     process.exit(1);
   });
 }
