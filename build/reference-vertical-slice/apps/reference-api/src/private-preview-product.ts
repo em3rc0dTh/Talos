@@ -36,7 +36,7 @@ import {
 } from './private-preview-worker-recovery.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.9';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.10';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
