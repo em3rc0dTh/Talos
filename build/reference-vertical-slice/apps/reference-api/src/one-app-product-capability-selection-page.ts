@@ -74,9 +74,9 @@ export const ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT = String.raw`
   }
   function describeRoles(grid){
     var h=humanPanel(grid);var refs=rolesForGrid(grid);
-    if(!refs.length){h.role.textContent='Human/manual work is blocked: the reviewed business step has no participant/actor reference. Correct responsibility in Review or choose another execution family.';h.role.className='status bad';return false}
+    if(!refs.length){h.role.textContent='Human/manual work is blocked: the reviewed business step has no participant/actor reference. Correct responsibility in Review or choose another execution family.';if(h.role.className!=='status bad')h.role.className='status bad';return false}
     var names=refs.map(function(ref){return actorById[ref]&&actorById[ref].name?actorById[ref].name:ref});
-    h.role.textContent='Participant authority from reviewed source: '+names.join(', ');h.role.className='status good';return true;
+    h.role.textContent='Participant authority from reviewed source: '+names.join(', ');if(h.role.className!=='status good')h.role.className='status good';return true;
   }
   function setHumanMode(grid,human){
     var c=grid._talos;if(!c)return;
@@ -139,10 +139,10 @@ export const ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT = String.raw`
   function sync(){
     observerScheduled=false;var list=grids();if(!list.length)return;
     list.forEach(decorate);var incomplete=0;
-    list.forEach(function(grid){var s=stateFor(grid);if(!s.ready)incomplete++;var r=grid._talosReadiness;if(r){r.textContent=s.message;r.className='status '+(s.ready?'good':'warn')}});
+    list.forEach(function(grid){var s=stateFor(grid);if(!s.ready)incomplete++;var r=grid._talosReadiness;if(r){r.textContent=s.message;var rc='status '+(s.ready?'good':'warn');if(r.className!==rc)r.className=rc}});
     var button=byId('bindCapabilities');var actions=byId('selectionActions');
     if(button){button.disabled=incomplete>0;button.textContent=incomplete>0?'Resolve '+incomplete+' capability requirement'+(incomplete===1?'':'s')+' first':'Bind '+list.length+' explicit capability selection'+(list.length===1?'':'s')}
-    if(actions){var pill=actions.querySelector('.pill');if(pill){pill.textContent=incomplete>0?incomplete+' unresolved · binding remains closed':'All capability decisions complete · binding still requires your click';pill.className='pill '+(incomplete>0?'warn':'good')}}
+    if(actions){var pill=actions.querySelector('.pill');if(pill){pill.textContent=incomplete>0?incomplete+' unresolved · binding remains closed':'All capability decisions complete · binding still requires your click';var pc='pill '+(incomplete>0?'warn':'good');if(pill.className!==pc)pill.className=pc}}
   }
   function scheduleSync(){if(observerScheduled)return;observerScheduled=true;setTimeout(sync,0)}
   function captureReview(body){
@@ -151,7 +151,7 @@ export const ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT = String.raw`
   }
   function captureSuggestion(body){
     if(!body)return;var suggestions={};(body.suggestions||[]).forEach(function(s){suggestions[s.id]=s});
-    (body.decisions||[]).forEach(function(d){var s=suggestions[d.suggestionRef];if(s)suggestionFamilyByDecision[d.id]=s.family});scheduleSync();
+    (body.decisions||[]).forEach(function(d){var s=suggestions[d.suggestionRef];if(s)suggestionFamilyByDecision[d.id]=s.family});scheduleSync();setTimeout(sync,100);
   }
   function humanContract(grid){
     var h=humanPanel(grid);return{interactionKind:h.interaction.value,responsibilityKind:h.responsibility.value,roleRefs:rolesForGrid(grid),assignmentCardinality:'EXACTLY_ONE',outcomes:[{code:h.outcomeCode.value.trim(),businessMeaning:h.outcomeMeaning.value.trim(),terminal:true}]};
@@ -184,7 +184,12 @@ export const ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT = String.raw`
   };
 
   var target=byId('requirements');
-  if(target){new MutationObserver(scheduleSync).observe(target,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});target.addEventListener('input',scheduleSync,true);target.addEventListener('change',scheduleSync,true);target.addEventListener('click',scheduleSync,true)}
+  if(target){
+    new MutationObserver(scheduleSync).observe(target,{childList:true,subtree:true});
+    target.addEventListener('input',scheduleSync,true);
+    target.addEventListener('change',scheduleSync,true);
+    target.addEventListener('click',function(){scheduleSync();setTimeout(sync,100)},true);
+  }
   scheduleSync();
 })();
 `;
