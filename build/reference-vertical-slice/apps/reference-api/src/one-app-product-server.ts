@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { startTalosOneApp, type TalosOneAppOptions } from './one-app-server.ts';
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT } from './one-app-product-human-runtime-page.ts';
+import { ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT } from './one-app-product-review-resolution-page.ts';
 import type { TalosProductHumanRuntimeControl } from './private-preview-human-control.ts';
 import type { TalosExecutionRecoveryItem, TalosExecutionRecoveryResult, TalosProductExecutionRecovery } from './private-preview-execution-recovery.ts';
 
@@ -98,7 +99,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     executionRecoveryAvailable: Boolean(options.executionRecovery),
     recoveredActiveExecutionCount: recoveryBeforeServe?.activeExecutionIds.length ?? 0,
   };
-  const productPage = options.humanRuntimeControl ? ONE_APP_PRODUCT_PAGE.replace('</body>', '<script src="/talos-product-human-runtime.js"></script></body>') : ONE_APP_PRODUCT_PAGE;
+  const reviewEnhancedPage = ONE_APP_PRODUCT_PAGE.replace('</body>', '<script src="/talos-product-review-resolution.js"></script></body>');
+  const productPage = options.humanRuntimeControl
+    ? reviewEnhancedPage.replace('</body>', '<script src="/talos-product-human-runtime.js"></script></body>')
+    : reviewEnhancedPage;
 
   async function reconcileForAccess(executionId: string): Promise<TalosExecutionRecoveryItem | undefined> {
     if (!options.executionRecovery) return undefined;
@@ -117,6 +121,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(productPage), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
         res.end(productPage); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/talos-product-review-resolution.js') {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'content-length': Buffer.byteLength(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        res.end(ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT); return;
       }
       if (req.method === 'GET' && url.pathname === '/talos-product-human-runtime.js') {
         if (!options.humanRuntimeControl) { json(res, 404, { error: 'human runtime unavailable', code: 'R1_PRODUCT_HUMAN_RUNTIME_UNAVAILABLE' }); return; }
