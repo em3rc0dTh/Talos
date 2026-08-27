@@ -60,11 +60,21 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     terminal=true;if(pollTimer)clearTimeout(pollTimer);
     var box=humanBox();
     box.className='requirement';
-    box.innerHTML='<strong>Workflow terminal'+(recovered?' · recovered after restart':'')+'</strong><small>Immutable Temporal execution evidence is persisted. No new workflow-start authority was created.</small>';
+    box.innerHTML='<strong>Workflow terminal'+(recovered?' · reconciled from Temporal':'')+'</strong><small>Immutable Temporal execution evidence is persisted. No new workflow-start authority was created.</small>';
     var truth=el('truthExecution');if(truth)truth.textContent=observation.executionStatus+' · '+observation.workflowIdRef;
     var step=el('pexecute');if(step)step.className='pstep done';
     setExecution('Temporal Workflow '+String(observation.executionStatus).toLowerCase()+' with durable execution evidence.','good');
     setEvidence(observation);
+  }
+
+  function renderRunningStart(start){
+    if(!start)return;
+    var box=humanBox();
+    box.className='requirement';
+    box.innerHTML='<strong>Workflow started durably</strong><small>'+String(start.workflowIdRef)+' · run '+String(start.runIdRef)+'. Talos persisted the start before waiting for later human/runtime transitions.</small>';
+    var truth=el('truthExecution');if(truth)truth.textContent='RUNNING · '+start.workflowIdRef;
+    setExecution('Temporal Workflow is RUNNING. Reading the current durable state…','warn');
+    setEvidence(start);
   }
 
   function renderRecoveryChoices(executionIds){
@@ -125,7 +135,8 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
           meta.textContent='Temporal accepted submission '+body.receipt.submissionId+'. Workflow is resuming deterministically.';
           actions.innerHTML='';
           setExecution('Human outcome accepted. Temporal is resuming the approved workflow…','good');
-          if(body.recovery&&body.recovery.state==='TERMINAL'&&body.recovery.observation)renderTerminalObservation(body.recovery.observation,true);
+          if(body.recovery&&body.recovery.state==='TERMINAL'&&body.recovery.observation){renderTerminalObservation(body.recovery.observation,true);return}
+          poll(executionId);
         }catch(error){
           setExecution(error instanceof Error?error.message:String(error),'bad');
           Array.from(actions.querySelectorAll('button')).forEach(function(b){b.disabled=false});
@@ -160,13 +171,17 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     var button=el('startExecution');if(button)button.disabled=true;
     setExecution('Starting the exact approved Temporal Workflow…','');
     var startPayload={workflowExecutionApprovalId:approval.id,deploymentRevisionId:approval.deploymentRevisionRef,executionId:executionId,facts:request.facts||{},capabilityInputs:request.capabilityInputs||{}};
-    poll(executionId);
     try{
       var response=await nativeFetch('/api/automation/execution/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(startPayload)});
       var body=await response.json();
       if(!response.ok)throw new Error(body.error||('HTTP '+response.status));
-      var observation=body.workflowExecutionObservation;
-      if(observation)renderTerminalObservation(observation,false);else{terminal=true;if(pollTimer)clearTimeout(pollTimer);setExecution('Workflow returned without a terminal observation.','bad');setEvidence(body)}
+      if(body.workflowExecutionObservation){renderTerminalObservation(body.workflowExecutionObservation,false);return}
+      if(body.workflowExecutionState==='RUNNING'&&body.workflowExecutionStart){
+        renderRunningStart(body.workflowExecutionStart);
+        poll(executionId);
+        return;
+      }
+      throw new Error('Workflow start returned neither durable RUNNING start evidence nor a terminal observation.');
     }catch(error){
       terminal=true;if(pollTimer)clearTimeout(pollTimer);
       setExecution(error instanceof Error?error.message:String(error),'bad');
