@@ -312,6 +312,70 @@ const REVIEW_TRUTH_SCRIPT = String.raw`<script>
 })();
 </script>`;
 
+// R1-11 field-trial hardening. Native BPMN confirmation already returns an
+// authoritative BusinessProcessConfirmationRecord that pins the exact Canonical
+// ProcessRevision, but the original journey renderer expected the richer image
+// confirmation response shape. Normalize that browser-facing response without
+// changing authority, and keep Save correction disabled until XML actually
+// differs from the active immutable review head.
+const FIELD_TRIAL_CONFIRMATION_GUARD_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  var reviewXml='';
+
+  function byId(id){return document.getElementById(id)}
+  function syncCorrectionDirty(){
+    var editor=byId('bpmnEditor');
+    var save=byId('saveCorrection');
+    var state=byId('correctionState');
+    if(!editor||!save)return;
+    var dirty=String(editor.value||'')!==String(reviewXml||'');
+    save.disabled=!dirty;
+    if(state){
+      state.textContent=dirty?'Unsaved BPMN correction':'No BPMN changes to save';
+      state.className='pill '+(dirty?'warn':'good');
+    }
+  }
+  function responseWithJson(response,body){
+    var headers=new Headers(response.headers);
+    headers.set('content-type','application/json; charset=utf-8');
+    return new Response(JSON.stringify(body),{status:response.status,statusText:response.statusText,headers:headers});
+  }
+
+  var editor=byId('bpmnEditor');
+  if(editor)editor.addEventListener('input',syncCorrectionDirty);
+
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    var isConfirm=path.indexOf('/api/bpmn/confirm')!==-1&&method==='POST';
+
+    return nativeFetch(input,init).then(function(response){
+      if(isReview&&response.ok){
+        response.clone().json().then(function(body){
+          if(body&&body.revision&&typeof body.revision.bpmnXml==='string'){
+            reviewXml=body.revision.bpmnXml;
+            setTimeout(syncCorrectionDirty,0);
+          }
+        }).catch(function(){});
+      }
+      if(isConfirm&&response.ok){
+        return response.clone().json().then(function(body){
+          if(body&&!body.reconciliation&&body.confirmation&&body.confirmation.canonicalProcessRevisionId){
+            body.reconciliation={processRevision:{id:body.confirmation.canonicalProcessRevisionId}};
+            return responseWithJson(response,body);
+          }
+          return response;
+        }).catch(function(){return response});
+      }
+      return response;
+    });
+  };
+})();
+</script>`;
+
 const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
   PLAN_BLOCKER_MARKER,
   `${PLAN_BLOCKER_MARKER}${PLAN_DECISION_UI}`,
@@ -319,5 +383,5 @@ const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
 
 export const ONE_APP_PRODUCT_PAGE = withPlanDecisionUi.replace(
   '</body>',
-  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${REVIEW_TRUTH_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
+  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${REVIEW_TRUTH_SCRIPT}${FIELD_TRIAL_CONFIRMATION_GUARD_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
 );
