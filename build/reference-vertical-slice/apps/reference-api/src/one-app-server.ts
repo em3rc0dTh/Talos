@@ -21,6 +21,7 @@ import {
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
   recordOneAppAuthorizedWorkflowExecution,
+  recordOneAppAuthorizedWorkflowExecutionStart,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
@@ -58,7 +59,15 @@ export interface OneAppWorkflowExecutionExecutorInput {
   startedAt: string;
 }
 
-export interface OneAppWorkflowExecutionExecutorResult {
+export interface OneAppWorkflowExecutionRunningExecutorResult {
+  workflowExecutionRef: string;
+  workflowIdRef: string;
+  runIdRef: string;
+  executionStatus: 'RUNNING';
+  evidenceRefs: string[];
+}
+
+export interface OneAppWorkflowExecutionTerminalExecutorResult {
   completedAt: string;
   workflowExecutionRef: string;
   workflowIdRef: string;
@@ -66,6 +75,10 @@ export interface OneAppWorkflowExecutionExecutorResult {
   executionStatus: 'COMPLETED' | 'FAILED' | 'CANCELLED';
   evidenceRefs: string[];
 }
+
+export type OneAppWorkflowExecutionExecutorResult =
+  | OneAppWorkflowExecutionRunningExecutorResult
+  | OneAppWorkflowExecutionTerminalExecutorResult;
 
 export interface TalosOneAppOptions {
   port?: number;
@@ -867,23 +880,49 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           ...(capabilityInputs ? { capabilityInputs } : {}),
           startedAt,
         });
+        const executionInput = { executionId, facts, ...(capabilityInputs ? { capabilityInputs } : {}) };
+        const runtimeEvidence = {
+          startedAt,
+          workflowExecutionRef: text(outcome.workflowExecutionRef, 'workflowExecutionRef'),
+          workflowIdRef: text(outcome.workflowIdRef, 'workflowIdRef'),
+          runIdRef: text(outcome.runIdRef, 'runIdRef'),
+          evidenceRefs: array(outcome.evidenceRefs, 'evidenceRefs') as string[],
+        };
+
+        if (outcome.executionStatus === 'RUNNING') {
+          session.automation = recordOneAppAuthorizedWorkflowExecutionStart(
+            repo,
+            session.automation,
+            executionInput,
+            runtimeEvidence,
+          );
+          const workflowExecutionStart = session.automation.workflowExecutionStart;
+          if (!workflowExecutionStart) throw new TypeError('one-app workflow execution start record was not created');
+          json(res, 202, {
+            executionId,
+            workflowExecutionStart,
+            workflowExecutionState: 'RUNNING',
+            workflowExecutionApprovalConsumed: true,
+            workflowStartWasExplicitlyAuthorized: true,
+            additionalWorkflowStartAuthorized: false,
+          });
+          return;
+        }
+
         session.automation = recordOneAppAuthorizedWorkflowExecution(
           repo,
           session.automation,
-          { executionId, facts, ...(capabilityInputs ? { capabilityInputs } : {}) },
+          executionInput,
           {
-            startedAt,
+            ...runtimeEvidence,
             completedAt: text(outcome.completedAt, 'completedAt'),
-            workflowExecutionRef: text(outcome.workflowExecutionRef, 'workflowExecutionRef'),
-            workflowIdRef: text(outcome.workflowIdRef, 'workflowIdRef'),
-            runIdRef: text(outcome.runIdRef, 'runIdRef'),
             executionStatus: outcome.executionStatus,
-            evidenceRefs: array(outcome.evidenceRefs, 'evidenceRefs') as string[],
           },
         );
         const workflowExecutionObservation = session.automation.workflowExecutionObservation;
         if (!workflowExecutionObservation) throw new TypeError('one-app workflow execution observation was not created');
         json(res, 201, {
+          executionId,
           workflowExecutionObservation,
           workflowExecutionApprovalConsumed: true,
           workflowStartWasExplicitlyAuthorized: true,
