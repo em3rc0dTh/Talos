@@ -32,11 +32,11 @@ import type { GenericCapabilityActivityInput } from '../../../workers/reference-
 import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { buildOneAppHumanRuntimeSnapshots } from './private-preview-human-runtime.ts';
 
-export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.5';
+export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.6';
 export const TALOS_PRODUCT_WORKFLOW_TYPE = 'TalosGenericWorkflow';
 export const TALOS_PRODUCT_ACTIVITY_TYPE = 'executeGenericCapability';
 export const TALOS_PRODUCT_SDK_VERSION = '1.22.0';
-export const TALOS_PRODUCT_CAPABILITY_DISPATCH_REF = 'TALOS_PRODUCT_CAPABILITY_DISPATCH_V1';
+export const TALOS_PRODUCT_CAPABILITY_DISPATCH_REF = 'TALOS_PRODUCT_CAPABILITY_DISPATCH_V2';
 
 export interface TalosProductCapabilityTransportResolutionInput {
   /** Present during fresh deployment; absent during restart recovery. */
@@ -47,6 +47,17 @@ export interface TalosProductCapabilityTransportResolutionInput {
 
 export interface TalosProductCapabilityTransportResolver {
   resolve(input: TalosProductCapabilityTransportResolutionInput): GenericCapabilityTransport | undefined;
+}
+
+export interface TalosRecoveredRuntimeDeployment {
+  realizedDeploymentRevisionId: string;
+  program: CompiledGenericRuntimeProgram;
+  namespace: string;
+  taskQueue: string;
+  capabilityBindings: Array<{
+    capabilityUseOccurrenceRef: string;
+    implementationRef: string;
+  }>;
 }
 
 export interface TalosProductTemporalRuntimeOptions {
@@ -63,15 +74,17 @@ export interface TalosManagedTemporalRuntimeAdapters extends TalosPrivatePreview
     workerIdentity: string;
     sdkVersion: string;
   }>;
+  recoverDeployment(input: TalosRecoveredRuntimeDeployment): Promise<{
+    realizedDeploymentRevisionId: string;
+    programDigest: string;
+    evidenceRefs: string[];
+  }>;
   close(): Promise<void>;
 }
 
 interface ActiveDeployment {
   deploymentRevisionId: string;
   program: CompiledGenericRuntimeProgram;
-  runtime: GenericWorkerRuntime;
-  runPromise: Promise<void>;
-  ledger: GenericEffectLedger;
   taskQueue: string;
 }
 
@@ -81,22 +94,48 @@ interface ResolvedProductCapabilityTransport {
   transport: GenericCapabilityTransport;
 }
 
+interface ActiveQueueWorker {
+  runtime: GenericWorkerRuntime;
+  runPromise: Promise<void>;
+  ledger: GenericEffectLedger;
+  dispatch: ProductCapabilityDispatchTransport;
+}
+
 class ProductCapabilityDispatchTransport implements GenericCapabilityTransport {
   readonly transportRef = TALOS_PRODUCT_CAPABILITY_DISPATCH_REF;
-  readonly acceptedExternalTransportRefs: readonly string[];
-  readonly #byCapabilityUse: Map<string, GenericCapabilityTransport>;
+  readonly #byCapabilityUse = new Map<string, { implementationRef: string; transport: GenericCapabilityTransport }>();
 
-  constructor(resolutions: ResolvedProductCapabilityTransport[]) {
-    this.#byCapabilityUse = new Map(resolutions.map((item) => [item.capabilityUseOccurrenceRef, item.transport]));
-    this.acceptedExternalTransportRefs = [...new Set(resolutions.map((item) => item.transport.transportRef))].sort();
+  constructor(resolutions: ResolvedProductCapabilityTransport[] = []) {
+    this.addMany(resolutions);
+  }
+
+  get acceptedExternalTransportRefs(): readonly string[] {
+    return [...new Set([...this.#byCapabilityUse.values()].map((item) => item.transport.transportRef))].sort();
+  }
+
+  addMany(resolutions: ResolvedProductCapabilityTransport[]): void {
+    for (const item of resolutions) {
+      const existing = this.#byCapabilityUse.get(item.capabilityUseOccurrenceRef);
+      if (existing && (existing.implementationRef !== item.implementationRef || existing.transport.transportRef !== item.transport.transportRef)) {
+        throw new TypeError(`TALOS_RUNTIME_CAPABILITY_BINDING_CONFLICT: ${item.capabilityUseOccurrenceRef}`);
+      }
+    }
+    for (const item of resolutions) {
+      if (!this.#byCapabilityUse.has(item.capabilityUseOccurrenceRef)) {
+        this.#byCapabilityUse.set(item.capabilityUseOccurrenceRef, {
+          implementationRef: item.implementationRef,
+          transport: item.transport,
+        });
+      }
+    }
   }
 
   async execute(input: GenericCapabilityActivityInput, identity: GenericEffectIdentity): Promise<GenericExternalCapabilityEffect> {
-    const transport = this.#byCapabilityUse.get(input.capabilityUseOccurrenceRef);
-    if (!transport) {
+    const resolved = this.#byCapabilityUse.get(input.capabilityUseOccurrenceRef);
+    if (!resolved) {
       throw new TypeError(`TALOS_RUNTIME_CAPABILITY_DISPATCH_MISSING: ${input.capabilityUseOccurrenceRef}`);
     }
-    return transport.execute(input, identity);
+    return resolved.transport.execute(input, identity);
   }
 }
 
@@ -119,7 +158,6 @@ function waitDurationMs(context: OneAppAutomationContext, executionElementId: st
   return { durationMs, sourceRef: semanticNode.id };
 }
 
-/** Build runtime semantics only from the exact confirmed/approved lineage. */
 export function buildOneAppRuntimeSemanticSnapshot(context: OneAppAutomationContext): GenericRuntimeSemanticSnapshot {
   if (!context.executionReview) throw new TypeError('TALOS_RUNTIME_EXECUTION_PLAN_REQUIRED: runtime semantic snapshot needs an ExecutionPlan');
   const conditionRules = context.process.rules.map((rule) => ({ ref: rule.id, expression: rule.expression }));
@@ -192,39 +230,68 @@ function implementationRefForCapabilityUse(context: OneAppAutomationContext, cap
   return offering.implementationRef.trim();
 }
 
-function resolveProductCapabilityTransport(
+function invocationUseRefs(program: CompiledGenericRuntimeProgram): string[] {
+  return [...new Set(
+    program.graph.elements
+      .filter((element) => element.kind === 'CAPABILITY_INVOCATION')
+      .flatMap((element) => element.capabilityUseOccurrenceRefs),
+  )].sort();
+}
+
+function resolveFreshCapabilityTransports(
   context: OneAppAutomationContext,
   program: CompiledGenericRuntimeProgram,
   resolver?: TalosProductCapabilityTransportResolver,
-): { transport?: GenericCapabilityTransport; evidenceRefs: string[] } {
-  const invocationUseRefs = program.graph.elements
-    .filter((element) => element.kind === 'CAPABILITY_INVOCATION')
-    .flatMap((element) => element.capabilityUseOccurrenceRefs);
-  if (invocationUseRefs.length === 0) return { evidenceRefs: [] };
+): { resolutions: ResolvedProductCapabilityTransport[]; evidenceRefs: string[] } {
+  const useRefs = invocationUseRefs(program);
+  if (useRefs.length === 0) return { resolutions: [], evidenceRefs: [] };
   if (!resolver) {
     throw new TypeError('TALOS_RUNTIME_CAPABILITY_TRANSPORT_REQUIRED: approved capability work has no configured product runtime adapter');
   }
-
-  const uniqueUseRefs = [...new Set(invocationUseRefs)];
-  const resolutions: ResolvedProductCapabilityTransport[] = uniqueUseRefs.map((capabilityUseOccurrenceRef) => {
+  const resolutions = useRefs.map((capabilityUseOccurrenceRef) => {
     const implementationRef = implementationRefForCapabilityUse(context, capabilityUseOccurrenceRef);
     const transport = resolver.resolve({ context, capabilityUseOccurrenceRef, implementationRef });
     if (!transport) {
-      throw new TypeError(
-        `TALOS_RUNTIME_CAPABILITY_TRANSPORT_UNRESOLVED: no runtime adapter is configured for approved implementation ${implementationRef}`,
-      );
+      throw new TypeError(`TALOS_RUNTIME_CAPABILITY_TRANSPORT_UNRESOLVED: no runtime adapter is configured for approved implementation ${implementationRef}`);
     }
     return { capabilityUseOccurrenceRef, implementationRef, transport };
   });
-
   return {
-    transport: new ProductCapabilityDispatchTransport(resolutions),
+    resolutions,
     evidenceRefs: resolutions.flatMap((item) => [
       `capability-use:${item.capabilityUseOccurrenceRef}`,
       `implementation-ref:${item.implementationRef}`,
       `capability-transport:${item.transport.transportRef}`,
     ]),
   };
+}
+
+function verifyProgramDigest(program: CompiledGenericRuntimeProgram): void {
+  const { programDigest, ...material } = program;
+  if (!programDigest.trim() || digestDeterministicJson(material) !== programDigest) {
+    throw new TypeError('TALOS_RUNTIME_RECOVERED_PROGRAM_DIGEST_MISMATCH');
+  }
+}
+
+function resolveRecoveredCapabilityTransports(
+  input: TalosRecoveredRuntimeDeployment,
+  resolver?: TalosProductCapabilityTransportResolver,
+): ResolvedProductCapabilityTransport[] {
+  const useRefs = invocationUseRefs(input.program);
+  const byUse = new Map(input.capabilityBindings.map((item) => [item.capabilityUseOccurrenceRef, item.implementationRef]));
+  if (byUse.size !== input.capabilityBindings.length) throw new TypeError('TALOS_RUNTIME_RECOVERY_DUPLICATE_CAPABILITY_BINDING');
+  if (input.capabilityBindings.some((item) => !useRefs.includes(item.capabilityUseOccurrenceRef))) {
+    throw new TypeError('TALOS_RUNTIME_RECOVERY_EXTRA_CAPABILITY_BINDING');
+  }
+  if (useRefs.length === 0) return [];
+  if (!resolver) throw new TypeError('TALOS_RUNTIME_RECOVERY_CAPABILITY_RESOLVER_REQUIRED');
+  return useRefs.map((capabilityUseOccurrenceRef) => {
+    const implementationRef = byUse.get(capabilityUseOccurrenceRef)?.trim();
+    if (!implementationRef) throw new TypeError(`TALOS_RUNTIME_RECOVERY_CAPABILITY_BINDING_MISSING: ${capabilityUseOccurrenceRef}`);
+    const transport = resolver.resolve({ capabilityUseOccurrenceRef, implementationRef });
+    if (!transport) throw new TypeError(`TALOS_RUNTIME_RECOVERY_TRANSPORT_UNRESOLVED: ${implementationRef}`);
+    return { capabilityUseOccurrenceRef, implementationRef, transport };
+  });
 }
 
 function requiresDetachedLifecycle(program: CompiledGenericRuntimeProgram): boolean {
@@ -236,10 +303,10 @@ function requiresDetachedLifecycle(program: CompiledGenericRuntimeProgram): bool
 }
 
 /**
- * Concrete trusted runtime for the local/private Talos product.
- * Human and durable-wait Workflows detach from the request after a concrete
- * Temporal start. Short action-only Workflows retain the immediate terminal
- * path so existing evidence contracts remain backward compatible.
+ * One configured Temporal Task Queue has exactly one Talos Worker in-process.
+ * Fresh and recovered deployments register their exact program + capability-use
+ * bindings into that Worker. This prevents Temporal from routing an Activity to
+ * a deployment-specific Worker that cannot dispatch the selected capability.
  */
 export function createTalosProductTemporalRuntimeAdapters(
   target: TalosPrivatePreviewTemporalTarget,
@@ -251,6 +318,7 @@ export function createTalosProductTemporalRuntimeAdapters(
   const ownsNativeConnection = !options.nativeConnection;
   const ownsClientConnection = !options.client;
   const deployments = new Map<string, ActiveDeployment>();
+  let queueWorker: ActiveQueueWorker | undefined;
   let closing = false;
 
   async function ensureConnections(): Promise<{ nativeConnection: NativeConnection; client: Client }> {
@@ -261,6 +329,32 @@ export function createTalosProductTemporalRuntimeAdapters(
     }
     if (!nativeConnection) nativeConnection = await NativeConnection.connect({ address: target.address });
     return { nativeConnection, client };
+  }
+
+  async function ensureQueueWorker(resolutions: ResolvedProductCapabilityTransport[]): Promise<ActiveQueueWorker> {
+    if (queueWorker) {
+      queueWorker.dispatch.addMany(resolutions);
+      return queueWorker;
+    }
+    const connections = await ensureConnections();
+    const ledger = new GenericEffectLedger();
+    const dispatch = new ProductCapabilityDispatchTransport(resolutions);
+    const runtime = await createGenericTemporalWorker({
+      connection: connections.nativeConnection,
+      namespace: target.namespace,
+      taskQueue: target.taskQueue,
+      identity: `talos-product-worker:${target.taskQueue}`,
+      ledger,
+      capabilityTransport: dispatch,
+    });
+    const runPromise = runtime.worker.run();
+    const startupState = await Promise.race([
+      runPromise.then(() => 'STOPPED' as const),
+      new Promise<'RUNNING'>((resolve) => setTimeout(() => resolve('RUNNING'), 150)),
+    ]);
+    if (startupState !== 'RUNNING') throw new TypeError('TALOS_RUNTIME_WORKER_START_FAILED: queue Worker stopped before deployment proof completed');
+    queueWorker = { runtime, runPromise, ledger, dispatch };
+    return queueWorker;
   }
 
   async function assertReachable() {
@@ -283,38 +377,18 @@ export function createTalosProductTemporalRuntimeAdapters(
     assertTargetMatchesRealization(context, target);
     const realization = context.deploymentRealization!;
     if (deployments.has(realization.revision.id)) {
-      throw new TypeError('TALOS_RUNTIME_DEPLOYMENT_ALREADY_ACTIVE: realized deployment already has an active Worker');
+      throw new TypeError('TALOS_RUNTIME_DEPLOYMENT_ALREADY_ACTIVE: realized deployment already registered on the queue Worker');
     }
 
     const program = compileApprovedProgram(context);
     if (program.deploymentRevisionRef !== realization.revision.parentDeploymentRevisionRef) {
       throw new TypeError('TALOS_RUNTIME_PROGRAM_DEPLOYMENT_MISMATCH: compiled program is not based on the realized deployment parent');
     }
-    const capability = resolveProductCapabilityTransport(context, program, options.capabilityTransportResolver);
-    const connections = await ensureConnections();
-    const ledger = new GenericEffectLedger();
-    const runtime = await createGenericTemporalWorker({
-      connection: connections.nativeConnection,
-      namespace: target.namespace,
-      taskQueue: target.taskQueue,
-      identity: `talos-product-worker:${realization.revision.id}`,
-      ledger,
-      ...(capability.transport ? { capabilityTransport: capability.transport } : {}),
-    });
-    const runPromise = runtime.worker.run();
-    const startupState = await Promise.race([
-      runPromise.then(() => 'STOPPED' as const),
-      new Promise<'RUNNING'>((resolve) => setTimeout(() => resolve('RUNNING'), 150)),
-    ]);
-    if (startupState !== 'RUNNING') {
-      throw new TypeError('TALOS_RUNTIME_WORKER_START_FAILED: Worker stopped before deployment proof completed');
-    }
+    const capability = resolveFreshCapabilityTransports(context, program, options.capabilityTransportResolver);
+    await ensureQueueWorker(capability.resolutions);
     deployments.set(realization.revision.id, {
       deploymentRevisionId: realization.revision.id,
       program,
-      runtime,
-      runPromise,
-      ledger,
       taskQueue: target.taskQueue,
     });
 
@@ -336,6 +410,40 @@ export function createTalosProductTemporalRuntimeAdapters(
     };
   }
 
+  async function recoverDeployment(input: TalosRecoveredRuntimeDeployment) {
+    const realizedDeploymentRevisionId = input.realizedDeploymentRevisionId.trim();
+    if (!realizedDeploymentRevisionId) throw new TypeError('TALOS_RUNTIME_RECOVERY_DEPLOYMENT_ID_REQUIRED');
+    if (input.namespace !== target.namespace) throw new TypeError('TALOS_RUNTIME_RECOVERY_NAMESPACE_MISMATCH');
+    if (input.taskQueue !== target.taskQueue) throw new TypeError('TALOS_RUNTIME_RECOVERY_TASK_QUEUE_MISMATCH');
+    verifyProgramDigest(input.program);
+    const existing = deployments.get(realizedDeploymentRevisionId);
+    if (existing) {
+      if (existing.program.programDigest !== input.program.programDigest) throw new TypeError('TALOS_RUNTIME_RECOVERY_DEPLOYMENT_CONFLICT');
+      return {
+        realizedDeploymentRevisionId,
+        programDigest: existing.program.programDigest,
+        evidenceRefs: [`recovered-deployment:${realizedDeploymentRevisionId}`, `runtime-program:${existing.program.programDigest}`],
+      };
+    }
+    const resolutions = resolveRecoveredCapabilityTransports(input, options.capabilityTransportResolver);
+    await ensureQueueWorker(resolutions);
+    deployments.set(realizedDeploymentRevisionId, {
+      deploymentRevisionId: realizedDeploymentRevisionId,
+      program: input.program,
+      taskQueue: target.taskQueue,
+    });
+    return {
+      realizedDeploymentRevisionId,
+      programDigest: input.program.programDigest,
+      evidenceRefs: [
+        `recovered-deployment:${realizedDeploymentRevisionId}`,
+        `runtime-program:${input.program.programDigest}`,
+        `temporal-namespace:${target.namespace}`,
+        `task-queue:${target.taskQueue}`,
+      ],
+    };
+  }
+
   async function workflowExecutionExecutor(
     input: OneAppWorkflowExecutionExecutorInput,
   ): Promise<OneAppWorkflowExecutionExecutorResult> {
@@ -346,7 +454,7 @@ export function createTalosProductTemporalRuntimeAdapters(
     assertTargetMatchesRealization(context, target);
     const realization = context.deploymentRealization!;
     const active = deployments.get(realization.revision.id);
-    if (!active) throw new TypeError('TALOS_RUNTIME_WORKER_NOT_ACTIVE: approved deployment Worker is not active');
+    if (!active || !queueWorker) throw new TypeError('TALOS_RUNTIME_WORKER_NOT_ACTIVE: approved deployment is not registered on the queue Worker');
     const connections = await ensureConnections();
     const workflowId = `talos-${executionId}`;
     const handle = await connections.client.workflow.start(TalosGenericWorkflow, {
@@ -406,8 +514,11 @@ export function createTalosProductTemporalRuntimeAdapters(
   async function close(): Promise<void> {
     if (closing) return;
     closing = true;
-    for (const active of deployments.values()) active.runtime.worker.shutdown();
-    await Promise.allSettled([...deployments.values()].map((item) => item.runPromise));
+    if (queueWorker) {
+      queueWorker.runtime.worker.shutdown();
+      await Promise.allSettled([queueWorker.runPromise]);
+      queueWorker = undefined;
+    }
     deployments.clear();
     if (ownsNativeConnection && nativeConnection) await nativeConnection.close();
     if (ownsClientConnection && clientConnection) await clientConnection.close();
@@ -420,6 +531,7 @@ export function createTalosProductTemporalRuntimeAdapters(
     assertReachable,
     deploymentAttemptExecutor,
     workflowExecutionExecutor,
+    recoverDeployment,
     close,
   };
 }
