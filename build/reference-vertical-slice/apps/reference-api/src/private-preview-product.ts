@@ -21,10 +21,11 @@ import {
 import {
   createTalosProductExecutionRecovery,
   createTalosTemporalExecutionInspector,
+  type TalosExecutionRecoveryResult,
   type TalosProductExecutionRecovery,
 } from './private-preview-execution-recovery.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.4';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.5';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -89,6 +90,7 @@ export async function startTalosPrivatePreviewProduct(
   let operator: Awaited<ReturnType<typeof startTalosPrivatePreviewOperator>> | undefined;
   let product: Awaited<ReturnType<typeof startTalosOneAppProduct>> | undefined;
   let executionRecovery: TalosProductExecutionRecovery | undefined;
+  let preflightExecutionRecovery: TalosExecutionRecoveryResult | undefined;
   try {
     operator = await startTalosPrivatePreviewOperator(env, {
       ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
@@ -99,6 +101,7 @@ export async function startTalosPrivatePreviewProduct(
         operator.runtimeDir,
         createTalosTemporalExecutionInspector(temporalTarget),
       );
+      preflightExecutionRecovery = await executionRecovery.reconcileAll();
     }
     const artifact = workerArtifact();
     product = await startTalosOneAppProduct({
@@ -127,6 +130,8 @@ export async function startTalosPrivatePreviewProduct(
         temporalExecutionAvailable: Boolean(runtimeAdapters),
         humanRuntimeAvailable: Boolean(humanRuntimeControl),
         executionRecoveryAvailable: Boolean(executionRecovery),
+        recoveredActiveExecutionIds: [...(preflightExecutionRecovery?.activeExecutionIds ?? [])],
+        recoveredTerminalExecutionIds: [...(preflightExecutionRecovery?.terminalExecutionIds ?? [])],
         ...(binding.descriptor.imageProvider ? { imageProvider: binding.descriptor.imageProvider } : {}),
         ...(binding.descriptor.temporalTarget ? {
           temporal: {
@@ -162,6 +167,7 @@ export async function startTalosPrivatePreviewProduct(
     runtimeDescriptor: binding.descriptor,
     recoveryBeforeStart: operator.recoveryBeforeStart,
     executionRecoveryBeforeServe: product.recoveryBeforeServe,
+    preflightExecutionRecovery,
     async close() {
       if (closed) return;
       closed = true;
@@ -187,7 +193,8 @@ async function main(): Promise<void> {
     temporalExecutionAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
     humanRuntimeAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
     executionRecoveryAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
-    recoveredActiveExecutionCount: app.executionRecoveryBeforeServe?.activeExecutionIds.length ?? 0,
+    recoveredActiveExecutionCount: app.preflightExecutionRecovery?.activeExecutionIds.length ?? 0,
+    recoveredTerminalExecutionCount: app.preflightExecutionRecovery?.terminalExecutionIds.length ?? 0,
     secretMaterialExposed: false,
   }, null, 2)}\n`);
 
