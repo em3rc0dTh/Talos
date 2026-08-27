@@ -1,6 +1,6 @@
 # TALOS — R1 Product Completion Plan v0.2
 
-Status: **IMPLEMENTATION FIELD-TRIAL READY — RELEASE CERTIFICATION PENDING**  
+Status: **R1-11 ACTIVE — r7 FIELD CANDIDATE READY / RELEASE CERTIFICATION PENDING**  
 Target: **TALOS 1.0 PRODUCT READY**  
 Started: **2026-08-25**  
 Base release: `009b266bbfc7d82218ba613bedf1ef14af0159fc` — Talos v0.1 Private Technical Preview certification
@@ -106,6 +106,8 @@ Requirements, suggestions, accept/replace/reject/defer decisions and explicit ca
 
 ExecutionPlan blockers are visible. Subprocess/relation treatment requires explicit decisions. Automation approval pins the reviewed plan.
 
+During R1-11 field use, the blocked-plan rebuild path exposed an immutable-definition persistence defect. The repair now preserves one stable `ExecutionPlanDefinition`, creates append-only child `ExecutionPlanRevision` lineage after changed execution-design decisions, preserves the original capability bindings, and treats an identical repeated rebuild as idempotent. Dedicated local regressions are 2/2 PASS; real-user r7 confirmation remains part of R1-11.
+
 ### R1-07 — Runtime / deployment / execution authority — **IMPLEMENTED**
 
 One-App exposes and enforces:
@@ -144,7 +146,7 @@ Implemented behavior:
 - conflicting bindings for one capability-use ID fail closed;
 - concrete external transports retain restart-safe idempotency evidence independently from the in-memory ledger.
 
-### R1-10 — Product UX — **IMPLEMENTED; FIELD TRIAL PENDING**
+### R1-10 — Product UX — **IMPLEMENTED; FIELD TRIAL ACTIVE**
 
 The guided One-App product surface covers:
 
@@ -163,11 +165,28 @@ The guided One-App product surface covers:
 
 Raw evidence remains available as detail rather than replacing the normal guided product interaction.
 
-### R1-11 — Field trials — **NEXT / USER PRODUCT GATE**
+### R1-11 — Field trials — **ACTIVE / r7 REAL-USER RETEST READY**
 
-This gate intentionally cannot be replaced by fixtures. Use at least one real non-fixture business process through the normal product journey and capture any usability/semantic defects.
+This gate intentionally cannot be replaced by fixtures. At least one real non-fixture business process must complete the normal product journey.
 
-A fixture manufactured to pass this gate is forbidden.
+Current field-trial evidence:
+
+- the product owner is using the genuine `Car-Wash.bpmn` process rather than a Talos fixture;
+- Field Defect 01 exposed misleading UX when native BPMN reconciliation was blocked; the repair preserves the source, surfaces concrete diagnostics and keeps correction available without manufacturing review/authority;
+- the later r6 journey advanced to ExecutionPlan review and exposed Field Defect 02: `Rebuild ExecutionPlan` attempted to rewrite an immutable plan definition instead of appending a child revision;
+- Defect 02 repair code baseline: `ad3b67dbd3d35b81dbdb059e8ff429ec9ebf561d`;
+- product owner local executable receipt for the repair: **2 tests / 2 pass / 0 fail**;
+- repaired launcher identity: `talos-private-preview-product-v0.9`;
+- next real-user candidate: **r7**, with a fresh `.runtime-local-release-r7` directory while preserving r6 evidence unchanged.
+
+Evidence records:
+
+- `test/103-R1-11-FIELD-TRIAL-DEFECT-01-BLOCKED-BPMN-UX-v0.1.md`;
+- `test/103-R1-11-FIELD-TRIAL-DEFECT-02-EXECUTION-PLAN-REBUILD-CLOSURE-v0.1.md`;
+- `test/103-R1-11-R7-FIELD-TRIAL-CANDIDATE-v0.1.md`;
+- `test/103-TALOS-1.0-REAL-USER-FIELD-TRIAL-RUNBOOK-v0.1.md`.
+
+R1-11 remains open until the non-fixture journey completes its supported path without a release-blocking defect. A fixture manufactured to pass this gate is forbidden.
 
 ### R1-12 — Talos 1.0 release certification — **PENDING EXECUTABLE EXACT-SHA RECEIPT**
 
@@ -187,23 +206,23 @@ The final gate runs against one exact candidate/merged-main SHA and proves:
 
 ## CI infrastructure status
 
-GitHub-hosted Actions for the current R1 candidate are presently failing before any workflow step executes. Re-runs reproduce jobs with no executed steps (`steps: null`) and no usable hosted runner assignment.
+GitHub-hosted Actions for the current R1 candidate are presently unavailable as meaningful executable evidence. The repaired RC head has no attached hosted workflow run/status that can certify the code, while earlier hosted attempts failed before repository steps executed.
 
 This is classified as:
 
 ```text
-CI INFRASTRUCTURE UNAVAILABLE
+CI INFRASTRUCTURE UNAVAILABLE / NOT EXECUTED
 != TALOS TEST FAILURE
 != TALOS TEST PASS
 ```
 
-The red badges therefore do not invalidate the implementation, but they also cannot satisfy R1-12.
+Local executable receipts may close specific defects, but they do not substitute for R1-12 exact-SHA certification.
 
 ## Completion rule
 
 R1 is evidence-gated, not percentage-gated.
 
-The implementation portion of R1-01 through R1-10 is complete on the active candidate branch. Talos becomes **1.0 PRODUCT READY** only when both remaining external evidence gates close:
+The implementation portion of R1-01 through R1-10 is complete on the active candidate branch. R1-11 is now an active real-user field trial. Talos becomes **1.0 PRODUCT READY** only when both remaining external evidence gates close:
 
 ```text
 R1-11 real-user non-fixture field trial
