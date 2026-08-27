@@ -163,6 +163,118 @@ const PLAN_DECISION_SCRIPT = String.raw`<script>
 })();
 </script>`;
 
+// R1-10 truthful blocked-source UX. A valid BPMN upload may still be preserved
+// while Canonical reconciliation is blocked by an unsupported or ambiguous BPMN
+// construct. That state is not an authority-order failure. The product exposes
+// exact diagnostics and keeps the source XML editable without granting Canonical
+// review/confirmation authority until a corrected revision reconciles.
+const SOURCE_RECONCILIATION_GUARD_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  var blockedByRevision={};
+
+  function byId(id){return document.getElementById(id)}
+  function setText(id,value){var node=byId(id);if(node)node.textContent=value}
+  function renderDiagnostics(box,diagnostics){
+    if(!box)return;box.innerHTML='';
+    if(!diagnostics||!diagnostics.length){var none=document.createElement('div');none.className='item';none.textContent='No diagnostic detail was returned.';box.appendChild(none);return}
+    diagnostics.forEach(function(item){
+      var row=document.createElement('div');row.className='item finding';
+      var strong=document.createElement('strong');strong.textContent=item.code||'BPMN_RECONCILIATION_BLOCKED';
+      var small=document.createElement('small');
+      var location=item.bpmnElementId?(' · element '+item.bpmnElementId+(item.bpmnType?' ('+item.bpmnType+')':'')):'';
+      small.textContent=(item.message||'Canonical reconciliation is blocked.')+location;
+      row.append(strong,small);box.appendChild(row);
+    });
+  }
+  function renderBlocked(body){
+    var diagnostics=(body.reconciliation&&body.reconciliation.diagnostics)||[];
+    var reviewCard=byId('reviewCard');if(reviewCard)reviewCard.classList.remove('closed');
+    var sourceStep=byId('psource');if(sourceStep)sourceStep.className='pstep done';
+    var reviewStep=byId('preview');if(reviewStep)reviewStep.className='pstep blocked';
+    var badge=byId('reviewBadge');if(badge){badge.textContent='RECONCILIATION BLOCKED · SOURCE PRESERVED';badge.className='pill warn'}
+    setText('reviewState','Canonical review has not been created. Correct the BPMN source and retry reconciliation.');
+    setText('truthInferred','Blocked · no Canonical ProcessRevision created');
+    setText('correctionState','Source correction available · no business authority exists');
+    var editor=byId('bpmnEditor');if(editor&&body.revision&&body.revision.bpmnXml)editor.value=body.revision.bpmnXml;
+    var save=byId('saveCorrection');if(save)save.disabled=false;
+    var confirm=byId('confirmProcess');if(confirm)confirm.disabled=true;
+    renderDiagnostics(byId('findings'),diagnostics);
+    var questions=byId('questions');if(questions){questions.innerHTML='';var q=document.createElement('div');q.className='item question';q.textContent='Resolve the BPMN reconciliation diagnostic(s) before business confirmation.';questions.appendChild(q)}
+    var nodes=byId('processNodes');if(nodes){nodes.innerHTML='';var n=document.createElement('div');n.className='item';n.textContent='No Canonical nodes admitted yet.';nodes.appendChild(n)}
+    var sourceStatus=byId('sourceStatus');if(sourceStatus){sourceStatus.textContent='BPMN source preserved. Canonical reconciliation is blocked by '+diagnostics.length+' diagnostic(s). No business meaning or authority was created.';sourceStatus.className='status warn'}
+  }
+  function updateRuntimeCopy(profile){
+    var node=byId('runtimeLimit');if(!node||!profile)return;
+    if(profile.runtimeMode==='DESIGN_ONLY'){
+      node.textContent='Design mode: execution is disabled. Human UPDATE/SIGNAL runtime is implemented and becomes available when TEMPORAL_EXECUTION is configured.';
+      node.className='status warn';return;
+    }
+    if(profile.humanRuntimeAvailable){
+      node.textContent='Temporal execution and governed human UPDATE/SIGNAL runtime are enabled.';
+      node.className='status good';return;
+    }
+    node.textContent='Temporal execution is configured, but human runtime control is unavailable in this launcher.';
+    node.className='status warn';
+  }
+
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isNativeImport=path.indexOf('/api/input/bpmn')!==-1&&method==='POST';
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    var isRuntimeProfile=path.indexOf('/api/product/runtime-profile')!==-1&&method==='GET';
+    var isEdit=path.indexOf('/api/bpmn/edit')!==-1&&method==='POST';
+
+    if(isReview){
+      try{
+        var url=new URL(path,window.location.href);
+        var revisionId=url.searchParams.get('revisionId');
+        var blocked=revisionId&&blockedByRevision[revisionId];
+        if(blocked){
+          setTimeout(function(){renderBlocked(blocked)},0);
+          var diagnostics=(blocked.reconciliation&&blocked.reconciliation.diagnostics)||[];
+          return Promise.resolve(new Response(JSON.stringify({
+            error:'BPMN source was preserved, but Canonical reconciliation is blocked. Review the diagnostics and correct the BPMN source.',
+            code:'R1_BPMN_RECONCILIATION_BLOCKED',
+            sourcePreserved:true,
+            revisionId:revisionId,
+            diagnostics:diagnostics
+          }),{status:409,headers:{'content-type':'application/json'}}));
+        }
+      }catch(_){}
+    }
+
+    return nativeFetch(input,init).then(function(response){
+      if(isNativeImport&&response.ok){
+        return response.clone().json().then(function(body){
+          if(body&&body.reconciliation&&body.reconciliation.status==='BLOCKED'&&body.revision&&body.revision.id){
+            blockedByRevision[body.revision.id]=body;
+          }
+          return response;
+        }).catch(function(){return response});
+      }
+      if(isRuntimeProfile&&response.ok){
+        response.clone().json().then(function(profile){setTimeout(function(){updateRuntimeCopy(profile)},0)}).catch(function(){});
+      }
+      if(isEdit&&response.ok){
+        response.clone().json().then(function(body){
+          if(body&&body.status==='CORRECTION_BLOCKED'&&body.hasActiveCanonicalReview===false){
+            var attempted=body.attemptedRevision;
+            var blocked={revision:attempted,reconciliation:body.reconciliation};
+            setTimeout(function(){renderBlocked(blocked)},0);
+          }
+        }).catch(function(){});
+      }
+      return response;
+    });
+  };
+
+  nativeFetch('/api/product/runtime-profile').then(function(response){return response.ok?response.json():null}).then(function(profile){setTimeout(function(){updateRuntimeCopy(profile)},0)}).catch(function(){});
+})();
+</script>`;
+
 const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
   PLAN_BLOCKER_MARKER,
   `${PLAN_BLOCKER_MARKER}${PLAN_DECISION_UI}`,
@@ -170,5 +282,5 @@ const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
 
 export const ONE_APP_PRODUCT_PAGE = withPlanDecisionUi.replace(
   '</body>',
-  `${PLAN_DECISION_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
+  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
 );
