@@ -14,8 +14,12 @@ import {
   TALOS_PRODUCT_WORKFLOW_TYPE,
   type TalosManagedTemporalRuntimeAdapters,
 } from './private-preview-temporal-runtime.ts';
+import {
+  createTalosProductHumanRuntimeControl,
+  type TalosProductHumanRuntimeControl,
+} from './private-preview-human-control.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.2';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.3';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -58,6 +62,7 @@ export async function startTalosPrivatePreviewProduct(
   const binding = resolveTalosPrivatePreviewRuntimeBinding(env);
   const start = binding.createStartConfiguration();
   let runtimeAdapters: TalosManagedTemporalRuntimeAdapters | undefined;
+  let humanRuntimeControl: TalosProductHumanRuntimeControl | undefined;
 
   if (binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION') {
     const target = binding.descriptor.temporalTarget;
@@ -67,6 +72,7 @@ export async function startTalosPrivatePreviewProduct(
     });
     try {
       await runtimeAdapters.assertReachable();
+      humanRuntimeControl = createTalosProductHumanRuntimeControl(target);
     } catch (error) {
       await runtimeAdapters.close();
       throw error;
@@ -93,6 +99,10 @@ export async function startTalosPrivatePreviewProduct(
           'x-talos-actor-id': start.access.actorId,
         },
       },
+      ...(humanRuntimeControl ? {
+        humanRuntimeControl,
+        humanRuntimeActorId: binding.descriptor.actorId,
+      } : {}),
       runtimeProfile: {
         launcherVersion: TALOS_PRODUCT_LAUNCHER_VERSION,
         workspaceId: binding.descriptor.workspaceId,
@@ -100,6 +110,7 @@ export async function startTalosPrivatePreviewProduct(
         runtimeMode: binding.descriptor.runtimeMode,
         imageMode: binding.descriptor.imageMode,
         temporalExecutionAvailable: Boolean(runtimeAdapters),
+        humanRuntimeAvailable: Boolean(humanRuntimeControl),
         ...(binding.descriptor.imageProvider ? { imageProvider: binding.descriptor.imageProvider } : {}),
         ...(binding.descriptor.temporalTarget ? {
           temporal: {
@@ -121,6 +132,7 @@ export async function startTalosPrivatePreviewProduct(
   } catch (error) {
     await product?.close().catch(() => undefined);
     await operator?.close().catch(() => undefined);
+    await humanRuntimeControl?.close().catch(() => undefined);
     await runtimeAdapters?.close().catch(() => undefined);
     throw error;
   }
@@ -137,6 +149,7 @@ export async function startTalosPrivatePreviewProduct(
       closed = true;
       await product.close();
       await operator.close();
+      await humanRuntimeControl?.close();
       await runtimeAdapters?.close();
     },
   };
@@ -153,6 +166,7 @@ async function main(): Promise<void> {
     runtimeMode: app.runtimeDescriptor.runtimeMode,
     imageMode: app.runtimeDescriptor.imageMode,
     temporalExecutionAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
+    humanRuntimeAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
     secretMaterialExposed: false,
   }, null, 2)}\n`);
 
