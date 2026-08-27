@@ -11,6 +11,35 @@ import type { ReferenceDeploymentBundle } from '../../deployment/src/types.ts';
 function append(repo:ImmutableDocumentRepository,kind:string,payload:any,fallbackAt:string,schemaVersion='phase5-reference-v0.2'):void{
   repo.append({id:payload.id,aggregateKind:kind,schemaVersion,payload,createdAt:payload.createdAt??payload.assessedAt??payload.decidedAt??payload.approvedAt??fallbackAt});
 }
+
+function persistStableExecutionPlanDefinition(
+  repo: ImmutableDocumentRepository,
+  definition: GenericResolvedExecutionBundle['definition'],
+  fallbackAt: string,
+  schemaVersion: string,
+): void {
+  const existing = repo.get<GenericResolvedExecutionBundle['definition']>(definition.id);
+  if (!existing) {
+    append(repo, 'ExecutionPlanDefinition', definition, fallbackAt, schemaVersion);
+    return;
+  }
+  if (existing.aggregateKind !== 'ExecutionPlanDefinition' || existing.schemaVersion !== schemaVersion) {
+    throw new TypeError('ExecutionPlanDefinition identity already belongs to a different immutable document contract');
+  }
+  const persisted = existing.payload;
+  if (
+    persisted.id !== definition.id
+    || persisted.processDefinitionId !== definition.processDefinitionId
+    || persisted.canonicalName !== definition.canonicalName
+    || persisted.lifecycleStatus !== definition.lifecycleStatus
+  ) {
+    throw new TypeError('ExecutionPlanDefinition immutable identity does not match the existing execution-plan lineage');
+  }
+  // The immutable definition is created once. Its revisionRefs capture the
+  // creating revision; later revisions are discoverable through
+  // ExecutionPlanRevision.executionPlanDefinitionId and parentRevisionRefs.
+}
+
 export function persistReferenceExecutionDesign(repo:ImmutableDocumentRepository,execution:ReferenceExecutionBundle,mapping:ReferenceTemporalMappingBundle,policy:ReferenceRuntimePolicyBundle,deployment:ReferenceDeploymentBundle):void{
   const at=execution.revision.createdAt;
   const records:Array<[string,any]>=[
@@ -41,8 +70,9 @@ export function persistGenericExecutionDraft(repo:ImmutableDocumentRepository,ex
 
 export function persistGenericResolvedExecutionPlan(repo:ImmutableDocumentRepository,execution:GenericResolvedExecutionBundle):void{
   const at=execution.revision.createdAt;
+  const schemaVersion = 'phase5-generic-resolved-execution-v0.1';
+  persistStableExecutionPlanDefinition(repo, execution.definition, at, schemaVersion);
   const records:Array<[string,any]>=[
-    ['ExecutionPlanDefinition',execution.definition],
     ['ExecutionPlanRevision',execution.revision],
     ...execution.scopeBindings.map(x=>['ExecutionScopeBinding',x] as [string,any]),
     ...execution.regions.map(x=>['ExecutionRegion',x] as [string,any]),
@@ -57,7 +87,7 @@ export function persistGenericResolvedExecutionPlan(repo:ImmutableDocumentReposi
     ...execution.coordinationResolutions.map(x=>['ExecutionCoordinationResolution',x] as [string,any]),
     ...execution.relationResolutions.map(x=>['ExecutionRelationResolution',x] as [string,any]),
   ];
-  for(const [kind,payload] of records)append(repo,kind,payload,at,'phase5-generic-resolved-execution-v0.1');
+  for(const [kind,payload] of records)append(repo,kind,payload,at,schemaVersion);
 }
 
 export function persistAutomationExecutionPlanReview(
