@@ -3,12 +3,12 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
   'use strict';
   var nativeFetch=window.fetch.bind(window);
   var approvedStart=null;
+  var executionReview=null;
   var activeExecutionId=null;
   var terminal=false;
   var pollTimer=null;
 
   function el(id){return document.getElementById(id)}
-  function delay(ms){return new Promise(function(resolve){setTimeout(resolve,ms)})}
   function randomId(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():'human-'+Date.now()+'-'+Math.random().toString(16).slice(2)}
   function jsonBody(init){if(!init||typeof init.body!=='string')return null;try{return JSON.parse(init.body)}catch(_){return null}}
   function pathOf(input){try{return new URL(typeof input==='string'?input:input.url,window.location.href).pathname}catch(_){return ''}}
@@ -17,10 +17,29 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
   function setEvidence(value){var node=el('executionEvidence');if(node)node.textContent=typeof value==='string'?value:JSON.stringify(value,null,2)}
   function humanBox(){var existing=el('humanRuntimeTask');if(existing)return existing;var card=el('executeCard');if(!card)return null;var box=document.createElement('div');box.id='humanRuntimeTask';box.className='requirement hidden';var evidence=el('executionEvidence');var heading=evidence&&evidence.previousElementSibling;if(heading)card.insertBefore(box,heading);else card.appendChild(box);return box}
 
+  function activityCapabilityUseRefs(){
+    var refs=new Set();
+    var execution=executionReview&&executionReview.execution;
+    (execution&&execution.elements||[]).forEach(function(element){
+      if(element.kind==='CAPABILITY_INVOCATION')(element.capabilityUseRefs||[]).forEach(function(ref){refs.add(ref)});
+    });
+    return refs;
+  }
+
   window.fetch=async function(input,init){
     var path=pathOf(input);
     var request=jsonBody(init);
-    var response=await nativeFetch(input,init);
+    var nextInit=init;
+    if(path==='/api/automation/runtime-policy'&&request&&executionReview){
+      var allowed=activityCapabilityUseRefs();
+      request.activities=(request.activities||[]).filter(function(item){return allowed.has(item.capabilityUseOccurrenceRef)});
+      nextInit=Object.assign({},init,{body:JSON.stringify(request)});
+    }
+    var response=await nativeFetch(input,nextInit);
+    if(path==='/api/automation/execution-plan/review'&&response.ok){
+      var planBody=await responseJson(response);
+      if(planBody&&planBody.execution)executionReview=planBody;
+    }
     if(path==='/api/automation/execution/approve'&&response.ok){
       var body=await responseJson(response);
       if(body&&body.workflowExecutionApproval&&request){
@@ -37,7 +56,7 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
       var profile=await response.json();
       if(profile.humanRuntimeAvailable){
         var limit=el('runtimeLimit');
-        if(limit){limit.textContent='Human runtime enabled · UPDATE/SIGNAL outcomes are validated against the frozen approved design.';limit.className='status good'}
+        if(limit){limit.textContent='Human runtime enabled · human work stays Workflow-native; UPDATE/SIGNAL outcomes are validated against the frozen approved design.';limit.className='status good'}
       }
     }catch(_){/* base page owns runtime errors */}
   }
