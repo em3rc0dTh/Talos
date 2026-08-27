@@ -36,7 +36,7 @@ import {
 } from './private-preview-worker-recovery.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.6';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.7';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -97,9 +97,6 @@ export async function startTalosPrivatePreviewProduct(
     });
     operatorRuntimeAdapters = {
       deploymentAttemptExecutor: async (input) => {
-        // Recovery material is not authority. Persist it before the attempt so a
-        // crash after Worker start cannot strand a live Temporal Workflow without
-        // the exact program needed to rehydrate its Worker.
         persistTalosProductRuntimeManifest(runtimeRegistry!, input.context, temporalTarget, input.startedAt);
         return runtimeAdapters!.deploymentAttemptExecutor(input);
       },
@@ -165,6 +162,15 @@ export async function startTalosPrivatePreviewProduct(
         humanRuntimeActorId: binding.descriptor.actorId,
       } : {}),
       ...(executionRecovery ? { executionRecovery } : {}),
+      ...(workerRecovery ? {
+        ensureRecoveredWorkers: async (deploymentRevisionIds: string[]) => {
+          const unique = [...new Set(deploymentRevisionIds)];
+          const result = await workerRecovery!.recover(unique);
+          if (result.recoveredDeploymentRevisionIds.length !== unique.length) {
+            throw new TypeError('TALOS_PRODUCT_WORKER_RECOVERY_INCOMPLETE');
+          }
+        },
+      } : {}),
       runtimeProfile: {
         launcherVersion: TALOS_PRODUCT_LAUNCHER_VERSION,
         workspaceId: binding.descriptor.workspaceId,
@@ -218,7 +224,6 @@ export async function startTalosPrivatePreviewProduct(
     async close() {
       if (closed) return;
       closed = true;
-      // Product owns execution-recovery; launcher owns recovered Worker and base runtime lifecycles.
       await product.close();
       await workerRecovery?.close();
       await operator.close();
