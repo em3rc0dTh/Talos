@@ -67,8 +67,6 @@ export type BpmnCanonicalReconciliationResult =
       diagnostics: BpmnCanonicalDiagnostic[];
     };
 
-export type NativeBpmnCanonicalDiagnostic = BpmnCanonicalDiagnostic;
-
 interface ReconciliationPolicy {
   allowedRoutes: readonly BpmnProcessRevision['sourceRoute'][];
   adapterVersion: string;
