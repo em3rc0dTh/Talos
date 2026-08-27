@@ -31,6 +31,8 @@ export interface TalosOneAppProductOptions {
   humanRuntimeControl?: TalosProductHumanRuntimeControl;
   humanRuntimeActorId?: string;
   executionRecovery?: TalosProductExecutionRecovery;
+  /** Rehydrate the exact Worker(s) required by a recovered RUNNING execution. */
+  ensureRecoveredWorkers?: (realizedDeploymentRevisionIds: string[]) => Promise<void>;
 }
 
 const MAX_PROXY_BYTES = 24 * 1024 * 1024;
@@ -99,16 +101,10 @@ async function proxy(
 /**
  * R1 product shell over the certified One-App authority backend.
  *
- * The shell owns presentation only. It may proxy either a directly embedded
- * One-App engine for tests/development or the authenticated private-preview
- * boundary used by the real product launcher. Secrets remain closure-held in
- * server-side proxy headers and are never rendered into browser content.
- *
- * Human runtime control is narrower than general API proxying: it may query or
- * submit only execution IDs observed from a successful protected execution
- * approval response or recovered from durable approval + actually observed
- * Temporal execution evidence. Recovery never creates new workflow-start
- * authority and never chooses a human outcome.
+ * Approval is authority to start one Workflow; it is not evidence that a
+ * Workflow exists. Human runtime access becomes available only after a
+ * successful protected RUNNING start response or recovery of a durable approval
+ * against an actually observed RUNNING Temporal execution.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   if (options.upstream && options.oneApp) {
@@ -132,11 +128,24 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     close: () => embedded!.close(),
   };
   const authorizedHumanExecutionIds = new Set<string>();
+
+  async function ensureRecoveredWorker(item: TalosExecutionRecoveryItem): Promise<void> {
+    if (item.state !== 'RUNNING') return;
+    const deploymentRevisionId = item.start?.startingDeploymentRevisionRef;
+    if (deploymentRevisionId && options.ensureRecoveredWorkers) {
+      await options.ensureRecoveredWorkers([deploymentRevisionId]);
+    }
+  }
+
   let recoveryBeforeServe: TalosExecutionRecoveryResult | undefined;
   try {
     if (options.executionRecovery) {
       recoveryBeforeServe = await options.executionRecovery.reconcileAll();
-      for (const executionId of recoveryBeforeServe.activeExecutionIds) authorizedHumanExecutionIds.add(executionId);
+      for (const item of recoveryBeforeServe.items) {
+        if (item.state !== 'RUNNING') continue;
+        await ensureRecoveredWorker(item);
+        authorizedHumanExecutionIds.add(item.executionId);
+      }
     }
   } catch (error) {
     await upstream.close?.();
@@ -160,7 +169,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
   async function reconcileForAccess(executionId: string): Promise<TalosExecutionRecoveryItem | undefined> {
     if (!options.executionRecovery) return undefined;
     const recovered = await options.executionRecovery.reconcileExecution(executionId);
-    if (recovered.state === 'RUNNING') authorizedHumanExecutionIds.add(executionId);
+    if (recovered.state === 'RUNNING') {
+      await ensureRecoveredWorker(recovered);
+      authorizedHumanExecutionIds.add(executionId);
+    }
     if (recovered.state === 'TERMINAL') authorizedHumanExecutionIds.delete(executionId);
     return recovered;
   }
@@ -212,7 +224,7 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
           return;
         }
         if (!authorizedHumanExecutionIds.has(executionId)) {
-          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval or recovered live Temporal execution');
+          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected Workflow start or recovered live Temporal execution');
         }
         try {
           json(res, 200, await options.humanRuntimeControl.getState(executionId));
@@ -235,7 +247,7 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
           if (recovered?.state === 'TERMINAL') throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_TERMINAL: Workflow is already terminal');
         }
         if (!authorizedHumanExecutionIds.has(executionId)) {
-          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval or recovered live Temporal execution');
+          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected Workflow start or recovered live Temporal execution');
         }
         const actorRef = required(options.humanRuntimeActorId, 'humanRuntimeActorId');
         const result = await options.humanRuntimeControl.submitOutcome({
@@ -257,16 +269,20 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
           req,
           res,
           url,
-          url.pathname === '/api/automation/execution/approve'
+          url.pathname === '/api/automation/execution/start'
             ? (status, bytes) => {
                 if (status < 200 || status >= 300) return;
                 try {
                   const body = JSON.parse(bytes.toString('utf8')) as any;
-                  const executionId = body?.workflowExecutionApproval?.executionId;
-                  if (typeof executionId === 'string' && executionId.trim()) authorizedHumanExecutionIds.add(executionId.trim());
+                  const executionId = typeof body?.executionId === 'string' ? body.executionId.trim() : '';
+                  if (body?.workflowExecutionStart?.executionStatus === 'RUNNING' && executionId) {
+                    authorizedHumanExecutionIds.add(executionId);
+                  } else if (executionId) {
+                    authorizedHumanExecutionIds.delete(executionId);
+                  }
                 } catch {
-                  // A malformed upstream response will still be returned to the browser;
-                  // it must never create human-runtime access.
+                  // A malformed upstream response is returned unchanged but can
+                  // never create human-runtime access.
                 }
               }
             : undefined,
