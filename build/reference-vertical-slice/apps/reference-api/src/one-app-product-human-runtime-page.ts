@@ -13,9 +13,17 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
   function jsonBody(init){if(!init||typeof init.body!=='string')return null;try{return JSON.parse(init.body)}catch(_){return null}}
   function pathOf(input){try{return new URL(typeof input==='string'?input:input.url,window.location.href).pathname}catch(_){return ''}}
   async function responseJson(response){try{return await response.clone().json()}catch(_){return null}}
-  function setExecution(message,kind){var node=el('executionState');if(!node)return;node.textContent=message;node.className='status '+(kind||'')}
+  function setExecution(message,kind){var node=el('executionState');if(node){node.textContent=message;node.className='status '+(kind||'')}}
   function setEvidence(value){var node=el('executionEvidence');if(node)node.textContent=typeof value==='string'?value:JSON.stringify(value,null,2)}
-  function humanBox(){var existing=el('humanRuntimeTask');if(existing)return existing;var card=el('executeCard');if(!card)return null;var box=document.createElement('div');box.id='humanRuntimeTask';box.className='requirement hidden';var evidence=el('executionEvidence');var heading=evidence&&evidence.previousElementSibling;if(heading)card.insertBefore(box,heading);else card.appendChild(box);return box}
+  function ensureExecuteCardVisible(){var card=el('executeCard');if(card)card.classList.remove('hidden');return card}
+  function humanBox(){
+    var existing=el('humanRuntimeTask');if(existing)return existing;
+    var card=ensureExecuteCardVisible();
+    var host=card||document.querySelector('main')||document.body;
+    var box=document.createElement('div');box.id='humanRuntimeTask';box.className='requirement hidden';
+    if(card){var evidence=el('executionEvidence');var heading=evidence&&evidence.previousElementSibling;if(heading)card.insertBefore(box,heading);else card.appendChild(box)}else host.appendChild(box);
+    return box;
+  }
 
   function activityCapabilityUseRefs(){
     var refs=new Set();
@@ -42,12 +50,42 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     }
     if(path==='/api/automation/execution/approve'&&response.ok){
       var body=await responseJson(response);
-      if(body&&body.workflowExecutionApproval&&request){
-        approvedStart={approval:body.workflowExecutionApproval,request:request};
-      }
+      if(body&&body.workflowExecutionApproval&&request){approvedStart={approval:body.workflowExecutionApproval,request:request}}
     }
     return response;
   };
+
+  function renderTerminalObservation(observation,recovered){
+    if(!observation)return;
+    terminal=true;if(pollTimer)clearTimeout(pollTimer);
+    var box=humanBox();
+    box.className='requirement';
+    box.innerHTML='<strong>Workflow terminal'+(recovered?' · recovered after restart':'')+'</strong><small>Immutable Temporal execution evidence is persisted. No new workflow-start authority was created.</small>';
+    var truth=el('truthExecution');if(truth)truth.textContent=observation.executionStatus+' · '+observation.workflowIdRef;
+    var step=el('pexecute');if(step)step.className='pstep done';
+    setExecution('Temporal Workflow '+String(observation.executionStatus).toLowerCase()+' with durable execution evidence.','good');
+    setEvidence(observation);
+  }
+
+  function renderRecoveryChoices(executionIds){
+    if(!executionIds||!executionIds.length)return;
+    var existing=el('recoveredExecutionPanel');if(existing)existing.remove();
+    var host=document.querySelector('main')||document.body;
+    var panel=document.createElement('section');panel.id='recoveredExecutionPanel';panel.className='card';
+    var title=document.createElement('h2');title.textContent='Recovered Temporal execution';
+    var note=document.createElement('p');note.textContent='Talos found a previously approved Workflow still running in Temporal. Resume it without repeating source intake, confirmation, deployment, or workflow-start approval.';
+    panel.append(title,note);
+    executionIds.forEach(function(executionId){
+      var button=document.createElement('button');button.className='good';button.textContent='Resume '+executionId;
+      button.onclick=function(){
+        activeExecutionId=executionId;terminal=false;ensureExecuteCardVisible();humanBox();
+        setExecution('Recovered approved Workflow. Reading its current Temporal state…','warn');
+        poll(executionId);
+      };
+      panel.appendChild(button);
+    });
+    host.insertBefore(panel,host.firstChild||null);
+  }
 
   async function getRuntimeProfile(){
     try{
@@ -58,6 +96,7 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
         var limit=el('runtimeLimit');
         if(limit){limit.textContent='Human runtime enabled · human work stays Workflow-native; UPDATE/SIGNAL outcomes are validated against the frozen approved design.';limit.className='status good'}
       }
+      if(profile.executionRecoveryAvailable)renderRecoveryChoices(profile.recoveredActiveExecutionIds||[]);
     }catch(_){/* base page owns runtime errors */}
   }
 
@@ -86,6 +125,7 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
           meta.textContent='Temporal accepted submission '+body.receipt.submissionId+'. Workflow is resuming deterministically.';
           actions.innerHTML='';
           setExecution('Human outcome accepted. Temporal is resuming the approved workflow…','good');
+          if(body.recovery&&body.recovery.state==='TERMINAL'&&body.recovery.observation)renderTerminalObservation(body.recovery.observation,true);
         }catch(error){
           setExecution(error instanceof Error?error.message:String(error),'bad');
           Array.from(actions.querySelectorAll('button')).forEach(function(b){b.disabled=false});
@@ -102,11 +142,12 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     try{
       var response=await nativeFetch('/api/product/execution/state?executionId='+encodeURIComponent(executionId));
       var body=await response.json();
+      if(response.ok&&body.terminalObservation){renderTerminalObservation(body.terminalObservation,Boolean(body.recovered));return}
       if(response.ok&&body.runtimeState){
         renderHumanTask(executionId,body.runtimeState);
         if(body.runtimeState.status==='RUNNING')setExecution(body.runtimeState.pendingHumanTask?'Workflow is waiting for your explicit human outcome.':'Workflow is RUNNING in Temporal.','warn');
       }
-    }catch(_){/* Workflow may not be queryable during the first task activation; retry. */}
+    }catch(_){/* Temporal may be between activation/close transitions; retry. */}
     if(!terminal&&activeExecutionId===executionId)pollTimer=setTimeout(function(){poll(executionId)},400);
   }
 
@@ -118,29 +159,14 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     activeExecutionId=executionId;terminal=false;
     var button=el('startExecution');if(button)button.disabled=true;
     setExecution('Starting the exact approved Temporal Workflow…','');
-    var startPayload={
-      workflowExecutionApprovalId:approval.id,
-      deploymentRevisionId:approval.deploymentRevisionRef,
-      executionId:executionId,
-      facts:request.facts||{},
-      capabilityInputs:request.capabilityInputs||{}
-    };
+    var startPayload={workflowExecutionApprovalId:approval.id,deploymentRevisionId:approval.deploymentRevisionRef,executionId:executionId,facts:request.facts||{},capabilityInputs:request.capabilityInputs||{}};
     poll(executionId);
     try{
       var response=await nativeFetch('/api/automation/execution/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(startPayload)});
       var body=await response.json();
       if(!response.ok)throw new Error(body.error||('HTTP '+response.status));
-      terminal=true;if(pollTimer)clearTimeout(pollTimer);
       var observation=body.workflowExecutionObservation;
-      var box=humanBox();if(box){box.className='requirement';box.innerHTML='<strong>Workflow terminal</strong><small>The human/runtime coordination is closed and immutable terminal evidence is persisted.</small>'}
-      if(observation){
-        var truth=el('truthExecution');if(truth)truth.textContent=observation.executionStatus+' · '+observation.workflowIdRef;
-        var step=el('pexecute');if(step)step.className='pstep done';
-        setExecution('Temporal Workflow '+observation.executionStatus.toLowerCase()+' with durable execution evidence.','good');
-        setEvidence(observation);
-      }else{
-        setExecution('Workflow returned without a terminal observation.','bad');setEvidence(body);
-      }
+      if(observation)renderTerminalObservation(observation,false);else{terminal=true;if(pollTimer)clearTimeout(pollTimer);setExecution('Workflow returned without a terminal observation.','bad');setEvidence(body)}
     }catch(error){
       terminal=true;if(pollTimer)clearTimeout(pollTimer);
       setExecution(error instanceof Error?error.message:String(error),'bad');
@@ -152,9 +178,7 @@ export const ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT = String.raw`
     getRuntimeProfile();
     humanBox();
     var start=el('startExecution');
-    if(start){
-      start.addEventListener('click',function(event){event.preventDefault();event.stopImmediatePropagation();startApprovedExecution()},true);
-    }
+    if(start)start.addEventListener('click',function(event){event.preventDefault();event.stopImmediatePropagation();startApprovedExecution()},true);
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
