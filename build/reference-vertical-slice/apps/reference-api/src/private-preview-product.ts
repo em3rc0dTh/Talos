@@ -228,8 +228,8 @@ export async function startTalosPrivatePreviewProduct(
       await product.close();
       await workerRecovery?.close();
       await operator.close();
-      await humanRuntimeControl?.close().catch(() => undefined);
-      await runtimeAdapters?.close().catch(() => undefined);
+      await humanRuntimeControl?.close();
+      await runtimeAdapters?.close();
     },
   };
 }
@@ -258,15 +258,20 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     await app.close();
-    process.exit(0);
   };
-  process.once('SIGINT', () => void stop());
-  process.once('SIGTERM', () => void stop());
+  const onSignal = () => {
+    stop().then(() => process.exit(0), (error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   main().catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    console.error(error);
     process.exit(1);
   });
 }
