@@ -30,8 +30,9 @@ import {
 } from '../../../workers/reference-temporal-worker/src/generic-activities.ts';
 import type { GenericCapabilityActivityInput } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
+import { buildOneAppHumanRuntimeSnapshots } from './private-preview-human-runtime.ts';
 
-export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.2';
+export const TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION = 'talos-product-temporal-runtime-v0.3';
 export const TALOS_PRODUCT_WORKFLOW_TYPE = 'TalosGenericWorkflow';
 export const TALOS_PRODUCT_ACTIVITY_TYPE = 'executeGenericCapability';
 export const TALOS_PRODUCT_SDK_VERSION = '1.22.0';
@@ -122,17 +123,20 @@ function waitDurationMs(context: OneAppAutomationContext, executionElementId: st
   return { durationMs, sourceRef: semanticNode.id };
 }
 
-/** Build runtime semantics from the exact confirmed Canonical process only. */
+/** Build runtime semantics only from the exact confirmed/approved lineage. */
 export function buildOneAppRuntimeSemanticSnapshot(context: OneAppAutomationContext): GenericRuntimeSemanticSnapshot {
   if (!context.executionReview) throw new TypeError('TALOS_RUNTIME_EXECUTION_PLAN_REQUIRED: runtime semantic snapshot needs an ExecutionPlan');
   const conditionRules = context.process.rules.map((rule) => ({ ref: rule.id, expression: rule.expression }));
   const waits = context.executionReview.execution.elements
     .filter((element) => element.kind === 'WAIT_COORDINATION')
     .map((element) => ({ executionElementRef: element.id, ...waitDurationMs(context, element.id) }));
+  const humans = buildOneAppHumanRuntimeSnapshots(context);
+  const material = humans.length > 0
+    ? { conditionRules, waits, humans }
+    : { conditionRules, waits };
   return {
-    conditionRules,
-    waits,
-    snapshotDigest: digestDeterministicJson({ conditionRules, waits }),
+    ...material,
+    snapshotDigest: digestDeterministicJson(material),
   };
 }
 
@@ -370,6 +374,11 @@ export function createTalosProductTemporalRuntimeAdapters(
         `runtime-program:${active.program.programDigest}`,
         `started:${startedAt}`,
         `outcome:${result.outcome}`,
+        ...(result.humanSubmissions ?? []).flatMap((submission) => [
+          `human-submission:${submission.submissionId}`,
+          `human-outcome:${submission.outcomeCode}`,
+          `human-element:${submission.executionElementRef}`,
+        ]),
         ...effectEvidence,
       ],
     };
