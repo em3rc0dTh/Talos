@@ -158,14 +158,7 @@ function resolveRecoveredBindings(
   return invocationRefs.map((capabilityUseOccurrenceRef) => {
     const implementationRef = byUse.get(capabilityUseOccurrenceRef);
     if (!implementationRef) throw new TypeError(`TALOS_WORKER_RECOVERY_IMPLEMENTATION_BINDING_MISSING: ${capabilityUseOccurrenceRef}`);
-    // The concrete product resolver dispatches only from the exact persisted
-    // implementationRef. Recovery intentionally has no mutable One-App design
-    // context and cannot reinterpret business labels.
-    const transport = resolver.resolve({
-      context: undefined as any,
-      capabilityUseOccurrenceRef,
-      implementationRef,
-    });
+    const transport = resolver.resolve({ capabilityUseOccurrenceRef, implementationRef });
     if (!transport) throw new TypeError(`TALOS_WORKER_RECOVERY_TRANSPORT_UNRESOLVED: ${implementationRef}`);
     return { capabilityUseOccurrenceRef, implementationRef, transport };
   });
@@ -199,7 +192,6 @@ export function createTalosProductWorkerRecovery(
     });
 
     const resolved = records.flatMap((record) => resolveRecoveredBindings(record, capabilityTransportResolver));
-    // Validate the full merged dispatch table before mutating a live Worker.
     const candidate = new RecoveryCapabilityDispatchTransport();
     for (const binding of resolved) candidate.add(binding.capabilityUseOccurrenceRef, binding.implementationRef, binding.transport);
 
