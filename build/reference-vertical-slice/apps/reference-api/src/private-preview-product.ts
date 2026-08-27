@@ -18,8 +18,13 @@ import {
   createTalosProductHumanRuntimeControl,
   type TalosProductHumanRuntimeControl,
 } from './private-preview-human-control.ts';
+import {
+  createTalosProductExecutionRecovery,
+  createTalosTemporalExecutionInspector,
+  type TalosProductExecutionRecovery,
+} from './private-preview-execution-recovery.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.3';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.4';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -63,16 +68,18 @@ export async function startTalosPrivatePreviewProduct(
   const start = binding.createStartConfiguration();
   let runtimeAdapters: TalosManagedTemporalRuntimeAdapters | undefined;
   let humanRuntimeControl: TalosProductHumanRuntimeControl | undefined;
+  const temporalTarget = binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION'
+    ? binding.descriptor.temporalTarget
+    : undefined;
 
   if (binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION') {
-    const target = binding.descriptor.temporalTarget;
-    if (!target) throw new TypeError('TALOS_PRODUCT_TEMPORAL_TARGET_REQUIRED');
-    runtimeAdapters = createTalosProductTemporalRuntimeAdapters(target, {
+    if (!temporalTarget) throw new TypeError('TALOS_PRODUCT_TEMPORAL_TARGET_REQUIRED');
+    runtimeAdapters = createTalosProductTemporalRuntimeAdapters(temporalTarget, {
       capabilityTransportResolver: createTalosProductCapabilityTransportResolver(env),
     });
     try {
       await runtimeAdapters.assertReachable();
-      humanRuntimeControl = createTalosProductHumanRuntimeControl(target);
+      humanRuntimeControl = createTalosProductHumanRuntimeControl(temporalTarget);
     } catch (error) {
       await runtimeAdapters.close();
       throw error;
@@ -81,11 +88,18 @@ export async function startTalosPrivatePreviewProduct(
 
   let operator: Awaited<ReturnType<typeof startTalosPrivatePreviewOperator>> | undefined;
   let product: Awaited<ReturnType<typeof startTalosOneAppProduct>> | undefined;
+  let executionRecovery: TalosProductExecutionRecovery | undefined;
   try {
     operator = await startTalosPrivatePreviewOperator(env, {
       ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
       ...(runtimeAdapters ? { runtimeAdapters } : {}),
     });
+    if (temporalTarget) {
+      executionRecovery = createTalosProductExecutionRecovery(
+        operator.runtimeDir,
+        createTalosTemporalExecutionInspector(temporalTarget),
+      );
+    }
     const artifact = workerArtifact();
     product = await startTalosOneAppProduct({
       port: productPort(env, options.productPort),
@@ -103,6 +117,7 @@ export async function startTalosPrivatePreviewProduct(
         humanRuntimeControl,
         humanRuntimeActorId: binding.descriptor.actorId,
       } : {}),
+      ...(executionRecovery ? { executionRecovery } : {}),
       runtimeProfile: {
         launcherVersion: TALOS_PRODUCT_LAUNCHER_VERSION,
         workspaceId: binding.descriptor.workspaceId,
@@ -111,6 +126,7 @@ export async function startTalosPrivatePreviewProduct(
         imageMode: binding.descriptor.imageMode,
         temporalExecutionAvailable: Boolean(runtimeAdapters),
         humanRuntimeAvailable: Boolean(humanRuntimeControl),
+        executionRecoveryAvailable: Boolean(executionRecovery),
         ...(binding.descriptor.imageProvider ? { imageProvider: binding.descriptor.imageProvider } : {}),
         ...(binding.descriptor.temporalTarget ? {
           temporal: {
@@ -131,6 +147,7 @@ export async function startTalosPrivatePreviewProduct(
     });
   } catch (error) {
     await product?.close().catch(() => undefined);
+    if (!product) await executionRecovery?.close().catch(() => undefined);
     await operator?.close().catch(() => undefined);
     await humanRuntimeControl?.close().catch(() => undefined);
     await runtimeAdapters?.close().catch(() => undefined);
@@ -144,9 +161,11 @@ export async function startTalosPrivatePreviewProduct(
     runtimeDir: operator.runtimeDir,
     runtimeDescriptor: binding.descriptor,
     recoveryBeforeStart: operator.recoveryBeforeStart,
+    executionRecoveryBeforeServe: product.recoveryBeforeServe,
     async close() {
       if (closed) return;
       closed = true;
+      // Product owns the execution-recovery inspector lifecycle once started.
       await product.close();
       await operator.close();
       await humanRuntimeControl?.close();
@@ -167,6 +186,8 @@ async function main(): Promise<void> {
     imageMode: app.runtimeDescriptor.imageMode,
     temporalExecutionAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
     humanRuntimeAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
+    executionRecoveryAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
+    recoveredActiveExecutionCount: app.executionRecoveryBeforeServe?.activeExecutionIds.length ?? 0,
     secretMaterialExposed: false,
   }, null, 2)}\n`);
 
