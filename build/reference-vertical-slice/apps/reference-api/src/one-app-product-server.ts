@@ -9,6 +9,11 @@ import {
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT } from './one-app-product-human-runtime-page.ts';
 import type { TalosProductHumanRuntimeControl } from './private-preview-human-control.ts';
+import type {
+  TalosExecutionRecoveryItem,
+  TalosExecutionRecoveryResult,
+  TalosProductExecutionRecovery,
+} from './private-preview-execution-recovery.ts';
 
 export interface TalosProductUpstream {
   baseUrl: string;
@@ -25,6 +30,7 @@ export interface TalosOneAppProductOptions {
   runtimeProfile?: Readonly<Record<string, unknown>>;
   humanRuntimeControl?: TalosProductHumanRuntimeControl;
   humanRuntimeActorId?: string;
+  executionRecovery?: TalosProductExecutionRecovery;
 }
 
 const MAX_PROXY_BYTES = 24 * 1024 * 1024;
@@ -100,8 +106,9 @@ async function proxy(
  *
  * Human runtime control is narrower than general API proxying: it may query or
  * submit only execution IDs observed from a successful protected execution
- * approval response, and it binds the configured private-preview actor on the
- * server. It never starts a Workflow and never creates execution authority.
+ * approval response or recovered from durable approval + actually observed
+ * Temporal execution evidence. Recovery never creates new workflow-start
+ * authority and never chooses a human outcome.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   if (options.upstream && options.oneApp) {
@@ -109,6 +116,9 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
   }
   if (options.humanRuntimeControl && !options.humanRuntimeActorId?.trim()) {
     throw new TypeError('R1_PRODUCT_HUMAN_ACTOR_REQUIRED: human runtime control requires the configured private-preview actor');
+  }
+  if (options.executionRecovery && !options.humanRuntimeControl) {
+    throw new TypeError('R1_PRODUCT_RECOVERY_CONTROL_REQUIRED: execution recovery requires the Temporal human/runtime control surface');
   }
   const host = options.host ?? '127.0.0.1';
   const embedded = options.upstream ? undefined : await startTalosOneApp({
@@ -122,6 +132,17 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     close: () => embedded!.close(),
   };
   const authorizedHumanExecutionIds = new Set<string>();
+  let recoveryBeforeServe: TalosExecutionRecoveryResult | undefined;
+  try {
+    if (options.executionRecovery) {
+      recoveryBeforeServe = await options.executionRecovery.reconcileAll();
+      for (const executionId of recoveryBeforeServe.activeExecutionIds) authorizedHumanExecutionIds.add(executionId);
+    }
+  } catch (error) {
+    await upstream.close?.();
+    await options.executionRecovery?.close().catch(() => undefined);
+    throw error;
+  }
   const runtimeProfile = {
     ...(options.runtimeProfile ?? {
       runtimeMode: 'DESIGN_ONLY',
@@ -129,10 +150,20 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       secretMaterialExposed: false,
     }),
     humanRuntimeAvailable: Boolean(options.humanRuntimeControl),
+    executionRecoveryAvailable: Boolean(options.executionRecovery),
+    recoveredActiveExecutionCount: recoveryBeforeServe?.activeExecutionIds.length ?? 0,
   };
   const productPage = options.humanRuntimeControl
     ? ONE_APP_PRODUCT_PAGE.replace('</body>', '<script src="/talos-product-human-runtime.js"></script></body>')
     : ONE_APP_PRODUCT_PAGE;
+
+  async function reconcileForAccess(executionId: string): Promise<TalosExecutionRecoveryItem | undefined> {
+    if (!options.executionRecovery) return undefined;
+    const recovered = await options.executionRecovery.reconcileExecution(executionId);
+    if (recovered.state === 'RUNNING') authorizedHumanExecutionIds.add(executionId);
+    if (recovered.state === 'TERMINAL') authorizedHumanExecutionIds.delete(executionId);
+    return recovered;
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -165,13 +196,34 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         json(res, 200, runtimeProfile);
         return;
       }
+      if (req.method === 'GET' && url.pathname === '/api/product/execution/recovery') {
+        if (!options.executionRecovery) throw new TypeError('R1_PRODUCT_EXECUTION_RECOVERY_UNAVAILABLE');
+        const executionId = required(url.searchParams.get('executionId'), 'executionId');
+        json(res, 200, await reconcileForAccess(executionId));
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/product/execution/state') {
         if (!options.humanRuntimeControl) throw new TypeError('R1_PRODUCT_HUMAN_RUNTIME_UNAVAILABLE');
         const executionId = required(url.searchParams.get('executionId'), 'executionId');
-        if (!authorizedHumanExecutionIds.has(executionId)) {
-          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval');
+        let recovered: TalosExecutionRecoveryItem | undefined;
+        if (!authorizedHumanExecutionIds.has(executionId)) recovered = await reconcileForAccess(executionId);
+        if (recovered?.state === 'TERMINAL') {
+          json(res, 200, { terminalObservation: recovered.observation, recovered: true });
+          return;
         }
-        json(res, 200, await options.humanRuntimeControl.getState(executionId));
+        if (!authorizedHumanExecutionIds.has(executionId)) {
+          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval or recovered live Temporal execution');
+        }
+        try {
+          json(res, 200, await options.humanRuntimeControl.getState(executionId));
+        } catch (error) {
+          const terminal = await reconcileForAccess(executionId);
+          if (terminal?.state === 'TERMINAL') {
+            json(res, 200, { terminalObservation: terminal.observation, recovered: true });
+            return;
+          }
+          throw error;
+        }
         return;
       }
       if (req.method === 'POST' && url.pathname === '/api/product/execution/human-outcome') {
@@ -179,7 +231,11 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const input = parseJsonBuffer(await readBody(req));
         const executionId = required(input.executionId, 'executionId');
         if (!authorizedHumanExecutionIds.has(executionId)) {
-          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval');
+          const recovered = await reconcileForAccess(executionId);
+          if (recovered?.state === 'TERMINAL') throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_TERMINAL: Workflow is already terminal');
+        }
+        if (!authorizedHumanExecutionIds.has(executionId)) {
+          throw new TypeError('R1_PRODUCT_HUMAN_EXECUTION_NOT_AUTHORIZED: executionId has no successful protected workflow-start approval or recovered live Temporal execution');
         }
         const actorRef = required(options.humanRuntimeActorId, 'humanRuntimeActorId');
         const result = await options.humanRuntimeControl.submitOutcome({
@@ -191,7 +247,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
           authorityRef: `authority:talos-product:human-outcome:${randomUUID()}`,
           ...(typeof input.rationale === 'string' && input.rationale.trim() ? { rationale: input.rationale.trim() } : {}),
         });
-        json(res, 201, result);
+        const recovery = options.executionRecovery ? await reconcileForAccess(executionId) : undefined;
+        json(res, 201, { ...result, ...(recovery ? { recovery } : {}) });
         return;
       }
       if (url.pathname.startsWith('/api/')) {
@@ -219,7 +276,7 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       json(res, 404, { error: 'not found', code: 'R1_PRODUCT_ROUTE_NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const conflict = /UNAVAILABLE|NOT_AUTHORIZED|requires|approval|not waiting|not allowed|mismatch|pending|active/i.test(message);
+      const conflict = /UNAVAILABLE|NOT_AUTHORIZED|TERMINAL|requires|approval|not waiting|not allowed|mismatch|pending|active|recovery/i.test(message);
       json(res, conflict ? 409 : 400, {
         error: message,
         code: conflict ? 'R1_PRODUCT_AUTHORITY_ORDER_VIOLATION' : 'R1_PRODUCT_REQUEST_REJECTED',
@@ -234,12 +291,14 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     });
   } catch (error) {
     await upstream.close?.();
+    await options.executionRecovery?.close().catch(() => undefined);
     throw error;
   }
 
   const address = server.address();
   if (!address || typeof address === 'string') {
     await upstream.close?.();
+    await options.executionRecovery?.close().catch(() => undefined);
     throw new Error('Talos R1 product server did not bind a TCP address');
   }
 
@@ -248,11 +307,13 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     baseUrl: `http://${host}:${address.port}`,
     innerBaseUrl: upstream.baseUrl,
     runtimeDir: upstream.runtimeDir,
+    recoveryBeforeServe,
     async close() {
       if (closed) return;
       closed = true;
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await upstream.close?.();
+      await options.executionRecovery?.close();
     },
   };
 }
