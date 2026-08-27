@@ -1,6 +1,6 @@
 # R1-11 — Field Trial Defect 01 — Blocked Native BPMN UX
 
-Status: **FIX IMPLEMENTED / RETEST REQUIRED**  
+Status: **FIX IMPLEMENTED / OWNER RETEST REQUIRED**  
 Observed during: **Talos 1.0 local Release Candidate field trial**  
 Source used by product owner: `Car-Wash.bpmn`  
 Observed mode: `DESIGN_ONLY`, image perception disabled
