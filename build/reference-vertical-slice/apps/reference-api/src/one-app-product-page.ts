@@ -275,6 +275,43 @@ const SOURCE_RECONCILIATION_GUARD_SCRIPT = String.raw`<script>
 })();
 </script>`;
 
+// Native BPMN is source truth; image interpretation is inferred meaning. The
+// base journey renderer predates that distinction and used one hard-coded
+// INFERRED badge. This thin product-shell correction keeps review truth truthful
+// without granting business confirmation or any later authority.
+const REVIEW_TRUTH_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  function byId(id){return document.getElementById(id)}
+  function applyReviewTruth(body){
+    if(!body||!body.revision||!body.reconciliation)return;
+    var process=body.reconciliation.processRevision||{};
+    var route=body.revision.sourceRoute;
+    var badge=byId('reviewBadge');
+    var inferred=byId('truthInferred');
+    if(route==='IMAGE_INTERPRETATION'){
+      if(badge&&String(badge.textContent||'').indexOf('CORRECTED')!==0){badge.textContent='INFERRED · NOT BUSINESS-CONFIRMED';badge.className='pill warn'}
+      if(inferred)inferred.textContent='Inferred review candidate '+String(process.id||'—');
+      return;
+    }
+    if(badge&&String(badge.textContent||'').indexOf('CORRECTED')!==0){badge.textContent='SOURCE TRUTH · NOT BUSINESS-CONFIRMED';badge.className='pill good'}
+    if(inferred)inferred.textContent='No inferred meaning · Canonical review derived from BPMN source truth';
+  }
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    return nativeFetch(input,init).then(function(response){
+      if(isReview&&response.ok){
+        response.clone().json().then(function(body){setTimeout(function(){applyReviewTruth(body)},0)}).catch(function(){});
+      }
+      return response;
+    });
+  };
+})();
+</script>`;
+
 const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
   PLAN_BLOCKER_MARKER,
   `${PLAN_BLOCKER_MARKER}${PLAN_DECISION_UI}`,
@@ -282,5 +319,5 @@ const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
 
 export const ONE_APP_PRODUCT_PAGE = withPlanDecisionUi.replace(
   '</body>',
-  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
+  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${REVIEW_TRUTH_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
 );
