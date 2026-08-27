@@ -28,6 +28,28 @@ async function startFakeAuthorityBackend() {
         authorizedWorkflowStartCount: 1,
       };
     }
+    if (req.method === 'POST' && url.pathname === '/api/automation/execution/start') {
+      status = 202;
+      payload = {
+        executionId: input.executionId,
+        workflowExecutionState: 'RUNNING',
+        workflowExecutionStart: {
+          id: 'observation:workflow-start-1',
+          workflowExecutionRef: `temporal:talos-${input.executionId}:run-1`,
+          workflowIdRef: `talos-${input.executionId}`,
+          runIdRef: 'run-1',
+          startingDeploymentRevisionRef: 'deployment:revision-1',
+          executionApprovalRef: input.workflowExecutionApprovalId,
+          executionInputDigest: 'sha256:test-input',
+          startedAt: '2026-08-27T03:10:00.000Z',
+          executionStatus: 'RUNNING',
+          evidenceRefs: ['temporal-status:RUNNING'],
+        },
+        workflowExecutionApprovalConsumed: true,
+        workflowStartWasExplicitlyAuthorized: true,
+        additionalWorkflowStartAuthorized: false,
+      };
+    }
     const body = JSON.stringify(payload);
     res.writeHead(status, {
       'content-type': 'application/json',
@@ -47,7 +69,7 @@ async function startFakeAuthorityBackend() {
   };
 }
 
-test('R1-08H product shell exposes human runtime only after protected execution approval and server-binds actor authority', async () => {
+test('R1-08H product shell exposes human runtime only after protected Workflow start evidence and server-binds actor authority', async () => {
   const upstream = await startFakeAuthorityBackend();
   const calls: any[] = [];
   const control: TalosProductHumanRuntimeControl = {
@@ -116,6 +138,7 @@ test('R1-08H product shell exposes human runtime only after protected execution 
     const enhancement = await (await fetch(`${product.baseUrl}/talos-product-human-runtime.js`)).text();
     assert.match(enhancement, /\/api\/product\/execution\/human-outcome/);
     assert.match(enhancement, /CAPABILITY_INVOCATION/);
+    assert.match(enhancement, /workflowExecutionState==='RUNNING'/);
 
     const beforeApproval = await fetch(`${product.baseUrl}/api/product/execution/state?executionId=RUN-001`);
     assert.equal(beforeApproval.status, 409);
@@ -138,6 +161,26 @@ test('R1-08H product shell exposes human runtime only after protected execution 
       }),
     });
     assert.equal(approvalResponse.status, 201);
+
+    const afterApprovalBeforeStart = await fetch(`${product.baseUrl}/api/product/execution/state?executionId=RUN-001`);
+    assert.equal(afterApprovalBeforeStart.status, 409, 'approval is authority to start, not proof that a Workflow exists');
+    assert.equal(calls.length, 0);
+
+    const startResponse = await fetch(`${product.baseUrl}/api/automation/execution/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        workflowExecutionApprovalId: 'deployment:workflow-approval-1',
+        deploymentRevisionId: 'deployment:revision-1',
+        executionId: 'RUN-001',
+        facts: {},
+        capabilityInputs: {},
+      }),
+    });
+    assert.equal(startResponse.status, 202);
+    const started = await startResponse.json();
+    assert.equal(started.workflowExecutionState, 'RUNNING');
+    assert.equal(started.workflowExecutionStart.executionStatus, 'RUNNING');
 
     const stateResponse = await fetch(`${product.baseUrl}/api/product/execution/state?executionId=RUN-001`);
     assert.equal(stateResponse.status, 200);
