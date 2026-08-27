@@ -180,7 +180,7 @@ export function reviewOneAppExecutionPlan(
   createdAt: string,
 ): OneAppAutomationContext {
   if (!context.selection) throw new TypeError('one-app ExecutionPlan review requires an explicit capability selection first');
-  const executionReview = openAutomationExecutionPlanReview(
+  const candidate = openAutomationExecutionPlanReview(
     context.process,
     context.scope,
     context.assessment,
@@ -190,6 +190,24 @@ export function reviewOneAppExecutionPlan(
     decisions,
     createdAt,
   );
+  const previous = context.executionReview;
+  if (previous && candidate.execution.revision.id === previous.execution.revision.id) {
+    return context;
+  }
+  const executionReview: AutomationExecutionPlanReviewBundle = previous
+    ? {
+        ...candidate,
+        execution: {
+          ...candidate.execution,
+          definition: previous.execution.definition,
+          revision: {
+            ...candidate.execution.revision,
+            revision: previous.execution.revision.revision + 1,
+            parentRevisionRefs: [previous.execution.revision.id],
+          },
+        },
+      }
+    : candidate;
   persistAutomationExecutionPlanReview(repo, executionReview);
   return { ...context, executionReview };
 }
