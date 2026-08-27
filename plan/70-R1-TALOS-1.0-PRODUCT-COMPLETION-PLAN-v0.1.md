@@ -1,6 +1,6 @@
 # TALOS — R1 Product Completion Plan v0.2
 
-Status: **R1-11 ACTIVE — r7 FIELD CANDIDATE READY / RELEASE CERTIFICATION PENDING**  
+Status: **R1-11 ACTIVE — DOMAIN-AGNOSTIC FIELD MATRIX / RELEASE CERTIFICATION PENDING**  
 Target: **TALOS 1.0 PRODUCT READY**  
 Started: **2026-08-25**  
 Base release: `009b266bbfc7d82218ba613bedf1ef14af0159fc` — Talos v0.1 Private Technical Preview certification
@@ -106,7 +106,7 @@ Requirements, suggestions, accept/replace/reject/defer decisions and explicit ca
 
 ExecutionPlan blockers are visible. Subprocess/relation treatment requires explicit decisions. Automation approval pins the reviewed plan.
 
-During R1-11 field use, the blocked-plan rebuild path exposed an immutable-definition persistence defect. The repair now preserves one stable `ExecutionPlanDefinition`, creates append-only child `ExecutionPlanRevision` lineage after changed execution-design decisions, preserves the original capability bindings, and treats an identical repeated rebuild as idempotent. Dedicated local regressions are 2/2 PASS; real-user r7 confirmation remains part of R1-11.
+During R1-11 field use, the blocked-plan rebuild path exposed an immutable-definition persistence defect. The repair now preserves one stable `ExecutionPlanDefinition`, creates append-only child `ExecutionPlanRevision` lineage after changed execution-design decisions, preserves the original capability bindings, and treats an identical repeated rebuild as idempotent. Dedicated local regressions are 2/2 PASS; real-user confirmation remains part of R1-11.
 
 ### R1-07 — Runtime / deployment / execution authority — **IMPLEMENTED**
 
@@ -165,28 +165,52 @@ The guided One-App product surface covers:
 
 Raw evidence remains available as detail rather than replacing the normal guided product interaction.
 
-### R1-11 — Field trials — **ACTIVE / r7 REAL-USER RETEST READY**
+### R1-11 — Field trials — **ACTIVE / DOMAIN-AGNOSTIC STRUCTURAL MATRIX**
 
-This gate intentionally cannot be replaced by fixtures. At least one real non-fixture business process must complete the normal product journey.
+This gate intentionally cannot be replaced by fixtures, and one successful business process is no longer sufficient evidence of product agnosticism.
+
+Talos must be exercised against materially different execution structures. The release matrix requires evidence for:
+
+1. human-dominant coordination;
+2. straight-through system / Activity execution;
+3. mixed human + external-effect execution;
+4. durable wait / branching / non-trivial coordination.
+
+A single process may cover multiple categories only when the evidence independently exercises each structural behavior. A single uploaded source cannot be the only field-trial witness for Talos 1.0.
 
 Current field-trial evidence:
 
-- the product owner is using the genuine `Car-Wash.bpmn` process rather than a Talos fixture;
+- the first genuine non-fixture BPMN remains a defect-discovery witness, not an implementation template;
 - Field Defect 01 exposed misleading UX when native BPMN reconciliation was blocked; the repair preserves the source, surfaces concrete diagnostics and keeps correction available without manufacturing review/authority;
-- the later r6 journey advanced to ExecutionPlan review and exposed Field Defect 02: `Rebuild ExecutionPlan` attempted to rewrite an immutable plan definition instead of appending a child revision;
+- a later journey advanced to ExecutionPlan review and exposed Field Defect 02: `Rebuild ExecutionPlan` attempted to rewrite an immutable plan definition instead of appending a child revision;
 - Defect 02 repair code baseline: `ad3b67dbd3d35b81dbdb059e8ff429ec9ebf561d`;
-- product owner local executable receipt for the repair: **2 tests / 2 pass / 0 fail**;
-- repaired launcher identity: `talos-private-preview-product-v0.9`;
-- next real-user candidate: **r7**, with a fresh `.runtime-local-release-r7` directory while preserving r6 evidence unchanged.
+- product-owner local executable receipt for the Defect 02 repair: **2 tests / 2 pass / 0 fail**;
+- Field Defect 03 exposed a generic product-shell classification error: the RuntimePolicy preview treated all capability uses as Temporal Activities even when the approved mapping contained Workflow-native human coordination;
+- Defect 03 repair derives exact Activity policy subjects from approved Temporal `ACTIVITY` mapping units, leaving human/wait coordination Workflow-native and keeping the backend fail-closed;
+- the Defect 03 regression is explicitly domain-neutral and covers human-only, mixed Activity + human/wait, and missing-Activity-policy fail-closed behavior;
+- repaired launcher identity remains `talos-private-preview-product-v0.9` unless a later launcher-only version receipt supersedes it.
 
 Evidence records:
 
 - `test/103-R1-11-FIELD-TRIAL-DEFECT-01-BLOCKED-BPMN-UX-v0.1.md`;
 - `test/103-R1-11-FIELD-TRIAL-DEFECT-02-EXECUTION-PLAN-REBUILD-CLOSURE-v0.1.md`;
+- `test/104-R1-11-FIELD-TRIAL-DEFECT-03-RUNTIME-POLICY-ACTIVITY-BOUNDARY-v0.1.md`;
+- `test/104-R1-11-DOMAIN-AGNOSTIC-FIELD-MATRIX-v0.1.md`;
 - `test/103-R1-11-R7-FIELD-TRIAL-CANDIDATE-v0.1.md`;
 - `test/103-TALOS-1.0-REAL-USER-FIELD-TRIAL-RUNBOOK-v0.1.md`.
 
-R1-11 remains open until the non-fixture journey completes its supported path without a release-blocking defect. A fixture manufactured to pass this gate is forbidden.
+Anti-overfit rule:
+
+```text
+known process name
+known task label
+known actor label
+fixture / revision identity
+```
+
+must never select engine/runtime behavior. Repairs are justified by generic semantic and runtime contracts and regressed with structurally different examples.
+
+R1-11 remains open until the structural field matrix completes its supported paths without an unresolved P0/P1/P2 release blocker. A fixture or process-specific special case manufactured to pass this gate is forbidden.
 
 ### R1-12 — Talos 1.0 release certification — **PENDING EXECUTABLE EXACT-SHA RECEIPT**
 
@@ -222,10 +246,10 @@ Local executable receipts may close specific defects, but they do not substitute
 
 R1 is evidence-gated, not percentage-gated.
 
-The implementation portion of R1-01 through R1-10 is complete on the active candidate branch. R1-11 is now an active real-user field trial. Talos becomes **1.0 PRODUCT READY** only when both remaining external evidence gates close:
+The implementation portion of R1-01 through R1-10 is complete on the active candidate branch. R1-11 is now an active domain-agnostic structural field matrix. Talos becomes **1.0 PRODUCT READY** only when both remaining external evidence gates close:
 
 ```text
-R1-11 real-user non-fixture field trial
+R1-11 domain-agnostic structural field matrix
 +
 R1-12 executable exact-SHA certification
 ```
