@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveTalosPrivatePreviewRuntimeBinding } from './private-preview-config.ts';
-import { startTalosPrivatePreviewOperator } from './private-preview-operator.ts';
+import {
+  resolveTalosPrivatePreviewRuntimeDir,
+  startTalosPrivatePreviewOperator,
+} from './private-preview-operator.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
 import { createTalosProductCapabilityTransportResolver } from './private-preview-capability-transports.ts';
 import {
@@ -13,6 +16,7 @@ import {
   TALOS_PRODUCT_TEMPORAL_RUNTIME_VERSION,
   TALOS_PRODUCT_WORKFLOW_TYPE,
   type TalosManagedTemporalRuntimeAdapters,
+  type TalosProductCapabilityTransportResolver,
 } from './private-preview-temporal-runtime.ts';
 import {
   createTalosProductHumanRuntimeControl,
@@ -24,8 +28,15 @@ import {
   type TalosExecutionRecoveryResult,
   type TalosProductExecutionRecovery,
 } from './private-preview-execution-recovery.ts';
+import { createTalosProductRuntimeRegistry, type TalosProductRuntimeRegistry } from './private-preview-runtime-registry.ts';
+import {
+  createTalosProductWorkerRecovery,
+  persistTalosProductRuntimeManifest,
+  type TalosProductWorkerRecovery,
+} from './private-preview-worker-recovery.ts';
+import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.5';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.6';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -67,17 +78,33 @@ export async function startTalosPrivatePreviewProduct(
 ) {
   const binding = resolveTalosPrivatePreviewRuntimeBinding(env);
   const start = binding.createStartConfiguration();
+  const runtimeDir = resolveTalosPrivatePreviewRuntimeDir(env);
   let runtimeAdapters: TalosManagedTemporalRuntimeAdapters | undefined;
+  let operatorRuntimeAdapters: TalosPrivatePreviewRuntimeAdapters | undefined;
   let humanRuntimeControl: TalosProductHumanRuntimeControl | undefined;
+  let capabilityTransportResolver: TalosProductCapabilityTransportResolver | undefined;
+  let runtimeRegistry: TalosProductRuntimeRegistry | undefined;
   const temporalTarget = binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION'
     ? binding.descriptor.temporalTarget
     : undefined;
 
   if (binding.descriptor.runtimeMode === 'TEMPORAL_EXECUTION') {
     if (!temporalTarget) throw new TypeError('TALOS_PRODUCT_TEMPORAL_TARGET_REQUIRED');
+    capabilityTransportResolver = createTalosProductCapabilityTransportResolver(env);
+    runtimeRegistry = createTalosProductRuntimeRegistry(runtimeDir);
     runtimeAdapters = createTalosProductTemporalRuntimeAdapters(temporalTarget, {
-      capabilityTransportResolver: createTalosProductCapabilityTransportResolver(env),
+      capabilityTransportResolver,
     });
+    operatorRuntimeAdapters = {
+      deploymentAttemptExecutor: async (input) => {
+        // Recovery material is not authority. Persist it before the attempt so a
+        // crash after Worker start cannot strand a live Temporal Workflow without
+        // the exact program needed to rehydrate its Worker.
+        persistTalosProductRuntimeManifest(runtimeRegistry!, input.context, temporalTarget, input.startedAt);
+        return runtimeAdapters!.deploymentAttemptExecutor(input);
+      },
+      workflowExecutionExecutor: (input) => runtimeAdapters!.workflowExecutionExecutor(input),
+    };
     try {
       await runtimeAdapters.assertReachable();
       humanRuntimeControl = createTalosProductHumanRuntimeControl(temporalTarget);
@@ -90,18 +117,35 @@ export async function startTalosPrivatePreviewProduct(
   let operator: Awaited<ReturnType<typeof startTalosPrivatePreviewOperator>> | undefined;
   let product: Awaited<ReturnType<typeof startTalosOneAppProduct>> | undefined;
   let executionRecovery: TalosProductExecutionRecovery | undefined;
+  let workerRecovery: TalosProductWorkerRecovery | undefined;
   let preflightExecutionRecovery: TalosExecutionRecoveryResult | undefined;
+  let workerRecoveryResult: Awaited<ReturnType<TalosProductWorkerRecovery['recover']>> | undefined;
   try {
     operator = await startTalosPrivatePreviewOperator(env, {
       ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
-      ...(runtimeAdapters ? { runtimeAdapters } : {}),
+      ...(operatorRuntimeAdapters ? { runtimeAdapters: operatorRuntimeAdapters } : {}),
     });
-    if (temporalTarget) {
+    if (temporalTarget && runtimeRegistry && capabilityTransportResolver) {
       executionRecovery = createTalosProductExecutionRecovery(
         operator.runtimeDir,
         createTalosTemporalExecutionInspector(temporalTarget),
       );
       preflightExecutionRecovery = await executionRecovery.reconcileAll();
+      const activeDeploymentRevisionIds = [...new Set(
+        preflightExecutionRecovery.items
+          .filter((item) => item.state === 'RUNNING')
+          .map((item) => item.start?.startingDeploymentRevisionRef)
+          .filter((item): item is string => Boolean(item)),
+      )];
+      workerRecovery = createTalosProductWorkerRecovery(
+        temporalTarget,
+        runtimeRegistry,
+        capabilityTransportResolver,
+      );
+      workerRecoveryResult = await workerRecovery.recover(activeDeploymentRevisionIds);
+      if (workerRecoveryResult.recoveredDeploymentRevisionIds.length !== activeDeploymentRevisionIds.length) {
+        throw new TypeError('TALOS_PRODUCT_WORKER_RECOVERY_INCOMPLETE');
+      }
     }
     const artifact = workerArtifact();
     product = await startTalosOneAppProduct({
@@ -132,6 +176,7 @@ export async function startTalosPrivatePreviewProduct(
         executionRecoveryAvailable: Boolean(executionRecovery),
         recoveredActiveExecutionIds: [...(preflightExecutionRecovery?.activeExecutionIds ?? [])],
         recoveredTerminalExecutionIds: [...(preflightExecutionRecovery?.terminalExecutionIds ?? [])],
+        recoveredWorkerDeploymentRevisionIds: [...(workerRecoveryResult?.recoveredDeploymentRevisionIds ?? [])],
         ...(binding.descriptor.imageProvider ? { imageProvider: binding.descriptor.imageProvider } : {}),
         ...(binding.descriptor.temporalTarget ? {
           temporal: {
@@ -153,6 +198,7 @@ export async function startTalosPrivatePreviewProduct(
   } catch (error) {
     await product?.close().catch(() => undefined);
     if (!product) await executionRecovery?.close().catch(() => undefined);
+    await workerRecovery?.close().catch(() => undefined);
     await operator?.close().catch(() => undefined);
     await humanRuntimeControl?.close().catch(() => undefined);
     await runtimeAdapters?.close().catch(() => undefined);
@@ -168,11 +214,13 @@ export async function startTalosPrivatePreviewProduct(
     recoveryBeforeStart: operator.recoveryBeforeStart,
     executionRecoveryBeforeServe: product.recoveryBeforeServe,
     preflightExecutionRecovery,
+    workerRecoveryResult,
     async close() {
       if (closed) return;
       closed = true;
-      // Product owns the execution-recovery inspector lifecycle once started.
+      // Product owns execution-recovery; launcher owns recovered Worker and base runtime lifecycles.
       await product.close();
+      await workerRecovery?.close();
       await operator.close();
       await humanRuntimeControl?.close();
       await runtimeAdapters?.close();
@@ -195,6 +243,7 @@ async function main(): Promise<void> {
     executionRecoveryAvailable: app.runtimeDescriptor.runtimeMode === 'TEMPORAL_EXECUTION',
     recoveredActiveExecutionCount: app.preflightExecutionRecovery?.activeExecutionIds.length ?? 0,
     recoveredTerminalExecutionCount: app.preflightExecutionRecovery?.terminalExecutionIds.length ?? 0,
+    recoveredWorkerCount: app.workerRecoveryResult?.recoveredDeploymentRevisionIds.length ?? 0,
     secretMaterialExposed: false,
   }, null, 2)}\n`);
 
