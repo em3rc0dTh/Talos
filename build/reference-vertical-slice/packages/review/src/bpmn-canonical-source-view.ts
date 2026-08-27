@@ -36,11 +36,32 @@ export interface BpmnCanonicalSourceProcess {
   flows: BpmnCanonicalSourceFlow[];
 }
 
+export interface BpmnCanonicalSourceParticipant {
+  id: string;
+  name?: string;
+  processRef?: string;
+}
+
+export interface BpmnCanonicalSourceMessageFlow {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  name?: string;
+}
+
+export interface BpmnCanonicalSourceCollaboration {
+  id: string;
+  name?: string;
+  participants: BpmnCanonicalSourceParticipant[];
+  messageFlows: BpmnCanonicalSourceMessageFlow[];
+}
+
 export interface BpmnCanonicalSourceView {
   version: typeof BPMN_CANONICAL_SOURCE_VIEW_VERSION;
   originalXmlSha256: string;
   semanticDigest: string;
   processes: BpmnCanonicalSourceProcess[];
+  collaborations: BpmnCanonicalSourceCollaboration[];
   warnings: BpmnXmlWarning[];
 }
 
@@ -141,6 +162,38 @@ function processView(process: AnyRecord): BpmnCanonicalSourceProcess {
   };
 }
 
+function collaborationView(collaboration: AnyRecord): BpmnCanonicalSourceCollaboration {
+  const participants: BpmnCanonicalSourceParticipant[] = (collaboration.participants ?? [])
+    .map((participant: AnyRecord) => {
+      const id = idOf(participant);
+      const processRef = idOf(participant.processRef);
+      return {
+        id,
+        ...(nameOf(participant) ? { name: nameOf(participant) } : {}),
+        ...(processRef ? { processRef } : {}),
+      };
+    })
+    .filter((participant: BpmnCanonicalSourceParticipant) => participant.id)
+    .sort((left: BpmnCanonicalSourceParticipant, right: BpmnCanonicalSourceParticipant) => left.id.localeCompare(right.id));
+
+  const messageFlows: BpmnCanonicalSourceMessageFlow[] = (collaboration.messageFlows ?? [])
+    .map((flow: AnyRecord) => ({
+      id: idOf(flow),
+      sourceId: idOf(flow.sourceRef),
+      targetId: idOf(flow.targetRef),
+      ...(nameOf(flow) ? { name: nameOf(flow) } : {}),
+    }))
+    .filter((flow: BpmnCanonicalSourceMessageFlow) => flow.id && flow.sourceId && flow.targetId)
+    .sort((left: BpmnCanonicalSourceMessageFlow, right: BpmnCanonicalSourceMessageFlow) => left.id.localeCompare(right.id));
+
+  return {
+    id: idOf(collaboration),
+    ...(nameOf(collaboration) ? { name: nameOf(collaboration) } : {}),
+    participants,
+    messageFlows,
+  };
+}
+
 /**
  * Parse exact BPMN XML into a plain, dependency-free source view for upper layers.
  *
@@ -153,16 +206,23 @@ export async function buildBpmnCanonicalSourceView(xml: string): Promise<BpmnCan
   const moddle = createModdle();
   const parsed = await moddle.fromXML(xml);
   const definitions = parsed.rootElement as AnyRecord;
-  const processes = (definitions.rootElements ?? [])
+  const rootElements: AnyRecord[] = definitions.rootElements ?? [];
+  const processes = rootElements
     .filter((element: AnyRecord) => element.$type === 'bpmn:Process')
     .map(processView)
     .sort((left: BpmnCanonicalSourceProcess, right: BpmnCanonicalSourceProcess) => left.id.localeCompare(right.id));
+  const collaborations = rootElements
+    .filter((element: AnyRecord) => element.$type === 'bpmn:Collaboration')
+    .map(collaborationView)
+    .filter((collaboration: BpmnCanonicalSourceCollaboration) => collaboration.id)
+    .sort((left: BpmnCanonicalSourceCollaboration, right: BpmnCanonicalSourceCollaboration) => left.id.localeCompare(right.id));
 
   return {
     version: BPMN_CANONICAL_SOURCE_VIEW_VERSION,
     originalXmlSha256: inspection.originalXmlSha256,
     semanticDigest: inspection.modelSemanticDigest,
     processes,
+    collaborations,
     warnings: inspection.warnings,
   };
 }
