@@ -16,7 +16,7 @@ import { persistOneAppWorkflowExecutionObservation } from '../../../packages/app
 import type { GenericWorkflowResult } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 import type { TalosPrivatePreviewTemporalTarget } from './private-preview-config.ts';
 
-export const TALOS_EXECUTION_RECOVERY_VERSION = 'talos-product-execution-recovery-v0.1';
+export const TALOS_EXECUTION_RECOVERY_VERSION = 'talos-product-execution-recovery-v0.2';
 
 export interface TalosTemporalExecutionInspection {
   executionId: string;
@@ -207,7 +207,7 @@ function appendRecoveredStart(repo: SqliteDocumentStore, approval: WorkflowExecu
   repo.append({
     id: start.id,
     aggregateKind: 'WorkflowExecutionStartRecord',
-    schemaVersion: 'r1-09-workflow-recovery-v0.1',
+    schemaVersion: 'r1-09-workflow-recovery-v0.2',
     payload: start,
     createdAt: start.startedAt,
   });
@@ -219,6 +219,20 @@ function latestByApproval<T extends { executionApprovalRef?: string }>(documents
     .map((document) => document.payload as T)
     .filter((item) => item.executionApprovalRef === approvalId)
     .at(-1);
+}
+
+function assertUniqueExecutionApprovals(approvals: WorkflowExecutionApprovalRecord[]): void {
+  const byExecution = new Map<string, string[]>();
+  for (const approval of approvals) {
+    const ids = byExecution.get(approval.executionId) ?? [];
+    ids.push(approval.id);
+    byExecution.set(approval.executionId, ids);
+  }
+  for (const [executionId, approvalIds] of byExecution) {
+    if (new Set(approvalIds).size > 1) {
+      throw new TypeError(`TALOS_RECOVERY_DUPLICATE_EXECUTION_APPROVAL: ${executionId}`);
+    }
+  }
 }
 
 export function createTalosProductExecutionRecovery(
@@ -285,17 +299,17 @@ export function createTalosProductExecutionRecovery(
   async function reconcileExecution(executionIdInput: string): Promise<TalosExecutionRecoveryItem> {
     const executionId = required(executionIdInput, 'executionId');
     const repo = openRepo();
-    let approval: WorkflowExecutionApprovalRecord | undefined;
+    let approvals: WorkflowExecutionApprovalRecord[];
     try {
-      approval = repo.listByKind('WorkflowExecutionApprovalRecord')
+      approvals = repo.listByKind('WorkflowExecutionApprovalRecord')
         .map((document) => document.payload as WorkflowExecutionApprovalRecord)
-        .filter((item) => item.executionId === executionId)
-        .at(-1);
+        .filter((item) => item.executionId === executionId);
     } finally {
       repo.close();
     }
-    if (!approval) throw new TypeError(`TALOS_RECOVERY_EXECUTION_APPROVAL_NOT_FOUND: ${executionId}`);
-    return reconcileApproval(approval);
+    if (approvals.length === 0) throw new TypeError(`TALOS_RECOVERY_EXECUTION_APPROVAL_NOT_FOUND: ${executionId}`);
+    assertUniqueExecutionApprovals(approvals);
+    return reconcileApproval(approvals[0]);
   }
 
   async function reconcileAll(): Promise<TalosExecutionRecoveryResult> {
@@ -306,6 +320,7 @@ export function createTalosProductExecutionRecovery(
     } finally {
       repo.close();
     }
+    assertUniqueExecutionApprovals(approvals);
     const items: TalosExecutionRecoveryItem[] = [];
     for (const approval of approvals) items.push(await reconcileApproval(approval));
     return {
