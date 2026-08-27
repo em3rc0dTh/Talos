@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startTalosOneApp } from '../apps/reference-api/src/one-app-server.ts';
+import { ONE_APP_PRODUCT_PAGE } from '../apps/reference-api/src/one-app-product-page.ts';
 
 const COLLABORATION_BPMN = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_R111_Collaboration" targetNamespace="https://talos.local/r1-11">
@@ -43,6 +44,9 @@ async function post(baseUrl: string, pathname: string, payload: Record<string, u
 }
 
 test('R1-11 native BPMN Collaboration normalizes multiple participant process scopes and MESSAGE edges without erasing source ownership', async () => {
+  assert.match(ONE_APP_PRODUCT_PAGE, /SOURCE TRUTH · NOT BUSINESS-CONFIRMED/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /INFERRED · NOT BUSINESS-CONFIRMED/);
+
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-11-collaboration-'));
   const app = await startTalosOneApp({ runtimeDir });
   try {
