@@ -46,6 +46,8 @@ async function post(baseUrl: string, pathname: string, payload: Record<string, u
 test('R1-11 native BPMN Collaboration normalizes multiple participant process scopes and MESSAGE edges without erasing source ownership', async () => {
   assert.match(ONE_APP_PRODUCT_PAGE, /SOURCE TRUTH · NOT BUSINESS-CONFIRMED/);
   assert.match(ONE_APP_PRODUCT_PAGE, /INFERRED · NOT BUSINESS-CONFIRMED/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /No BPMN changes to save/);
+  assert.match(ONE_APP_PRODUCT_PAGE, /body\.confirmation\.canonicalProcessRevisionId/);
 
   const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-11-collaboration-'));
   const app = await startTalosOneApp({ runtimeDir });
@@ -92,6 +94,32 @@ test('R1-11 native BPMN Collaboration normalizes multiple participant process sc
     assert.equal(review.reconciliation.processRevision.id, process.id);
     assert.equal(review.requiresBusinessProcessConfirmation, true);
     assert.equal(review.automaticConfirmationAuthorized, false);
+
+    const confirmed = await post(app.baseUrl, '/api/bpmn/confirm', {
+      revisionId: imported.body.revision.id,
+      canonicalProcessRevisionId: process.id,
+      confirmedBy: 'r1-11-field-user',
+      authorityRef: 'authority:r1-11:car-wash-business-confirmation',
+      rationale: 'Field user reviewed the imported collaboration and confirms the intended business meaning.',
+    });
+    assert.equal(confirmed.response.status, 201);
+    assert.equal(confirmed.body.revision.state, 'CONFIRMED');
+    assert.equal(confirmed.body.confirmation.status, 'CONFIRMED');
+    assert.equal(confirmed.body.confirmation.canonicalProcessRevisionId, process.id);
+    assert.equal(confirmed.body.automaticAutomationDesignAuthorized, false);
+    assert.equal(confirmed.body.automaticExecutionAuthorized, false);
+
+    // This reproduces the field-trial symptom: the first confirmation is real.
+    // A second click must be rejected because the immutable revision is no longer DRAFT.
+    const duplicate = await post(app.baseUrl, '/api/bpmn/confirm', {
+      revisionId: imported.body.revision.id,
+      canonicalProcessRevisionId: process.id,
+      confirmedBy: 'r1-11-field-user',
+      authorityRef: 'authority:r1-11:duplicate-click',
+      rationale: 'Duplicate UI click must not create a second authority record.',
+    });
+    assert.equal(duplicate.response.status, 400);
+    assert.match(String(duplicate.body.error), /Only a DRAFT BPMN revision may be confirmed/);
   } finally {
     await app.close();
     rmSync(runtimeDir, { recursive: true, force: true });
