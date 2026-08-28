@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startTalosOneApp } from '../apps/reference-api/src/one-app-server.ts';
+import { buildOneAppRuntimeSemanticSnapshot } from '../apps/reference-api/src/private-preview-temporal-runtime.ts';
+import { completeWaitExecutionSemantics } from '../packages/execution/src/generic-resolved-plan.ts';
 import { createOpaqueId } from '../packages/foundation/src/ids.ts';
 import { buildBpmnCanonicalSourceView } from '../packages/review/src/bpmn-canonical-source-view.ts';
 import { projectCanonicalProcessToBpmn } from '../packages/review/src/bpmn-projector.ts';
@@ -16,6 +18,7 @@ import type { ProcessNode, ProcessRevision } from '../packages/semantic-core/src
 
 const cid = (seed: string) => createOpaqueId('canonical', seed);
 const sid = (seed: string) => createOpaqueId('source', seed);
+const eid = (seed: string) => createOpaqueId('execution', seed);
 
 function node(seed: string, kind: ProcessNode['kind'], name: string, details?: Record<string, unknown>): ProcessNode {
   return {
@@ -94,6 +97,71 @@ test('DURATION without an actual duration remains fail-closed', () => {
   });
   assert.equal(validation.findings.some((finding) => finding.code === 'SV-EVT-004'), true);
   assert.equal(validation.assessment.executionReadiness, 'INSUFFICIENT_DETAIL');
+});
+
+test('ExecutionPlan accepts the canonical DURATION contract and still rejects empty duration semantics', () => {
+  assert.equal(completeWaitExecutionSemantics(node('exec-duration-expression', 'WAIT', 'Hold', {
+    waitKind: 'DURATION', durationExpression: 'PT5M', durationSeconds: 300,
+  })), true);
+  assert.equal(completeWaitExecutionSemantics(node('exec-duration-seconds', 'WAIT', 'Hold', {
+    waitKind: 'DURATION', durationSeconds: 300,
+  })), true);
+  assert.equal(completeWaitExecutionSemantics(node('exec-duration-legacy', 'WAIT', 'Hold', {
+    waitKind: 'DURATION', expression: 'PT5M',
+  })), true, 'legacy persisted expression remains accepted');
+  assert.equal(completeWaitExecutionSemantics(node('exec-duration-missing', 'WAIT', 'Hold', {
+    waitKind: 'DURATION',
+  })), false);
+});
+
+test('runtime semantic snapshot converts canonical durationSeconds into deterministic milliseconds', () => {
+  const process = durationProcess('Hold for treatment', {
+    waitKind: 'DURATION', durationExpression: 'PT5M', durationSeconds: 300,
+  });
+  const wait = process.nodes.find((item) => item.kind === 'WAIT')!;
+  const executionElementRef = eid('duration-runtime-element');
+  const context = {
+    process,
+    executionReview: {
+      execution: {
+        elements: [{
+          id: executionElementRef,
+          kind: 'WAIT_COORDINATION',
+          semanticSubjectRefs: [wait.id],
+          capabilityUseRefs: [],
+        }],
+      },
+    },
+  } as any;
+  const snapshot = buildOneAppRuntimeSemanticSnapshot(context);
+  assert.deepEqual(snapshot.waits, [{
+    executionElementRef,
+    durationMs: 300_000,
+    sourceRef: wait.id,
+  }]);
+});
+
+test('runtime semantic snapshot can recover fixed ISO durationExpression without legacy durationMs', () => {
+  const process = durationProcess('Hold for treatment', {
+    waitKind: 'DURATION', durationExpression: 'PT2M',
+  });
+  const wait = process.nodes.find((item) => item.kind === 'WAIT')!;
+  const executionElementRef = eid('duration-runtime-expression-element');
+  const context = {
+    process,
+    executionReview: {
+      execution: {
+        elements: [{
+          id: executionElementRef,
+          kind: 'WAIT_COORDINATION',
+          semanticSubjectRefs: [wait.id],
+          capabilityUseRefs: [],
+        }],
+      },
+    },
+  } as any;
+  const snapshot = buildOneAppRuntimeSemanticSnapshot(context);
+  assert.equal(snapshot.waits[0]?.durationMs, 120_000);
 });
 
 test('Talos projects a materialized duration as BPMN timeDuration and source view reads it back exactly', async () => {
