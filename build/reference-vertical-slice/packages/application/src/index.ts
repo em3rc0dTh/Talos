@@ -4,6 +4,7 @@ export * from './review.ts';
 export * from './capability.ts';
 export * from './automation-proposal.ts';
 export * from './one-app-automation-proposal.ts';
+export * from './one-app-automation-proposal-decision.ts';
 export * from './execution-design.ts';
 export * from './runtime-policy-design.ts';
 export * from './deployment-design.ts';
