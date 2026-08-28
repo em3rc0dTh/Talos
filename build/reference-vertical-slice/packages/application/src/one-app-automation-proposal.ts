@@ -1,8 +1,11 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import {
+  assessAutomationProposalCapabilityReadiness,
   routeAutomationProposal,
+  type AutomationProposalOfferingCandidate,
   type AutomationProposalProvider,
+  type AutomationProposalReadinessAssessment,
   type AutomationProposalRoutingResult,
 } from '../../capability/src/index.ts';
 import type { OneAppAutomationContext } from './one-app-automation.ts';
@@ -11,6 +14,7 @@ import { persistAutomationProposalRouting } from './automation-proposal.ts';
 export interface OneAppAutomationProposalResult {
   routingId: string;
   routing: AutomationProposalRoutingResult;
+  readiness?: AutomationProposalReadinessAssessment;
   processRevisionRef: string;
   capabilityDesignRevisionRef: string;
   workspaceRef: string;
@@ -30,6 +34,7 @@ export async function proposeOneAppAutomationDesign(
   context: OneAppAutomationContext,
   primaryProvider: AutomationProposalProvider,
   fallbackProvider: AutomationProposalProvider | undefined,
+  availableOfferings: readonly AutomationProposalOfferingCandidate[],
   createdAt: string,
 ): Promise<OneAppAutomationProposalResult> {
   if (context.selection) {
@@ -43,7 +48,7 @@ export async function proposeOneAppAutomationDesign(
   }
 
   const routing = await routeAutomationProposal(
-    { process: context.process, design: context.design },
+    { process: context.process, design: context.design, availableOfferings: [...availableOfferings] },
     primaryProvider,
     fallbackProvider,
     createdAt,
@@ -53,10 +58,14 @@ export async function proposeOneAppAutomationDesign(
     `automation-proposal-routing:${context.workspace.workspace.id}:${createdAt}:${routing.decision}`,
   ) as string;
   persistAutomationProposalRouting(repo, routingId, routing, createdAt);
+  const readiness = routing.selectedProposal
+    ? assessAutomationProposalCapabilityReadiness(routing.selectedProposal, availableOfferings)
+    : undefined;
 
   return {
     routingId,
     routing,
+    ...(readiness ? { readiness } : {}),
     processRevisionRef: context.process.id as string,
     capabilityDesignRevisionRef: context.design.designRevision.id as string,
     workspaceRef: context.workspace.workspace.id as string,
