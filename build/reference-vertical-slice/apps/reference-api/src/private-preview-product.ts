@@ -8,7 +8,10 @@ import {
   startTalosPrivatePreviewOperator,
 } from './private-preview-operator.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
-import { createTalosProductCapabilityTransportResolver } from './private-preview-capability-transports.ts';
+import {
+  createTalosProductCapabilityTransportResolver,
+  resolveTalosProductAutomationOfferings,
+} from './private-preview-capability-transports.ts';
 import {
   createTalosProductTemporalRuntimeAdapters,
   TALOS_PRODUCT_ACTIVITY_TYPE,
@@ -36,7 +39,7 @@ import {
 } from './private-preview-worker-recovery.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 
-export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.10';
+export const TALOS_PRODUCT_LAUNCHER_VERSION = 'talos-private-preview-product-v0.11';
 export const TALOS_PRODUCT_PORT_ENV = 'TALOS_PRODUCT_PORT';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -79,6 +82,7 @@ export async function startTalosPrivatePreviewProduct(
   const binding = resolveTalosPrivatePreviewRuntimeBinding(env);
   const start = binding.createStartConfiguration();
   const runtimeDir = resolveTalosPrivatePreviewRuntimeDir(env);
+  const automationOfferings = resolveTalosProductAutomationOfferings(env);
   let runtimeAdapters: TalosManagedTemporalRuntimeAdapters | undefined;
   let operatorRuntimeAdapters: TalosPrivatePreviewRuntimeAdapters | undefined;
   let humanRuntimeControl: TalosProductHumanRuntimeControl | undefined;
@@ -120,6 +124,7 @@ export async function startTalosPrivatePreviewProduct(
   try {
     operator = await startTalosPrivatePreviewOperator(env, {
       ...(options.authorityPort !== undefined ? { port: checkedPort(options.authorityPort, 'authorityPort', true) } : {}),
+      automationOfferings,
       ...(operatorRuntimeAdapters ? { runtimeAdapters: operatorRuntimeAdapters } : {}),
     });
     if (temporalTarget && runtimeRegistry && capabilityTransportResolver && runtimeAdapters) {
@@ -178,6 +183,7 @@ export async function startTalosPrivatePreviewProduct(
         actorId: binding.descriptor.actorId,
         runtimeMode: binding.descriptor.runtimeMode,
         imageMode: binding.descriptor.imageMode,
+        configuredAutomationOfferingCount: automationOfferings.length,
         temporalExecutionAvailable: Boolean(runtimeAdapters),
         humanRuntimeAvailable: Boolean(humanRuntimeControl),
         executionRecoveryAvailable: Boolean(executionRecovery),
