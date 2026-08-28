@@ -3,9 +3,12 @@ import type { ImmutableDocumentRepository } from '../../foundation/src/repositor
 import {
   intakePngUpload,
   runCorrelatedConfiguredImagePerceptionAdmission,
+  runCorrelatedImagePerceptionWithFallback,
   type ImageIntakeBundle,
   type ImagePerceptionAdmissionBundle,
+  type ImagePerceptionFallbackRoutingRecord,
   type ImagePerceptionRuntimeBinding,
+  type ImagePerceptionSufficiencyPolicy,
   type LocalImageByteStore,
 } from '../../image-perception/src/index.ts';
 import {
@@ -16,16 +19,20 @@ import { normalizeAndValidateImageResult, type ImageSemanticBundle } from './ima
 
 const BPMN_WORKSPACE_SCHEMA = 'talos-bpmn-workspace-v0.1';
 
+interface ImageBpmnReviewRoutingContext {
+  perceptionRouting?: ImagePerceptionFallbackRoutingRecord;
+}
+
 export type ImageBpmnReviewResult =
-  | {
+  | ({
       status: 'SAFE_STOP_BEFORE_CANONICAL';
       intake: ImageIntakeBundle;
       perception: ImagePerceptionAdmissionBundle;
       automaticConfirmationAuthorized: false;
       automaticFreezeAuthorized: false;
       automaticExecutionAuthorized: false;
-    }
-  | {
+    } & ImageBpmnReviewRoutingContext)
+  | ({
       status: 'BPMN_READY_FOR_PROCESS_REVIEW';
       intake: ImageIntakeBundle;
       perception: ImagePerceptionAdmissionBundle;
@@ -34,7 +41,7 @@ export type ImageBpmnReviewResult =
       automaticConfirmationAuthorized: false;
       automaticFreezeAuthorized: false;
       automaticExecutionAuthorized: false;
-    };
+    } & ImageBpmnReviewRoutingContext);
 
 export interface ImageBpmnReviewOptions {
   declaredName?: string;
@@ -46,6 +53,9 @@ export interface ImageBpmnReviewOptions {
   projectedAt?: string;
   bpmnRevisionNumber?: number;
   fetchImpl?: typeof fetch;
+  fallbackBinding?: ImagePerceptionRuntimeBinding;
+  fallbackFetchImpl?: typeof fetch;
+  sufficiencyPolicy?: ImagePerceptionSufficiencyPolicy;
 }
 
 function persistBpmnProjection(repo: ImmutableDocumentRepository, projection: BpmnProjectionResult): void {
@@ -61,12 +71,17 @@ function persistBpmnProjection(repo: ImmutableDocumentRepository, projection: Bp
 }
 
 /**
- * Strongest image-to-review orchestration available after I7C-04.
+ * Image-to-review orchestration.
  *
- * A model safe-stop cannot cross into canonical normalization. A successful
- * perception admission is normalized as INFERRED business meaning, validated,
- * and projected into a non-executable DRAFT BPMN revision for human review.
- * No confirmation, freeze, deployment, or execution authority is created.
+ * With only one provider configured, the historical path is preserved. When a
+ * fallback binding is configured, Talos runs the primary provider first and
+ * invokes the fallback automatically only when Talos' deterministic
+ * sufficiency gate rejects the primary evidence. If neither attempt is
+ * sufficient, canonical normalization is forbidden.
+ *
+ * Any selected perception remains INFERRED business meaning and is projected
+ * into a non-executable DRAFT BPMN revision for human review. No confirmation,
+ * freeze, deployment, or execution authority is created by perception.
  */
 export async function buildImageBpmnReviewCandidate(
   repo: ImmutableDocumentRepository,
@@ -82,20 +97,54 @@ export async function buildImageBpmnReviewCandidate(
     declaredDescription: 'Talos arbitrary-image business-process review input',
   });
 
-  const perception = await runCorrelatedConfiguredImagePerceptionAdmission(
-    repo,
-    byteStore,
-    intake,
-    binding,
-    { ...(options.perceivedAt ? { now: options.perceivedAt } : {}) },
-    options.fetchImpl ?? fetch,
-  );
+  let perception: ImagePerceptionAdmissionBundle;
+  let perceptionRouting: ImagePerceptionFallbackRoutingRecord | undefined;
+
+  if (options.fallbackBinding) {
+    const routed = await runCorrelatedImagePerceptionWithFallback(
+      repo,
+      byteStore,
+      intake,
+      binding,
+      options.fallbackBinding,
+      {
+        ...(options.perceivedAt ? { now: options.perceivedAt } : {}),
+        ...(options.sufficiencyPolicy ? { sufficiencyPolicy: options.sufficiencyPolicy } : {}),
+        ...(options.fetchImpl ? { primaryFetch: options.fetchImpl } : {}),
+        ...(options.fallbackFetchImpl ? { fallbackFetch: options.fallbackFetchImpl } : {}),
+      },
+    );
+    perceptionRouting = routed.routing;
+    perception = routed.selected ?? routed.fallback ?? routed.primary;
+
+    if (!routed.selected) {
+      return {
+        status: 'SAFE_STOP_BEFORE_CANONICAL',
+        intake,
+        perception,
+        perceptionRouting,
+        automaticConfirmationAuthorized: false,
+        automaticFreezeAuthorized: false,
+        automaticExecutionAuthorized: false,
+      };
+    }
+  } else {
+    perception = await runCorrelatedConfiguredImagePerceptionAdmission(
+      repo,
+      byteStore,
+      intake,
+      binding,
+      { ...(options.perceivedAt ? { now: options.perceivedAt } : {}) },
+      options.fetchImpl ?? fetch,
+    );
+  }
 
   if (perception.admission.decision !== 'ADMITTED_FOR_REVIEW' || !perception.attempt.result) {
     return {
       status: 'SAFE_STOP_BEFORE_CANONICAL',
       intake,
       perception,
+      ...(perceptionRouting ? { perceptionRouting } : {}),
       automaticConfirmationAuthorized: false,
       automaticFreezeAuthorized: false,
       automaticExecutionAuthorized: false,
@@ -128,6 +177,7 @@ export async function buildImageBpmnReviewCandidate(
     status: 'BPMN_READY_FOR_PROCESS_REVIEW',
     intake,
     perception,
+    ...(perceptionRouting ? { perceptionRouting } : {}),
     semantic,
     projection,
     automaticConfirmationAuthorized: false,
