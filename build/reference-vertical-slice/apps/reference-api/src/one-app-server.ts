@@ -10,6 +10,7 @@ import {
   approveOneAppDeploymentAttempt,
   approveOneAppWorkflowExecution,
   assertOneAppWorkflowExecutionInputApproved,
+  bindOneAppAcceptedAutomationProposal,
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
   decideOneAppAutomationSuggestion,
@@ -18,15 +19,24 @@ import {
   initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
+  proposeOneAppAutomationDesign,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
   recordOneAppAuthorizedWorkflowExecution,
   recordOneAppAuthorizedWorkflowExecutionStart,
+  reviewOneAppAutomationProposal,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
   type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
+import {
+  resolveGeminiAutomationDesigner,
+  resolveOllamaAutomationDesigner,
+  type AutomationProposal,
+  type AutomationProposalDecisionRecord,
+  type AutomationProposalOfferingCandidate,
+} from '../../../packages/capability/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
 import {
   LocalImageByteStore,
@@ -90,6 +100,10 @@ export interface TalosOneAppOptions {
   imagePerceptionFetchImpl?: typeof fetch;
   imagePerceptionFallbackFetchImpl?: typeof fetch;
   geminiBaseFetchImpl?: typeof fetch;
+  automationDesignEnv?: Readonly<Record<string, string | undefined>>;
+  automationDesignFetchImpl?: typeof fetch;
+  automationDesignFallbackFetchImpl?: typeof fetch;
+  automationOfferings?: readonly AutomationProposalOfferingCandidate[];
   deploymentAttemptExecutor?: (
     input: OneAppDeploymentAttemptExecutorInput,
   ) => Promise<OneAppDeploymentAttemptExecutorResult>;
@@ -104,6 +118,11 @@ interface OneAppSession {
   revisionId: string;
   binding: ReconciledBinding;
   automation: OneAppAutomationContext;
+}
+
+interface OneAppAutomationProposalSession {
+  proposal: AutomationProposal;
+  decision?: AutomationProposalDecisionRecord;
 }
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -181,8 +200,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       ? geminiImageRuntime.fetchImpl
       : undefined;
   const imageFallbackRuntime = resolveImagePerceptionFallbackRuntimeBinding(imageEnv);
+  const automationEnv = options.automationDesignEnv ?? process.env;
+  const automationPrimary = resolveGeminiAutomationDesigner(automationEnv, options.automationDesignFetchImpl ?? fetch);
+  const automationFallback = resolveOllamaAutomationDesigner(automationEnv, options.automationDesignFallbackFetchImpl ?? fetch);
+  const automationOfferings = [...(options.automationOfferings ?? [])];
   const bindings = new Map<string, ReconciledBinding>();
   const automationSessions = new Map<string, OneAppSession>();
+  const automationProposalSessions = new Map<string, OneAppAutomationProposalSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
   const deploymentApprovalSessions = new Map<string, OneAppSession>();
@@ -243,6 +267,19 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             } : {
               reason: 'NO_EXPLICIT_IMAGE_PROVIDER_OR_GEMINI_API_KEY',
             }),
+          },
+          automationDesigner: {
+            primaryConfigured: automationPrimary.status === 'CONFIGURED',
+            primary: automationPrimary.status === 'CONFIGURED'
+              ? { providerId: automationPrimary.provider!.providerId, modelRef: automationPrimary.provider!.modelRef, pipelineVersion: automationPrimary.provider!.pipelineVersion }
+              : { status: 'NOT_CONFIGURED' },
+            fallbackConfigured: automationFallback.status === 'CONFIGURED',
+            fallback: automationFallback.status === 'CONFIGURED'
+              ? { providerId: automationFallback.provider.providerId, modelRef: automationFallback.provider.modelRef, pipelineVersion: automationFallback.provider.pipelineVersion }
+              : { status: 'NOT_CONFIGURED' },
+            configuredOfferingCount: automationOfferings.length,
+            proposalsCreateBindings: false,
+            proposalsGrantAuthority: false,
           },
           authorityChain: [
             'PROCESS_CONFIRMATION',
@@ -541,10 +578,97 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           ...result,
           automationDesignOpened: true,
           automationDesign: automation.workspace,
+          aiAutomationProposalAvailable: automationPrimary.status === 'CONFIGURED',
           capabilitySelectionCreated: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/proposal/generate') {
+        const input = await jsonBody(req);
+        const workspaceId = text(input.workspaceId, 'workspaceId');
+        const session = automationSessions.get(workspaceId);
+        if (!session) throw new TypeError('one-app AI automation proposal requires an existing Automation Design Workspace');
+        if (automationPrimary.status !== 'CONFIGURED' || !automationPrimary.provider) {
+          throw new TypeError('one-app AI automation proposal requires configured Gemini Automation Designer');
+        }
+        const result = await proposeOneAppAutomationDesign(
+          repo,
+          session.automation,
+          automationPrimary.provider,
+          automationFallback.status === 'CONFIGURED' ? automationFallback.provider : undefined,
+          automationOfferings,
+          new Date().toISOString(),
+        );
+        if (result.routing.selectedProposal) {
+          automationProposalSessions.set(workspaceId, { proposal: result.routing.selectedProposal });
+        } else {
+          automationProposalSessions.delete(workspaceId);
+        }
+        json(res, result.routing.selectedProposal ? 201 : 200, result);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/proposal/decide') {
+        const input = await jsonBody(req);
+        const workspaceId = text(input.workspaceId, 'workspaceId');
+        const session = automationSessions.get(workspaceId);
+        const proposalSession = automationProposalSessions.get(workspaceId);
+        if (!session || !proposalSession) throw new TypeError('one-app automation proposal decision requires an existing generated proposal');
+        const proposalRef = text(input.proposalRef, 'proposalRef');
+        const proposalDigest = text(input.proposalDigest, 'proposalDigest');
+        if (proposalRef !== proposalSession.proposal.id || proposalDigest !== proposalSession.proposal.proposalDigest) {
+          throw new TypeError('one-app automation proposal decision must pin the exact generated proposal');
+        }
+        const decision = text(input.decision, 'decision');
+        if (!['ACCEPT_DESIGN', 'REQUEST_CHANGES', 'REJECT'].includes(decision)) {
+          throw new TypeError('automation proposal decision must be ACCEPT_DESIGN, REQUEST_CHANGES or REJECT');
+        }
+        const review = reviewOneAppAutomationProposal(
+          repo,
+          session.automation,
+          proposalSession.proposal,
+          automationOfferings,
+          {
+            proposalRef,
+            proposalDigest,
+            decision: decision as any,
+            decidedBy: typeof input.decidedBy === 'string' ? input.decidedBy : 'one-app-user',
+            authorityRef: text(input.authorityRef, 'authorityRef'),
+            rationale: text(input.rationale, 'rationale'),
+            decidedAt: new Date().toISOString(),
+          },
+        );
+        proposalSession.decision = review.decision;
+        json(res, 201, review);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/proposal/bind') {
+        const input = await jsonBody(req);
+        const workspaceId = text(input.workspaceId, 'workspaceId');
+        const session = automationSessions.get(workspaceId);
+        const proposalSession = automationProposalSessions.get(workspaceId);
+        if (!session || !proposalSession || !proposalSession.decision) {
+          throw new TypeError('one-app automation proposal binding requires an explicit accepted proposal decision');
+        }
+        if (text(input.proposalRef, 'proposalRef') !== proposalSession.proposal.id || text(input.proposalDigest, 'proposalDigest') !== proposalSession.proposal.proposalDigest) {
+          throw new TypeError('one-app automation proposal binding must pin the exact generated proposal');
+        }
+        if (text(input.decisionRef, 'decisionRef') !== proposalSession.decision.id) {
+          throw new TypeError('one-app automation proposal binding must pin the exact proposal decision');
+        }
+        session.automation = bindOneAppAcceptedAutomationProposal(
+          repo,
+          session.automation,
+          proposalSession.proposal,
+          proposalSession.decision,
+          automationOfferings,
+          new Date().toISOString(),
+        );
+        json(res, 201, session.automation.selection);
         return;
       }
 
@@ -974,7 +1098,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       json(res, 404, { error: 'not found', code: 'ONE_APP_ROUTE_NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor|workflow start|execution input/i.test(message);
+      const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor|workflow start|execution input|proposal|capability configuration/i.test(message);
       json(res, conflict ? 409 : 400, {
         error: message,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
