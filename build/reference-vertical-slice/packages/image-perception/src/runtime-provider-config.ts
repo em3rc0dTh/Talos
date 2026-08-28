@@ -26,6 +26,32 @@ export const IMAGE_PERCEPTION_RUNTIME_ENV = {
   evidenceMode: 'TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE',
 } as const;
 
+export const IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV = {
+  endpoint: 'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_URL',
+  providerId: 'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_ID',
+  providerVersion: 'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_VERSION',
+  modelRef: 'TALOS_IMAGE_PERCEPTION_FALLBACK_MODEL_REF',
+  modelVersion: 'TALOS_IMAGE_PERCEPTION_FALLBACK_MODEL_VERSION',
+  pipelineVersion: 'TALOS_IMAGE_PERCEPTION_FALLBACK_PIPELINE_VERSION',
+  timeoutMs: 'TALOS_IMAGE_PERCEPTION_FALLBACK_TIMEOUT_MS',
+  bearerToken: 'TALOS_IMAGE_PERCEPTION_FALLBACK_BEARER_TOKEN',
+  providerClass: 'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_CLASS',
+  evidenceMode: 'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE',
+} as const;
+
+type RuntimeEnvNames = {
+  endpoint: string;
+  providerId: string;
+  providerVersion: string;
+  modelRef: string;
+  modelVersion: string;
+  pipelineVersion: string;
+  timeoutMs: string;
+  bearerToken: string;
+  providerClass: string;
+  evidenceMode: string;
+};
+
 export interface ImagePerceptionRuntimeDescriptor {
   configVersion: typeof IMAGE_PERCEPTION_RUNTIME_CONFIG_VERSION;
   endpoint: string;
@@ -95,8 +121,8 @@ function normalizedEndpoint(raw: string): string {
   return url.toString();
 }
 
-function timeoutMs(env: Environment): number {
-  const raw = optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.timeoutMs);
+function timeoutMs(env: Environment, name: string): number {
+  const raw = optional(env, name);
   if (!raw) return 30_000;
   if (!/^\d+$/.test(raw)) {
     throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be an integer number of milliseconds');
@@ -108,8 +134,8 @@ function timeoutMs(env: Environment): number {
   return value;
 }
 
-function secretToken(env: Environment): string | undefined {
-  const raw = env[IMAGE_PERCEPTION_RUNTIME_ENV.bearerToken];
+function secretToken(env: Environment, name: string): string | undefined {
+  const raw = env[name];
   if (raw === undefined) return undefined;
   if (!raw.trim()) {
     throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: bearer token cannot be blank when configured');
@@ -117,15 +143,8 @@ function secretToken(env: Environment): string | undefined {
   return raw.trim();
 }
 
-/**
- * Resolve the real image-perception provider without ever returning secret
- * material in the public descriptor. The bearer token remains closure-held and
- * is injected only when the transient HTTP transport config is requested.
- */
-export function resolveImagePerceptionRuntimeBinding(
-  env: Environment = process.env,
-): ImagePerceptionRuntimeResolution {
-  const endpointRaw = optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.endpoint);
+function resolveBinding(env: Environment, names: RuntimeEnvNames): ImagePerceptionRuntimeResolution {
+  const endpointRaw = optional(env, names.endpoint);
   if (!endpointRaw) {
     return {
       status: 'DISABLED',
@@ -135,18 +154,19 @@ export function resolveImagePerceptionRuntimeBinding(
   }
 
   const endpoint = normalizedEndpoint(endpointRaw);
-  const providerId = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.providerId);
-  const providerVersion = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.providerVersion);
-  const modelRef = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.modelRef);
-  const modelVersion = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.modelVersion);
-  const pipelineVersion = required(env, IMAGE_PERCEPTION_RUNTIME_ENV.pipelineVersion);
-  const resolvedTimeoutMs = timeoutMs(env);
-  const bearerToken = secretToken(env);
-  const providerClass = (optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.providerClass) ?? 'MODEL_PROVIDER') as ImagePerceptionRuntimeDescriptor['providerClass'];
-  const evidenceMode = (optional(env, IMAGE_PERCEPTION_RUNTIME_ENV.evidenceMode) ?? 'MODEL_INFERENCE') as ImagePerceptionRuntimeDescriptor['evidenceMode'];
+  const providerId = required(env, names.providerId);
+  const providerVersion = required(env, names.providerVersion);
+  const modelRef = required(env, names.modelRef);
+  const modelVersion = required(env, names.modelVersion);
+  const pipelineVersion = required(env, names.pipelineVersion);
+  const resolvedTimeoutMs = timeoutMs(env, names.timeoutMs);
+  const bearerToken = secretToken(env, names.bearerToken);
+  const providerClass = (optional(env, names.providerClass) ?? 'MODEL_PROVIDER') as ImagePerceptionRuntimeDescriptor['providerClass'];
+  const evidenceMode = (optional(env, names.evidenceMode) ?? 'MODEL_INFERENCE') as ImagePerceptionRuntimeDescriptor['evidenceMode'];
   if (!['FIXTURE_PROVIDER','MODEL_PROVIDER','SOURCE_DEFINED'].includes(providerClass)) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: unsupported provider class');
   if (!['FIXTURE_EXPECTATION','MODEL_INFERENCE','SOURCE_DEFINED'].includes(evidenceMode)) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: unsupported evidence mode');
   if ((providerClass === 'FIXTURE_PROVIDER') !== (evidenceMode === 'FIXTURE_EXPECTATION')) throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: fixture provider requires fixture evidence mode');
+
   const safeFields = {
     configVersion: IMAGE_PERCEPTION_RUNTIME_CONFIG_VERSION,
     endpoint,
@@ -189,6 +209,26 @@ export function resolveImagePerceptionRuntimeBinding(
   });
 
   return { status: 'CONFIGURED', binding };
+}
+
+/**
+ * Resolve the primary real image-perception provider without ever returning
+ * secret material in the public descriptor.
+ */
+export function resolveImagePerceptionRuntimeBinding(
+  env: Environment = process.env,
+): ImagePerceptionRuntimeResolution {
+  return resolveBinding(env, IMAGE_PERCEPTION_RUNTIME_ENV);
+}
+
+/**
+ * Optional second provider. Talos only invokes this binding when the primary
+ * perception result fails the deterministic sufficiency gate.
+ */
+export function resolveImagePerceptionFallbackRuntimeBinding(
+  env: Environment = process.env,
+): ImagePerceptionRuntimeResolution {
+  return resolveBinding(env, IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV);
 }
 
 export async function runConfiguredImagePerceptionAdmission(
