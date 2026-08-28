@@ -7,6 +7,7 @@ import {
   type BpmnProcessRevision,
 } from '../../review/src/index.ts';
 import { validateProcessRevision } from '../../semantic-core/src/validation.ts';
+import { deriveExplicitDurationWaitSemantics, deriveIsoDurationWaitSemantics } from '../../semantic-core/src/wait-semantics.ts';
 import type {
   Actor,
   BusinessRule,
@@ -92,10 +93,27 @@ function nodeKind(element: BpmnCanonicalSourceNode, adapterVersion: string): {
     case 'bpmn:IntermediateCatchEvent': {
       const eventDefinitionTypes = [...element.eventDefinitionTypes];
       if (eventDefinitionTypes.length === 1 && eventDefinitionTypes[0] === 'bpmn:TimerEventDefinition') {
-        return {
-          kind: 'WAIT',
-          details: { bpmnEventDefinitionTypes: eventDefinitionTypes },
-        };
+        const bpmnDuration = deriveIsoDurationWaitSemantics(element.timerDurationBody);
+        const visibleDuration = deriveExplicitDurationWaitSemantics(element.name);
+        const fixedDuration = bpmnDuration ?? visibleDuration;
+        const details: Record<string, unknown> = { bpmnEventDefinitionTypes: eventDefinitionTypes };
+        if (fixedDuration) {
+          details.waitKind = 'DURATION';
+          details.durationExpression = fixedDuration.durationExpression;
+          details.durationSeconds = fixedDuration.durationSeconds;
+          details.durationEvidenceText = element.timerDurationBody ? `BPMN timeDuration ${element.timerDurationBody}` : fixedDuration.matchedText;
+        } else if (element.timerDurationBody) {
+          details.waitKind = 'DURATION';
+          details.durationExpression = element.timerDurationBody;
+          details.durationParsingState = 'UNRESOLVED';
+        } else if (element.timerDateBody) {
+          details.waitKind = 'DEADLINE';
+          details.expression = element.timerDateBody;
+        } else if (element.timerCycleBody) {
+          details.waitKind = 'SCHEDULE';
+          details.expression = element.timerCycleBody;
+        }
+        return { kind: 'WAIT', details };
       }
       return {
         kind: 'EVENT',
@@ -501,6 +519,12 @@ async function reconcileWithPolicy(
     for (const node of nodes) {
       semanticClaims.push(inferredClaim(semanticDigest, node.id, 'kind', node.kind, reconciledAt));
       if (node.name) semanticClaims.push(inferredClaim(semanticDigest, node.id, 'name', node.name, reconciledAt));
+      if (node.kind === 'WAIT') {
+        for (const propertyPath of ['waitKind', 'durationExpression', 'durationSeconds', 'expression'] as const) {
+          const value = node.details?.[propertyPath];
+          if (value !== undefined) semanticClaims.push(inferredClaim(semanticDigest, node.id, `details.${propertyPath}`, value, reconciledAt));
+        }
+      }
     }
     for (const edge of edges) {
       semanticClaims.push(inferredClaim(semanticDigest, edge.id, 'kind', edge.kind, reconciledAt));
