@@ -241,7 +241,8 @@ export function admitAutomationProposal(
   const raw = object(rawProposal, 'proposal');
   const requirementById = new Map(context.design.requirements.map((requirement) => [requirement.id as string, requirement]));
   const processNodeById = new Map(context.process.nodes.map((node) => [node.id as string, node]));
-  const availableOfferingById = new Map((context.availableOfferings ?? []).map((offering) => [offering.id as string, offering]));
+  const availableOfferings = context.availableOfferings ?? [];
+  const availableOfferingById = new Map(availableOfferings.map((offering) => [offering.id as string, offering]));
   const seenRequirements = new Set<string>();
 
   const steps: AutomationProposalStep[] = array(raw.steps ?? [], 'proposal.steps').map((item, index) => {
@@ -269,7 +270,17 @@ export function admitAutomationProposal(
     if (!VALID_FAMILIES.has(proposedFamily)) throw new TypeError(`proposal step ${capabilityRequirementRef} uses unsupported family`);
     const implementationKind = string(candidate.implementationKind, `proposal.steps[${index}].implementationKind`) as Exclude<AutomationProposalImplementationKind, 'SOURCE_DEFINED'>;
     if (!VALID_IMPLEMENTATION_KINDS.has(implementationKind)) throw new TypeError(`proposal step ${capabilityRequirementRef} uses unsupported implementation kind`);
-    const implementationRef = string(candidate.implementationRef, `proposal.steps[${index}].implementationRef`);
+    let implementationRef = string(candidate.implementationRef, `proposal.steps[${index}].implementationRef`);
+
+    if (implementationRef.startsWith('proposal:')) {
+      const compatibleOfferings = availableOfferings.filter((offering) =>
+        offering.family === proposedFamily
+        && offering.implementationKind === implementationKind
+        && offering.supportedOperationIntents.includes(requirement.operationIntent));
+      if (compatibleOfferings.length === 1) {
+        implementationRef = `offering:${compatibleOfferings[0].id}`;
+      }
+    }
 
     if (implementationRef.startsWith('offering:')) {
       const offeringId = implementationRef.slice('offering:'.length);
