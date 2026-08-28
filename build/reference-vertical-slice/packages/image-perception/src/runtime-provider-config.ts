@@ -61,7 +61,7 @@ export interface ImagePerceptionRuntimeDescriptor {
   modelVersion: string;
   pipelineVersion: string;
   timeoutMs: number;
-  authMode: 'NONE' | 'BEARER';
+  authMode: 'NONE' | 'BEARER' | 'API_KEY';
   authConfigured: boolean;
   providerClass: 'FIXTURE_PROVIDER'|'MODEL_PROVIDER'|'SOURCE_DEFINED';
   evidenceMode: 'FIXTURE_EXPECTATION'|'MODEL_INFERENCE'|'SOURCE_DEFINED';
@@ -211,20 +211,14 @@ function resolveBinding(env: Environment, names: RuntimeEnvNames): ImagePercepti
   return { status: 'CONFIGURED', binding };
 }
 
-/**
- * Resolve the primary real image-perception provider without ever returning
- * secret material in the public descriptor.
- */
+/** Resolve the primary real image-perception provider without exposing secrets. */
 export function resolveImagePerceptionRuntimeBinding(
   env: Environment = process.env,
 ): ImagePerceptionRuntimeResolution {
   return resolveBinding(env, IMAGE_PERCEPTION_RUNTIME_ENV);
 }
 
-/**
- * Optional second provider. Talos only invokes this binding when the primary
- * perception result fails the deterministic sufficiency gate.
- */
+/** Optional second provider; Talos invokes it only after primary insufficiency. */
 export function resolveImagePerceptionFallbackRuntimeBinding(
   env: Environment = process.env,
 ): ImagePerceptionRuntimeResolution {
