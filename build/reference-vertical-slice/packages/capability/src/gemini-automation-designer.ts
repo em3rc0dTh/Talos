@@ -110,12 +110,14 @@ Design a practical implementation proposal for the exact confirmed canonical pro
 
 Rules:
 - Never rewrite or contradict confirmed process meaning.
-- Never invent an actor, business rule, branch condition, credential, configured integration, or source fact.
+- Never invent an actor, organizational role, business rule, branch condition, credential, configured integration, or source fact.
 - Use exact capabilityRequirementRef and semanticSubjectRefs from the input. Never create IDs.
 - Propose one step per capability requirement when a safe proposal is possible.
 - If the execution family is unresolved, you MAY propose a family based on the business semantics, but it remains only a suggestion. Explain the rationale.
-- If human work lacks actor/role evidence, roleRefs must remain [] and add ONE grouped material unresolved question covering all affected semantic subjects when possible.
-- For a configured offering supplied by Talos, reference it as implementationRef="offering:<offering id>" only when its family/implementation kind are compatible.
+- If human work lacks actor/role evidence, keep roleRefs=[]; this means runtime assignment to an eligible authenticated human, NOT an invented business role. Missing role evidence alone is NOT a material unresolved question.
+- Add a material actor/role question only when the confirmed Canonical process contains an explicit participant/role constraint that cannot be satisfied or when a specific role is required by confirmed business meaning.
+- When a compatible configured HUMAN_INTERACTION + HUMAN_SERVICE offering is supplied by Talos, prefer that exact governed offering. In particular, a Talos Workflow-native human-coordination offering is the normal design for roleless human work.
+- For any configured offering supplied by Talos, reference it as implementationRef="offering:<offering id>" only when its family, implementation kind and supported operation intent are compatible.
 - If no configured offering exists, use a stable generic proposal reference beginning with "proposal:". Do not pretend the capability is installed or credentialed.
 - HUMAN_INTERACTION must use implementationKind HUMAN_SERVICE and include a human contract.
 - Do not reinterpret an ACTION as WAIT, DECISION, SUBPROCESS, or another canonical node kind. If the confirmed Canonical model appears insufficient for an execution-critical treatment, raise an unresolved question instead of changing semantics.
