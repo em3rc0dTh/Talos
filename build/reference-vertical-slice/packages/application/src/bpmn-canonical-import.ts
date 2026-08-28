@@ -89,6 +89,21 @@ function nodeKind(element: BpmnCanonicalSourceNode, adapterVersion: string): {
       return { kind: 'EVENT' };
     case 'bpmn:EndEvent':
       return { kind: 'END' };
+    case 'bpmn:IntermediateCatchEvent': {
+      const eventDefinitionTypes = [...element.eventDefinitionTypes];
+      if (eventDefinitionTypes.length === 1 && eventDefinitionTypes[0] === 'bpmn:TimerEventDefinition') {
+        return {
+          kind: 'WAIT',
+          details: { bpmnEventDefinitionTypes: eventDefinitionTypes },
+        };
+      }
+      return {
+        kind: 'EVENT',
+        ...(eventDefinitionTypes.length > 0
+          ? { details: { bpmnEventDefinitionTypes: eventDefinitionTypes } }
+          : {}),
+      };
+    }
     case 'bpmn:Task':
     case 'bpmn:ServiceTask':
     case 'bpmn:ScriptTask':
