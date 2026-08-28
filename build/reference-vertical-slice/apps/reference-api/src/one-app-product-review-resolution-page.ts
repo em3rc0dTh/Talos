@@ -12,6 +12,12 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
     return new Response(JSON.stringify(body),{status:status||response.status,statusText:response.statusText,headers:headers});
   }
   function findNode(process,id){return (process.nodes||[]).find(function(node){return node.id===id})}
+  function projectedBpmnNodeId(node){
+    var explicit=node&&node.details?text(node.details.bpmnElementId):'';
+    if(explicit)return explicit;
+    var canonicalId=node?text(node.id):'';
+    return canonicalId?'Node_'+canonicalId:'';
+  }
   function ensurePanel(){
     var panel=byId('branchConditionResolution');
     if(panel)return panel;
@@ -50,7 +56,7 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
     title.textContent='Branch conditions require business meaning';
     var intro=document.createElement('small');
     intro.style.display='block';intro.style.marginTop='4px';
-    intro.textContent='Talos will not invent decision logic. Confirm or replace each source branch label, then create a corrected immutable BPMN revision before business confirmation.';
+    intro.textContent='Talos will not invent decision logic. Confirm or replace each source branch label, then Talos will update the BPMN correction internally before business confirmation.';
     panel.append(title,intro);
 
     var list=document.createElement('div');list.className='list';list.style.marginTop='10px';
@@ -62,7 +68,7 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
       var target=findNode(process,edge.targetNodeId)||{};
       var row=document.createElement('div');row.className='item question';
       var heading=document.createElement('strong');heading.textContent=(source.name||'Decision')+' → '+(target.name||'Branch '+(index+1));
-      var sourceText=document.createElement('small');sourceText.textContent=edge.label?'BPMN source label: '+edge.label:'BPMN source has no branch label; business owner input is required.';
+      var sourceText=document.createElement('small');sourceText.textContent=edge.label?'Source branch label: '+edge.label:'No confirmed branch label is available; business owner input is required.';
       var input=document.createElement('input');input.style.marginTop='8px';input.value=text(edge.label);input.placeholder='Exact business condition for this branch';
       row.append(heading,sourceText,input);list.appendChild(row);
       rows.push({edge:edge,source:source,target:target,input:input});
@@ -70,7 +76,7 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
     panel.appendChild(list);
 
     var actions=document.createElement('div');actions.className='row';actions.style.marginTop='10px';
-    var apply=document.createElement('button');apply.className='primary';apply.textContent='Apply branch conditions to BPMN correction';
+    var apply=document.createElement('button');apply.className='primary';apply.textContent='Apply branch conditions';
     var state=document.createElement('span');state.className='pill warn';state.textContent='No correction created automatically';
     actions.append(apply,state);panel.appendChild(actions);
 
@@ -84,14 +90,14 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
       if(!editor)return;
       var parser=new DOMParser();
       var doc=parser.parseFromString(editor.value,'application/xml');
-      if(doc.querySelector('parsererror')){state.textContent='BPMN XML cannot be parsed';state.className='pill bad';return}
+      if(doc.querySelector('parsererror')){state.textContent='Talos could not prepare the internal BPMN correction';state.className='pill bad';return}
       var xsi='http://www.w3.org/2001/XMLSchema-instance';
       var xmlns='http://www.w3.org/2000/xmlns/';
       if(!doc.documentElement.getAttributeNS(xmlns,'xsi'))doc.documentElement.setAttributeNS(xmlns,'xmlns:xsi',xsi);
       var changed=0;
       rows.forEach(function(row){
-        var sourceId=row.source&&row.source.details&&row.source.details.bpmnElementId;
-        var targetId=row.target&&row.target.details&&row.target.details.bpmnElementId;
+        var sourceId=projectedBpmnNodeId(row.source);
+        var targetId=projectedBpmnNodeId(row.target);
         if(!sourceId||!targetId)return;
         var flows=Array.prototype.filter.call(doc.getElementsByTagNameNS('*','sequenceFlow'),function(flow){return flow.getAttribute('sourceRef')===sourceId&&flow.getAttribute('targetRef')===targetId});
         if(flows.length!==1)return;
@@ -106,7 +112,7 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
         condition.textContent=row.input.value.trim();
         flow.appendChild(condition);changed++;
       });
-      if(changed!==rows.length){state.textContent='One or more source branches could not be matched uniquely and safely';state.className='pill bad';return}
+      if(changed!==rows.length){state.textContent='Talos could not match one or more branches uniquely; no partial correction was applied';state.className='pill bad';return}
       editor.value=new XMLSerializer().serializeToString(doc);
       editor.dispatchEvent(new Event('input',{bubbles:true}));
       state.textContent='Prepared · Save correction to create the new immutable review';state.className='pill good';
