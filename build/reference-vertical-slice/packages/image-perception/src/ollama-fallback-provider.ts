@@ -19,7 +19,7 @@ import {
 
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_ID = 'TALOS_OLLAMA_LOCAL_FALLBACK';
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_VERSION = '1.0.0';
-export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.2';
+export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.3';
 
 export const OLLAMA_IMAGE_FALLBACK_ENV = {
   enabled: 'TALOS_OLLAMA_FALLBACK_ENABLED',
@@ -74,11 +74,18 @@ export type OllamaImageFallbackRuntimeResolution =
   | { status: 'DISABLED'; reason: 'OLLAMA_FALLBACK_NOT_ENABLED' }
   | { status: 'CONFIGURED'; binding: ImagePerceptionRuntimeBinding; fetchImpl: typeof fetch };
 
-const PROMPT = `You are Talos' LOCAL independent fallback visual sensor. A primary cloud perception attempt was insufficient. Re-inspect the COMPLETE process-diagram image independently; do not trust or imitate any prior answer.
+const PROMPT = `You are Talos' LOCAL independent fallback visual sensor. A primary cloud perception attempt was insufficient. Re-inspect the COMPLETE image independently; do not trust or imitate any prior answer.
 
-Inspect top-left to bottom-right only for coverage. Never infer process order from position. Process order comes only from visible arrows/connectors and notation.
+Your task is VISUAL EXTRACTION, not business interpretation. Inspect top-left to bottom-right only for coverage. Never infer process order from position. Process order comes only from visible arrows/connectors and notation.
 
 Return JSON only with exactly these top-level fields: completeCoverage, elements, connectors, uncertainties. Do not output BPMN. Do not design automation. Do not invent missing arrows, labels, conditions, endpoints or process meaning.
+
+IMPORTANT NON-OMISSION RULE:
+- A process-relevant visual element includes any visible task/action box, event/circle, decision/gateway diamond, subprocess or grouped step, wait/state marker, human/system step, actor/lane/pool region, data object attached to process work, or text label visibly belonging to a process node.
+- If ANY such process/workflow structure is visible, elements MUST NOT be empty.
+- Do not omit a visible element merely because you are uncertain what it means. Use nodeKind=UNKNOWN and an uncertainty entry instead.
+- elements may be empty ONLY when the image truly contains no visible process/workflow structure. If you return an empty elements array, add an uncertainty explaining the visual basis for that conclusion.
+- For every visible arrow or connector, include a connector. If an endpoint or direction is unclear, keep sourceElementId or targetElementId empty as needed, use direction=UNKNOWN and add an uncertainty instead of dropping the connector.
 
 For every visible process element return: id, literal label, nodeKind, occurrenceKind, sourcePlaneKind, bbox [ymin,xmin,ymax,xmax] normalized 0..1000, confidence 0..1, visibility. For every visible connector return: id, sourceElementId, targetElementId, direction, role, guardText, bbox, confidence. Use UNKNOWN or an uncertainty entry whenever evidence is unclear. completeCoverage must be false if any relevant region is unreadable, cropped, obscured or unresolved.
 
@@ -207,7 +214,10 @@ function mapResult(extraction: LocalExtraction, envelope: AsyncImagePerceptionTr
     providerClass: 'MODEL_PROVIDER', modelRef: model, modelVersion: model, pipelineVersion: OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION,
     evidenceMode: 'MODEL_INFERENCE', status: 'NO_RESULT', requestCorrelation: correlation(envelope),
     anchors: [], observations: [], occurrenceCandidates: [], alternativeSets: [], relationCandidates: [],
-    diagnostics: [{ code:'OLLAMA_LOCAL_NO_PROCESS_EVIDENCE', description:'The local fallback found no process-relevant visual elements.' }],
+    diagnostics: [
+      { code:'OLLAMA_LOCAL_NO_PROCESS_EVIDENCE', description:'The local fallback returned no process-relevant visual elements.' },
+      ...extraction.uncertainties.map(item=>({code:`OLLAMA_${item.code}`,description:item.description})),
+    ],
   };
 
   const anchors: ProviderVisualAnchor[] = [];
