@@ -39,11 +39,12 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
       const durationExpression=node.details?.durationExpression??props.durationExpression??props['propertyValues.durationExpression']??derivedDuration?.durationExpression;
       const durationSeconds=node.details?.durationSeconds??props.durationSeconds??props['propertyValues.durationSeconds']??derivedDuration?.durationSeconds;
+      const durationParsingState=String(node.details?.durationParsingState??'');
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
         out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for an elapsed duration, schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
-      if(waitKind==='DURATION'&&!usable(durationExpression)&&!usable(durationSeconds)){
-        out.push({code:'SV-EVT-004',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} is an elapsed-duration wait but does not contain a usable duration expression.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      if(waitKind==='DURATION'&&(durationParsingState==='UNRESOLVED'||(!usable(durationExpression)&&!usable(durationSeconds)))){
+        out.push({code:'SV-EVT-004',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} is an elapsed-duration wait but does not contain a safely materialized duration expression.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
       if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
         out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
