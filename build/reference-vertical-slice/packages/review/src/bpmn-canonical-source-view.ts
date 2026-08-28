@@ -17,6 +17,9 @@ export interface BpmnCanonicalSourceNode {
   incomingCount: number;
   outgoingCount: number;
   eventDefinitionTypes: string[];
+  timerDurationBody?: string;
+  timerDateBody?: string;
+  timerCycleBody?: string;
 }
 
 export interface BpmnCanonicalSourceFlow {
@@ -81,12 +84,37 @@ function nameOf(value: AnyRecord | undefined): string | undefined {
   return name || undefined;
 }
 
+function expressionBody(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text || undefined;
+  }
+  if (value && typeof value === 'object') {
+    const body = typeof (value as AnyRecord).body === 'string' ? (value as AnyRecord).body.trim() : '';
+    return body || undefined;
+  }
+  return undefined;
+}
+
 function eventDefinitionTypesOf(value: AnyRecord | undefined): string[] {
   return [...new Set(
     (value?.eventDefinitions ?? [])
       .map((definition: AnyRecord) => typeof definition?.$type === 'string' ? definition.$type : '')
       .filter(Boolean),
   )].sort();
+}
+
+function timerExpressionsOf(value: AnyRecord | undefined): Pick<BpmnCanonicalSourceNode, 'timerDurationBody' | 'timerDateBody' | 'timerCycleBody'> {
+  const timer = (value?.eventDefinitions ?? []).find((definition: AnyRecord) => definition?.$type === 'bpmn:TimerEventDefinition');
+  if (!timer) return {};
+  const timerDurationBody = expressionBody(timer.timeDuration);
+  const timerDateBody = expressionBody(timer.timeDate);
+  const timerCycleBody = expressionBody(timer.timeCycle);
+  return {
+    ...(timerDurationBody ? { timerDurationBody } : {}),
+    ...(timerDateBody ? { timerDateBody } : {}),
+    ...(timerCycleBody ? { timerCycleBody } : {}),
+  };
 }
 
 function flattenLanes(process: AnyRecord): BpmnCanonicalSourceLane[] {
@@ -132,6 +160,7 @@ function processView(process: AnyRecord): BpmnCanonicalSourceProcess {
         incomingCount: incoming.get(id) ?? 0,
         outgoingCount: outgoing.get(id) ?? 0,
         eventDefinitionTypes: eventDefinitionTypesOf(element),
+        ...timerExpressionsOf(element),
       };
     })
     .filter((node) => node.id)
