@@ -24,6 +24,16 @@ function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
+function selectedProviderId(result, statusResponse) {
+  const routing = result?.perceptionRouting;
+  if (!routing) return statusResponse?.image?.provider?.providerId ?? 'UNKNOWN';
+  if (routing.selectedProviderId) return routing.selectedProviderId;
+  if (routing.decision === 'PRIMARY_ACCEPTED') return routing.primaryProviderId ?? 'UNKNOWN';
+  if (routing.decision === 'FALLBACK_ACCEPTED') return routing.fallbackProviderId ?? 'UNKNOWN';
+  if (routing.decision === 'UNRESOLVED_AFTER_FALLBACK') return 'NONE';
+  return 'UNKNOWN';
+}
+
 const imageArg = process.argv[2];
 const baseUrl = (process.argv[3] || 'http://127.0.0.1:8787').replace(/\/$/, '');
 const explicitReceipt = process.argv[4];
@@ -123,7 +133,7 @@ const receipt = {
     perceptionDecision: imageResponse?.perceptionDecision ?? 'UNKNOWN',
     routingDecision: imageResponse?.perceptionRouting?.decision ?? 'SINGLE_PROVIDER_NO_ROUTING_RECORD',
     automaticFallbackTriggered: imageResponse?.perceptionRouting?.automaticFallbackTriggered ?? false,
-    selectedProviderId: imageResponse?.perceptionRouting?.selectedProviderId ?? statusResponse?.image?.provider?.providerId ?? 'UNKNOWN',
+    selectedProviderId: selectedProviderId(imageResponse, statusResponse),
     canonicalBoundaryCrossed: imageResponse?.status === 'BPMN_READY_FOR_PROCESS_REVIEW',
     safeStop: imageResponse?.status === 'SAFE_STOP_BEFORE_CANONICAL',
     automaticConfirmationAuthorized: imageResponse?.automaticConfirmationAuthorized ?? false,
@@ -163,12 +173,11 @@ if (httpStatus >= 500) {
 
 if (receipt.verdict.safeStop) {
   console.log('FIELD RESULT: SAFE STOP. This is valid fail-closed evidence; send the receipt to Jett for diagnosis.');
-  process.exit(2);
-}
-if (receipt.verdict.canonicalBoundaryCrossed) {
+  process.exitCode = 2;
+} else if (receipt.verdict.canonicalBoundaryCrossed) {
   console.log('FIELD RESULT: PERCEPTION ROUTE REACHED BPMN REVIEW CANDIDATE. Send the receipt to Jett.');
-  process.exit(0);
+  process.exitCode = 0;
+} else {
+  console.log('FIELD RESULT: NON-TERMINAL/UNKNOWN RESPONSE. Send the receipt to Jett for review.');
+  process.exitCode = 6;
 }
-
-console.log('FIELD RESULT: NON-TERMINAL/UNKNOWN RESPONSE. Send the receipt to Jett for review.');
-process.exit(6);
