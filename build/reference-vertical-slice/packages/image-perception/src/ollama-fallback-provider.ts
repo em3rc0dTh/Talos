@@ -30,7 +30,8 @@ export const OLLAMA_IMAGE_FALLBACK_ENV = {
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/api/chat';
 const DEFAULT_MODEL = 'qwen3-vl:4b';
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
+const MAX_TIMEOUT_MS = 600_000;
 
 const NODE_KINDS = ['EVENT','ACTION','DECISION','PARALLEL_SPLIT','JOIN','WAIT','HUMAN_INTERACTION','SUBPROCESS','STATE','END','ACTOR','DATA_OBJECT','BUSINESS_RULE','UNKNOWN'] as const;
 const OCCURRENCE_KINDS = ['NODE','PARTICIPANT','OBJECT_NODE','ANNOTATION','EVENT_MARKER','REGION','SOURCE_DEFINED'] as const;
@@ -241,7 +242,7 @@ export function resolveOllamaImageFallbackRuntime(
   const url=new URL(endpoint); if(url.protocol!=='http:'&&url.protocol!=='https:') throw new TypeError('OLLAMA_IMAGE_FALLBACK_CONFIG_INVALID: URL must use http or https');
   const model=envValue(env,OLLAMA_IMAGE_FALLBACK_ENV.model)??DEFAULT_MODEL;
   const rawTimeout=envValue(env,OLLAMA_IMAGE_FALLBACK_ENV.timeoutMs); const timeoutMs=rawTimeout&&/^\d+$/.test(rawTimeout)?Number(rawTimeout):DEFAULT_TIMEOUT_MS;
-  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>120000) throw new TypeError('OLLAMA_IMAGE_FALLBACK_CONFIG_INVALID: timeout must be between 1000 and 120000 milliseconds');
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT_MS) throw new TypeError(`OLLAMA_IMAGE_FALLBACK_CONFIG_INVALID: timeout must be between 1000 and ${MAX_TIMEOUT_MS} milliseconds`);
   const safeFields={configVersion:IMAGE_PERCEPTION_RUNTIME_CONFIG_VERSION,endpoint:url.toString(),providerId:OLLAMA_IMAGE_FALLBACK_PROVIDER_ID,providerVersion:OLLAMA_IMAGE_FALLBACK_PROVIDER_VERSION,modelRef:model,modelVersion:model,pipelineVersion:OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION,timeoutMs,authMode:'NONE' as const,authConfigured:false,providerClass:'MODEL_PROVIDER' as const,evidenceMode:'MODEL_INFERENCE' as const};
   const descriptor:ImagePerceptionRuntimeDescriptor=Object.freeze({...safeFields,configurationFingerprint:digestDeterministicJson({kind:'ImagePerceptionRuntimeDescriptor',...safeFields})});
   const adapterFetch=localFetch(descriptor.endpoint,model,timeoutMs,baseFetch);

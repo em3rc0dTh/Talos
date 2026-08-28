@@ -39,6 +39,9 @@ export const IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV = {
   evidenceMode: 'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE',
 } as const;
 
+const PRIMARY_MAX_TIMEOUT_MS = 120_000;
+const FALLBACK_MAX_TIMEOUT_MS = 600_000;
+
 type RuntimeEnvNames = {
   endpoint: string;
   providerId: string;
@@ -121,15 +124,15 @@ function normalizedEndpoint(raw: string): string {
   return url.toString();
 }
 
-function timeoutMs(env: Environment, name: string): number {
+function timeoutMs(env: Environment, name: string, maxTimeoutMs: number): number {
   const raw = optional(env, name);
   if (!raw) return 30_000;
   if (!/^\d+$/.test(raw)) {
     throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be an integer number of milliseconds');
   }
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1_000 || value > 120_000) {
-    throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be between 1000 and 120000 milliseconds');
+  if (!Number.isSafeInteger(value) || value < 1_000 || value > maxTimeoutMs) {
+    throw new TypeError(`IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be between 1000 and ${maxTimeoutMs} milliseconds`);
   }
   return value;
 }
@@ -143,7 +146,7 @@ function secretToken(env: Environment, name: string): string | undefined {
   return raw.trim();
 }
 
-function resolveBinding(env: Environment, names: RuntimeEnvNames): ImagePerceptionRuntimeResolution {
+function resolveBinding(env: Environment, names: RuntimeEnvNames, maxTimeoutMs: number): ImagePerceptionRuntimeResolution {
   const endpointRaw = optional(env, names.endpoint);
   if (!endpointRaw) {
     return {
@@ -159,7 +162,7 @@ function resolveBinding(env: Environment, names: RuntimeEnvNames): ImagePercepti
   const modelRef = required(env, names.modelRef);
   const modelVersion = required(env, names.modelVersion);
   const pipelineVersion = required(env, names.pipelineVersion);
-  const resolvedTimeoutMs = timeoutMs(env, names.timeoutMs);
+  const resolvedTimeoutMs = timeoutMs(env, names.timeoutMs, maxTimeoutMs);
   const bearerToken = secretToken(env, names.bearerToken);
   const providerClass = (optional(env, names.providerClass) ?? 'MODEL_PROVIDER') as ImagePerceptionRuntimeDescriptor['providerClass'];
   const evidenceMode = (optional(env, names.evidenceMode) ?? 'MODEL_INFERENCE') as ImagePerceptionRuntimeDescriptor['evidenceMode'];
@@ -215,14 +218,14 @@ function resolveBinding(env: Environment, names: RuntimeEnvNames): ImagePercepti
 export function resolveImagePerceptionRuntimeBinding(
   env: Environment = process.env,
 ): ImagePerceptionRuntimeResolution {
-  return resolveBinding(env, IMAGE_PERCEPTION_RUNTIME_ENV);
+  return resolveBinding(env, IMAGE_PERCEPTION_RUNTIME_ENV, PRIMARY_MAX_TIMEOUT_MS);
 }
 
 /** Optional second provider; Talos invokes it only after primary insufficiency. */
 export function resolveImagePerceptionFallbackRuntimeBinding(
   env: Environment = process.env,
 ): ImagePerceptionRuntimeResolution {
-  return resolveBinding(env, IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV);
+  return resolveBinding(env, IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV, FALLBACK_MAX_TIMEOUT_MS);
 }
 
 export async function runConfiguredImagePerceptionAdmission(
