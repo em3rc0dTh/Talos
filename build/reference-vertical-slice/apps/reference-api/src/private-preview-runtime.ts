@@ -3,6 +3,7 @@ import {
   resolveImagePerceptionFallbackRuntimeBinding,
   resolveOllamaImageFallbackRuntime,
 } from '../../../packages/image-perception/src/index.ts';
+import type { AutomationProposalOfferingCandidate } from '../../../packages/capability/src/index.ts';
 import {
   startTalosPrivatePreview,
 } from './private-preview-server.ts';
@@ -34,6 +35,9 @@ export interface TalosPrivatePreviewFromEnvOptions {
   imagePerceptionFetchImpl?: typeof fetch;
   imagePerceptionFallbackFetchImpl?: typeof fetch;
   ollamaBaseFetchImpl?: typeof fetch;
+  automationDesignFetchImpl?: typeof fetch;
+  automationDesignFallbackFetchImpl?: typeof fetch;
+  automationOfferings?: readonly AutomationProposalOfferingCandidate[];
   runtimeAdapters?: TalosPrivatePreviewRuntimeAdapters;
 }
 
@@ -83,8 +87,12 @@ export async function startTalosPrivatePreviewFromEnv(
     oneApp: {
       ...(options.runtimeDir ? { runtimeDir: options.runtimeDir } : {}),
       imagePerceptionEnv,
+      automationDesignEnv: env,
+      automationOfferings: [...(options.automationOfferings ?? [])],
       ...(options.imagePerceptionFetchImpl ? { imagePerceptionFetchImpl: options.imagePerceptionFetchImpl } : {}),
       ...(fallbackFetchImpl ? { imagePerceptionFallbackFetchImpl: fallbackFetchImpl } : {}),
+      ...(options.automationDesignFetchImpl ? { automationDesignFetchImpl: options.automationDesignFetchImpl } : {}),
+      ...(options.automationDesignFallbackFetchImpl ? { automationDesignFallbackFetchImpl: options.automationDesignFallbackFetchImpl } : {}),
       ...(options.runtimeAdapters ?? {}),
     },
   });
