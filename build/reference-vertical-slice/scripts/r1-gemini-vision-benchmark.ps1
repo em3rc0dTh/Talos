@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ImagePath,
-  [string]$Model = 'gemini-2.5-flash',
+  [string]$Model = 'gemini-3.6-flash',
   [int]$TimeoutSeconds = 90
 )
 
