@@ -30,7 +30,7 @@ export const GEMINI_IMAGE_PERCEPTION_ENV = {
   timeoutMs: 'TALOS_GEMINI_TIMEOUT_MS',
 } as const;
 
-const DEFAULT_MODEL = 'gemini-3.7-flash';
+const DEFAULT_MODEL = 'gemini-3.6-flash';
 const DEFAULT_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -184,11 +184,13 @@ Rules:
 - Identify all process-relevant geometric elements, including events, actions/tasks, decisions/gateways, parallel split/join markers, waits, human interactions, subprocess boundaries, states, end events, actors/participants, data objects, business rules and annotations.
 - Give each element a stable local id and a bounding box [ymin,xmin,ymax,xmax] normalized to 0..1000.
 - Extract every visible connector independently. Identify source, target and arrow direction from visible geometry only.
+- For every decision/gateway outgoing connector, inspect visible text immediately adjacent to that connector stroke/arrow. If text is visibly attached to that specific connector, copy it exactly into guardText, including short yes/no labels in any language. Do not emit connector-only guard labels as standalone process nodes. If association is ambiguous, leave guardText empty and report uncertainty.
 - A connector label/guard belongs in guardText only when visibly attached to that connector.
 - Use UNKNOWN, unresolved ids, lowered confidence, or uncertainties whenever evidence is ambiguous. Never repair a missing arrow or endpoint by guessing.
 - Mark completeCoverage=false when any relevant image region is unreadable, obscured, cropped, ambiguous, or not fully accounted for.
 - sourcePlaneKind should be BUSINESS_GRAPH for process flow nodes, RESPONSIBILITY_COLLABORATION for pools/lanes/participants, OBJECT_DATA for data objects, NOTATION_ANNOTATION for annotations, and UNKNOWN when unclear.
 - nodeKind must use the supplied enum. For ordinary tasks/actions use ACTION; exclusive/inclusive routing decisions use DECISION; start/intermediate events use EVENT; terminal events use END; explicit expanded/collapsed subprocesses use SUBPROCESS.
+- Use WAIT when the visible element's primary business meaning is elapsed time, deliberate delay/hold/pause, waiting for a duration, waiting until a date/time, or waiting until a condition/message/event. This includes language equivalent to "wait N minutes", "hold for N time", "leave/let stand for N time", or "wait until X" in any language. Do not classify an ordinary action as WAIT merely because its label mentions a duration as incidental context. If the distinction is ambiguous, report uncertainty instead of guessing.
 - occurrenceKind is normally NODE for process nodes, PARTICIPANT for actors/pools/lanes, OBJECT_NODE for data objects, ANNOTATION for annotations.
 - Confidence is evidence confidence from 0 to 1, not business truth authority.
 - Do not claim certainty merely to avoid an uncertainty entry.`;
