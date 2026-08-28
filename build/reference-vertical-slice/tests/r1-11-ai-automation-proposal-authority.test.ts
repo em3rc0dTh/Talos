@@ -155,6 +155,23 @@ test('an accepted proposal materializes existing capability selection only when 
   assert.equal(selections[0].authorityRef, decision.authorityRef);
 });
 
+test('Talos rejects a real offering that does not support the exact requirement operation intent', () => {
+  const incompatibleOffering: AutomationProposalOfferingCandidate = {
+    ...offering,
+    id: 'cap_offering_wrong_operation',
+    supportedOperationIntents: ['SEND_MESSAGE'],
+  };
+  assert.throws(
+    () => admitAutomationProposal(
+      context([incompatibleOffering]),
+      provider,
+      raw(`offering:${incompatibleOffering.id}`),
+      NOW,
+    ),
+    /offering does not support operation intent PERFORM_ACTION/,
+  );
+});
+
 test('partial AI design cannot be accepted as a complete automation design', () => {
   const proposal = admitAutomationProposal(context(), provider, {
     ...raw('proposal:generic-business-operation'),
