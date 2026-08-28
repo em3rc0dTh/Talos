@@ -10,6 +10,25 @@ export function persistAutomationProposal(
   repo: ImmutableDocumentRepository,
   proposal: AutomationProposal,
 ): void {
+  const existing = repo.get<AutomationProposal>(proposal.id as any);
+  if (existing) {
+    if (
+      existing.aggregateKind !== 'AutomationProposal'
+      || existing.schemaVersion !== proposal.schemaVersion
+      || existing.payload.proposalDigest !== proposal.proposalDigest
+      || existing.payload.processRevisionRef !== proposal.processRevisionRef
+      || existing.payload.capabilityDesignRevisionRef !== proposal.capabilityDesignRevisionRef
+      || existing.payload.providerId !== proposal.providerId
+      || existing.payload.modelRef !== proposal.modelRef
+      || existing.payload.pipelineVersion !== proposal.pipelineVersion
+    ) {
+      throw new TypeError('automation proposal immutable identity conflict');
+    }
+    // AutomationProposal.id is content-addressed from semantic proposal content.
+    // An identical later generation reuses the first persisted proposal artifact;
+    // its new provider-attempt time remains captured by AutomationProposalRouting.
+    return;
+  }
   repo.append({
     id: proposal.id as any,
     aggregateKind: 'AutomationProposal',
