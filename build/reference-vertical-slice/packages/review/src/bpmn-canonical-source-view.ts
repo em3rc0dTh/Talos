@@ -16,6 +16,7 @@ export interface BpmnCanonicalSourceNode {
   name?: string;
   incomingCount: number;
   outgoingCount: number;
+  eventDefinitionTypes: string[];
 }
 
 export interface BpmnCanonicalSourceFlow {
@@ -80,6 +81,14 @@ function nameOf(value: AnyRecord | undefined): string | undefined {
   return name || undefined;
 }
 
+function eventDefinitionTypesOf(value: AnyRecord | undefined): string[] {
+  return [...new Set(
+    (value?.eventDefinitions ?? [])
+      .map((definition: AnyRecord) => typeof definition?.$type === 'string' ? definition.$type : '')
+      .filter(Boolean),
+  )].sort();
+}
+
 function flattenLanes(process: AnyRecord): BpmnCanonicalSourceLane[] {
   const lanes: BpmnCanonicalSourceLane[] = [];
   const visit = (lane: AnyRecord) => {
@@ -122,6 +131,7 @@ function processView(process: AnyRecord): BpmnCanonicalSourceProcess {
         ...(nameOf(element) ? { name: nameOf(element) } : {}),
         incomingCount: incoming.get(id) ?? 0,
         outgoingCount: outgoing.get(id) ?? 0,
+        eventDefinitionTypes: eventDefinitionTypesOf(element),
       };
     })
     .filter((node) => node.id)
