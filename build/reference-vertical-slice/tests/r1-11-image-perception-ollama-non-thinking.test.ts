@@ -17,7 +17,7 @@ function talosRequest(): RequestInit {
   };
 }
 
-test('Ollama fallback uses non-thinking JSON extraction and Talos validates the result', async () => {
+test('Ollama fallback uses bounded non-thinking JSON extraction and Talos validates the result', async () => {
   let observedThink: unknown = 'missing';
   let observedStream: unknown = 'missing';
   let observedFormat: unknown;
@@ -68,7 +68,7 @@ test('Ollama fallback uses non-thinking JSON extraction and Talos validates the 
   if (runtime.status !== 'CONFIGURED') return;
 
   assert.equal(runtime.binding.descriptor.modelRef, 'qwen3-vl:4b-instruct');
-  assert.equal(runtime.binding.descriptor.pipelineVersion, 'talos-ollama-qwen3vl-fallback-v0.3');
+  assert.equal(runtime.binding.descriptor.pipelineVersion, 'talos-ollama-qwen3vl-fallback-v0.4');
 
   const response = await runtime.fetchImpl('http://talos.invalid/vision', talosRequest());
 
@@ -76,9 +76,10 @@ test('Ollama fallback uses non-thinking JSON extraction and Talos validates the 
   assert.equal(observedStream, false);
   assert.equal(observedFormat, 'json');
   assert.equal(observedModel, 'qwen3-vl:4b-instruct');
-  assert.equal(observedNumPredict, 2048);
+  assert.equal(observedNumPredict, 1024);
   assert.match(observedPrompt, /elements MUST NOT be empty/);
   assert.match(observedPrompt, /Use nodeKind=UNKNOWN/);
+  assert.match(observedPrompt, /Keep the JSON concise/);
   assert.equal(response.status, 200);
 
   const provider = await response.json() as any;
