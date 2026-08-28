@@ -19,7 +19,7 @@ import {
 
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_ID = 'TALOS_OLLAMA_LOCAL_FALLBACK';
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_VERSION = '1.0.0';
-export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.3';
+export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.4';
 
 export const OLLAMA_IMAGE_FALLBACK_ENV = {
   enabled: 'TALOS_OLLAMA_FALLBACK_ENABLED',
@@ -32,7 +32,11 @@ const DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/api/chat';
 const DEFAULT_MODEL = 'qwen3-vl:4b-instruct';
 const DEFAULT_TIMEOUT_MS = 300_000;
 const MAX_TIMEOUT_MS = 600_000;
-const MAX_OUTPUT_TOKENS = 2_048;
+// Field evidence on the reference machine measured ~7 generated tokens/s.
+// 2048 tokens could therefore consume almost the whole 300s transport budget.
+// Keep the extraction bounded so provider generation cannot monopolize the
+// fallback budget. Truncated/invalid JSON remains fail-closed in parseExtraction.
+const MAX_OUTPUT_TOKENS = 1_024;
 
 const NODE_KINDS = ['EVENT','ACTION','DECISION','PARALLEL_SPLIT','JOIN','WAIT','HUMAN_INTERACTION','SUBPROCESS','STATE','END','ACTOR','DATA_OBJECT','BUSINESS_RULE','UNKNOWN'] as const;
 const OCCURRENCE_KINDS = ['NODE','PARTICIPANT','OBJECT_NODE','ANNOTATION','EVENT_MARKER','REGION','SOURCE_DEFINED'] as const;
@@ -78,7 +82,7 @@ const PROMPT = `You are Talos' LOCAL independent fallback visual sensor. A prima
 
 Your task is VISUAL EXTRACTION, not business interpretation. Inspect top-left to bottom-right only for coverage. Never infer process order from position. Process order comes only from visible arrows/connectors and notation.
 
-Return JSON only with exactly these top-level fields: completeCoverage, elements, connectors, uncertainties. Do not output BPMN. Do not design automation. Do not invent missing arrows, labels, conditions, endpoints or process meaning.
+Return JSON only with exactly these top-level fields: completeCoverage, elements, connectors, uncertainties. Do not output BPMN. Do not design automation. Do not invent missing arrows, labels, conditions, endpoints or process meaning. Keep the JSON concise: literal labels only, no prose outside uncertainty descriptions, no duplicate elements or connectors.
 
 IMPORTANT NON-OMISSION RULE:
 - A process-relevant visual element includes any visible task/action box, event/circle, decision/gateway diamond, subprocess or grouped step, wait/state marker, human/system step, actor/lane/pool region, data object attached to process work, or text label visibly belonging to a process node.
