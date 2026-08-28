@@ -30,6 +30,8 @@ import {
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
 import {
   LocalImageByteStore,
+  resolveGeminiImagePerceptionRuntime,
+  resolveImagePerceptionFallbackRuntimeBinding,
   resolveImagePerceptionRuntimeBinding,
 } from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
@@ -86,6 +88,8 @@ export interface TalosOneAppOptions {
   runtimeDir?: string;
   imagePerceptionEnv?: Readonly<Record<string, string | undefined>>;
   imagePerceptionFetchImpl?: typeof fetch;
+  imagePerceptionFallbackFetchImpl?: typeof fetch;
+  geminiBaseFetchImpl?: typeof fetch;
   deploymentAttemptExecutor?: (
     input: OneAppDeploymentAttemptExecutorInput,
   ) => Promise<OneAppDeploymentAttemptExecutorResult>;
@@ -163,7 +167,20 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const byteStore = new LocalImageByteStore(path.join(runtimeDir, 'source-bytes'));
   const workspace = new BpmnWorkspaceService(repo, byteStore);
   const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
-  const imageRuntime = resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env);
+  const imageEnv = options.imagePerceptionEnv ?? process.env;
+  const explicitImageRuntime = resolveImagePerceptionRuntimeBinding(imageEnv);
+  const geminiImageRuntime = resolveGeminiImagePerceptionRuntime(imageEnv, options.geminiBaseFetchImpl ?? fetch);
+  const imageRuntime = explicitImageRuntime.status === 'CONFIGURED'
+    ? explicitImageRuntime
+    : geminiImageRuntime.status === 'CONFIGURED'
+      ? { status: 'CONFIGURED' as const, binding: geminiImageRuntime.binding! }
+      : explicitImageRuntime;
+  const imagePrimaryFetch = explicitImageRuntime.status === 'CONFIGURED'
+    ? options.imagePerceptionFetchImpl
+    : geminiImageRuntime.status === 'CONFIGURED'
+      ? geminiImageRuntime.fetchImpl
+      : undefined;
+  const imageFallbackRuntime = resolveImagePerceptionFallbackRuntimeBinding(imageEnv);
   const bindings = new Map<string, ReconciledBinding>();
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
@@ -179,6 +196,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
 
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/status')) {
         const imageConfigured = imageRuntime.status === 'CONFIGURED';
+        const fallbackConfigured = imageFallbackRuntime.status === 'CONFIGURED';
         json(res, 200, {
           status: 'READY',
           releaseGate: imageConfigured
@@ -195,6 +213,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             exactSourceIntake: true,
             liveVisionInterpretation: imageConfigured,
             correlatedProviderResponsesRequired: true,
+            deterministicPrimarySufficiencyGate: true,
+            automaticFallbackOnPrimaryInsufficiency: fallbackConfigured,
+            primarySelection: explicitImageRuntime.status === 'CONFIGURED'
+              ? 'EXPLICIT_TALOS_PROVIDER'
+              : geminiImageRuntime.status === 'CONFIGURED'
+                ? 'GEMINI_API_KEY'
+                : 'NONE',
             ...(imageConfigured ? {
               provider: {
                 providerId: imageRuntime.binding.descriptor.providerId,
@@ -202,10 +227,21 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
                 modelRef: imageRuntime.binding.descriptor.modelRef,
                 modelVersion: imageRuntime.binding.descriptor.modelVersion,
                 pipelineVersion: imageRuntime.binding.descriptor.pipelineVersion,
+                authMode: imageRuntime.binding.descriptor.authMode,
                 authConfigured: imageRuntime.binding.descriptor.authConfigured,
               },
+              fallback: fallbackConfigured ? {
+                providerId: imageFallbackRuntime.binding.descriptor.providerId,
+                providerVersion: imageFallbackRuntime.binding.descriptor.providerVersion,
+                modelRef: imageFallbackRuntime.binding.descriptor.modelRef,
+                modelVersion: imageFallbackRuntime.binding.descriptor.modelVersion,
+                pipelineVersion: imageFallbackRuntime.binding.descriptor.pipelineVersion,
+                authMode: imageFallbackRuntime.binding.descriptor.authMode,
+                authConfigured: imageFallbackRuntime.binding.descriptor.authConfigured,
+                trigger: 'TALOS_PRIMARY_PERCEPTION_INSUFFICIENT',
+              } : { status: 'NOT_CONFIGURED' },
             } : {
-              reason: imageRuntime.reason,
+              reason: 'NO_EXPLICIT_IMAGE_PROVIDER_OR_GEMINI_API_KEY',
             }),
           },
           authorityChain: [
@@ -248,7 +284,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           const preserved = workspace.intakeImage({ pngBytes, declaredName, initiatedBy });
           json(res, 202, {
             ...preserved,
-            interpretation: { status: 'NOT_CONFIGURED', reason: imageRuntime.reason },
+            interpretation: { status: 'NOT_CONFIGURED', reason: 'NO_EXPLICIT_IMAGE_PROVIDER_OR_GEMINI_API_KEY' },
             automaticConfirmationAuthorized: false,
             automaticAutomationDesignAuthorized: false,
           });
@@ -263,7 +299,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           {
             declaredName,
             initiatedBy,
-            ...(options.imagePerceptionFetchImpl ? { fetchImpl: options.imagePerceptionFetchImpl } : {}),
+            ...(imagePrimaryFetch ? { fetchImpl: imagePrimaryFetch } : {}),
+            ...(imageFallbackRuntime.status === 'CONFIGURED' ? { fallbackBinding: imageFallbackRuntime.binding } : {}),
+            ...(options.imagePerceptionFallbackFetchImpl ? { fallbackFetchImpl: options.imagePerceptionFallbackFetchImpl } : {}),
           },
         );
 
@@ -277,6 +315,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             height: result.intake.coordinateSpace.height,
             mediaType: 'image/png',
             perceptionDecision: result.perception.admission.decision,
+            perceptionRouting: result.perceptionRouting,
             diagnostics: result.perception.attempt.diagnostics,
             automaticConfirmationAuthorized: false,
             automaticFreezeAuthorized: false,
@@ -312,6 +351,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           height: result.intake.coordinateSpace.height,
           mediaType: 'image/png',
           perceptionDecision: result.perception.admission.decision,
+          perceptionRouting: result.perceptionRouting,
           revision: result.projection.bpmnRevision,
           reconciliation: publicReconciliation(binding),
           projectionDiagnostics: result.projection.diagnostics,
