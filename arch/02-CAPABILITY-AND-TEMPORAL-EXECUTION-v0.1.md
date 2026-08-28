@@ -78,6 +78,65 @@ Gmail / Microsoft 365 / internal service
 
 A binding must be versioned and traceable.
 
+## Governed AI automation designer
+
+The automation-design stage may use an AI provider to generate a complete **proposal**, but provider output is never a binding, business truth, DeploymentRevision or execution authority.
+
+```text
+Confirmed ProcessRevision
+        ↓
+Generic Capability Requirements
+        ↓
+AI Automation Designer Provider
+Gemini primary / governed local fallback
+        ↓
+AutomationProposal [SUGGESTED]
+        ↓
+Talos deterministic contract + policy validation
+        ↓
+Human review / adjust / approve
+        ↓
+Explicit capability selections
+```
+
+The generic capability designer remains conservative. When canonical semantics do not prove whether work is HUMAN, SYSTEM, AI or another execution family, the requirement stays unresolved. The AI proposal layer may propose a resolution, with rationale and uncertainty, without changing the requirement's truth state.
+
+The provider contract is source- and domain-agnostic. No Talos rule may infer execution behavior from fixture names, industry labels or task names.
+
+### AutomationProposal boundary
+
+Candidate structure:
+
+```text
+AutomationProposal
+- id
+- processRevisionRef
+- capabilityDesignRevisionRef
+- providerId
+- modelRef
+- pipelineVersion
+- state = SUGGESTED
+- createsBinding = false
+- grantsAuthority = false
+- proposalDigest
+- steps[]
+- integrations[]
+- humanCoordinations[]
+- waits[]
+- branchTreatments[]
+- subprocessTreatments[]
+- runtimePolicySuggestions[]
+- assumptions[]
+- unresolvedQuestions[]
+- diagnostics[]
+```
+
+Every proposed step must trace to exact canonical semantic subjects. Talos rejects unsupported references, dropped material semantics, fabricated capability identities, unsafe side-effect policies, embedded secrets, or mappings that violate Temporal determinism.
+
+AI may design. Talos validates and compiles. Human authority approves. Temporal executes only the approved artifact lineage.
+
+See `design/03-AI-AUTOMATION-DESIGN-AND-PROGRESSIVE-DISCLOSURE-v0.1.md`.
+
 ## Human capabilities
 
 Humans are also process capabilities.
@@ -128,6 +187,8 @@ ai.generate.response
 
 Execution-critical AI outputs may require validation or human confirmation depending on risk and process semantics.
 
+An AI **execution capability** inside a business workflow is different from the **AI Automation Designer** used during design. Both require explicit contracts and neither receives authority merely by being model-generated.
+
 ## n8n boundary
 
 n8n is an integration capability, not the durable orchestration authority.
@@ -174,6 +235,8 @@ ExecutionPlan
 - status
 ```
 
+`ExecutionPlan` is built only from approved design decisions and explicit bindings. An `AutomationProposal` is upstream review material and cannot be compiled as if it were already approved.
+
 ## Temporal mapping
 
 Possible semantic mappings:
@@ -207,11 +270,15 @@ Long history / recurring lifecycle
     → Continue-As-New when appropriate
 ```
 
+Users are not required to design these Temporal primitives directly. Talos derives them from an approved ExecutionPlan and exposes an advanced technical view when needed.
+
 ## Determinism rule
 
 Temporal workflow code/interpreter must remain deterministic.
 
 Uncontrolled external calls, random non-deterministic decisions, file reads and mutable process lookup must not occur directly inside deterministic workflow logic unless mediated through Temporal-safe mechanisms.
+
+AI model calls must not become unrecorded non-deterministic Workflow decisions. An AI execution step runs through an approved capability boundary such as an Activity/Nexus operation and its result is handled according to the approved process/runtime contract.
 
 ## Process revision pinning
 
@@ -259,6 +326,8 @@ Examples:
 
 TALOS should not assume Temporal retries make side effects safe. The capability contract must describe idempotency strategy or expose the risk as a validation blocker.
 
+AI-proposed side-effect behavior must satisfy the same rule before proposal approval can produce a capability binding.
+
 ## Compensation
 
 Some actions cannot simply be rolled back.
@@ -290,3 +359,5 @@ Examples:
 - unsafe retry behavior;
 - unresolved source conflict affecting execution;
 - missing timeout where process semantics require one.
+
+A high-confidence AI proposal does not waive this gate.
