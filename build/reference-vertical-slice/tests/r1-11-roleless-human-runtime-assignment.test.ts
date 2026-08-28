@@ -7,11 +7,11 @@ import {
   generateAutomationProposal,
   materializeApprovedAutomationProposalSelections,
   resolveGeminiAutomationDesigner,
-  resolveGenericCapabilities,
   TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING,
   withTalosBuiltinAutomationOfferings,
   type AutomationProposalProviderContext,
 } from '../packages/capability/src/index.ts';
+import { resolveGenericCapabilities } from '../packages/capability/src/generic-resolution.ts';
 import type { ProcessRevision } from '../packages/semantic-core/src/types.ts';
 import type { CapabilityDesignBundle } from '../packages/capability/src/generic-design.ts';
 
@@ -88,10 +88,10 @@ function design(): CapabilityDesignBundle {
 }
 
 function context(): AutomationProposalProviderContext {
-  return { process: process(), design: design(), availableOfferings: withTalosBuiltinAutomationOfferings([]) };
+  return { process: process(), design: design(), availableOfferings: withTalosBuiltinAutomationOfferings([]) as any };
 }
 
-function rawRolelessHuman() {
+function rawRolelessHuman(implementationRef = `offering:${TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id}`) {
   return {
     steps: [{
       capabilityRequirementRef: REQUIREMENT,
@@ -99,7 +99,7 @@ function rawRolelessHuman() {
       proposedFamily: 'HUMAN_INTERACTION',
       canonicalName: 'Talos Workflow-native human coordination',
       implementationKind: 'HUMAN_SERVICE',
-      implementationRef: `offering:${TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id}`,
+      implementationRef,
       rationale: 'The confirmed work is performed by a human; no organizational role is asserted, so assignment remains runtime-governed.',
       confidence: 0.9,
       human: {
@@ -126,6 +126,14 @@ test('roleless human work can be a COMPLETE AI design using Talos built-in Workf
   const readiness = assessAutomationProposalCapabilityReadiness(proposal, []);
   assert.equal(readiness.bindingReadiness, 'READY_FOR_CAPABILITY_SELECTION');
   assert.deepEqual(readiness.gaps, []);
+});
+
+test('a proposal-only human implementation resolves to the unique compatible governed offering without creating a binding', () => {
+  const proposal = admitAutomationProposal(context(), provider, rawRolelessHuman('proposal:runtime-human-coordination'), NOW);
+  assert.equal(proposal.steps[0].implementationRef, `offering:${TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id}`);
+  assert.equal(proposal.steps[0].createsBinding, false);
+  assert.equal(proposal.createsBinding, false);
+  assert.equal(proposal.grantsAuthority, false);
 });
 
 test('accepted roleless human proposal materializes ANY_ELIGIBLE runtime assignment without inventing a role', () => {
@@ -196,7 +204,7 @@ test('Gemini receives the built-in human capability and is instructed not to blo
   const fakeFetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
     requestText = String(body.contents?.[0]?.parts?.[0]?.text ?? '');
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(rawRolelessHuman()) }] } }] }), {
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(rawRolelessHuman('proposal:runtime-human-coordination')) }] } }] }), {
       status: 200, headers: { 'content-type': 'application/json' },
     });
   }) as typeof fetch;
@@ -205,7 +213,8 @@ test('Gemini receives the built-in human capability and is instructed not to blo
   if (runtime.status !== 'CONFIGURED' || !runtime.provider) return;
   const proposal = await generateAutomationProposal(runtime.provider, context(), NOW);
   assert.equal(proposal.status, 'COMPLETE');
+  assert.equal(proposal.steps[0].implementationRef, `offering:${TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id}`);
   assert.match(requestText, /runtime assignment to an eligible authenticated human/);
-  assert.match(requestText, new RegExp(TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(requestText, /Missing role evidence alone is.*material unresolved question/i);
+  assert.ok(requestText.includes(TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id));
+  assert.match(requestText, /Missing role evidence alone is NOT a material unresolved question/i);
 });
