@@ -12,7 +12,7 @@ if (!imageArg) {
   process.exit();
 }
 
-const model = process.argv[3] || 'gemini-2.5-flash';
+const model = process.argv[3] || 'gemini-3.6-flash';
 const timeoutSeconds = Number(process.argv[4] || '90');
 if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 300) {
   throw new TypeError('timeoutSeconds must be between 1 and 300');
@@ -41,6 +41,7 @@ function usageSummary(payload) {
   return {
     promptTokens: usage.promptTokenCount ?? null,
     outputTokens: usage.candidatesTokenCount ?? null,
+    thoughtsTokens: usage.thoughtsTokenCount ?? null,
     totalTokens: usage.totalTokenCount ?? null,
   };
 }
@@ -88,6 +89,7 @@ async function runProbe(name, prompt, generationConfig) {
     console.log(`Finish reason: ${candidate?.finishReason ?? 'unknown'}`);
     console.log(`Prompt tokens: ${usage.promptTokens ?? 'unknown'}`);
     console.log(`Output tokens: ${usage.outputTokens ?? 'unknown'}`);
+    console.log(`Thought tokens: ${usage.thoughtsTokens ?? 'unknown'}`);
     console.log(`Total tokens : ${usage.totalTokens ?? 'unknown'}`);
     const text = candidateText(payload);
     console.log('Answer:');
@@ -112,30 +114,31 @@ console.log(`Image   : ${imagePath}`);
 console.log(`Bytes   : ${imageBytes.byteLength}`);
 console.log(`Model   : ${model}`);
 console.log(`Timeout : ${timeoutSeconds}s per probe`);
+console.log('Thinking: minimal (visual sensor task; no business reasoning)');
 console.log('Boundary: DIRECT GEMINI ONLY — no Talos admission, no fallback, no Canonical/BPMN');
 
 const classify = await runProbe(
   'PROBE 1 — VISUAL CLASSIFICATION',
   'Look at the image. Reply with exactly one word: PROCESS if it contains a business process/workflow diagram, otherwise NOT_PROCESS.',
-  { temperature: 0, maxOutputTokens: 16 },
+  { thinkingConfig: { thinkingLevel: 'minimal' }, maxOutputTokens: 64 },
 );
 
 const lite = await runProbe(
   'PROBE 2 — LITERAL VISUAL EXTRACTION',
   `Inspect the image as visual evidence only. Do not create BPMN and do not infer missing meaning. Return compact JSON with exactly these fields:\n{\n  "isProcess": boolean,\n  "visibleLabels": string[],\n  "visibleElementCount": number,\n  "visibleConnectorCount": number,\n  "uncertainties": string[]\n}\nCopy up to 20 visible process labels literally. Count visible process elements and visible connectors/arrows. If uncertain, report the uncertainty instead of guessing.`,
-  { temperature: 0, maxOutputTokens: 512, responseMimeType: 'application/json' },
+  { thinkingConfig: { thinkingLevel: 'minimal' }, maxOutputTokens: 2048, responseMimeType: 'application/json' },
 );
 
 console.log('\n=== DIRECT GEMINI VERDICT ===');
 console.log(`Classification probe : ${classify.ok ? 'HTTP_OK' : 'FAILED'}`);
 console.log(`Extraction probe     : ${lite.ok ? 'HTTP_OK' : 'FAILED'}`);
-if (classify.ok && /\bPROCESS\b/i.test(classify.text ?? '') && lite.ok) {
+if (classify.ok && /^PROCESS$/i.test((classify.text ?? '').trim()) && lite.ok && /"isProcess"\s*:\s*true/i.test(lite.text ?? '')) {
   console.log('RESULT               : GEMINI_DIRECT_VISION_WORKS');
-  console.log('NEXT                 : Diagnose Talos Gemini structured request/schema mapping.');
+  console.log('NEXT                 : Promote this Gemini 3.6 sensor configuration into Talos primary perception.');
 } else if (!classify.ok) {
   console.log('RESULT               : GEMINI_DIRECT_PROVIDER_OR_MODEL_FAILURE');
   console.log('NEXT                 : Resolve model/API/provider before Talos perception changes.');
 } else {
   console.log('RESULT               : GEMINI_DIRECT_VISION_INCONCLUSIVE');
-  console.log('NEXT                 : Inspect the two raw probe answers above.');
+  console.log('NEXT                 : Inspect finish reason, thought tokens and raw answers above.');
 }
