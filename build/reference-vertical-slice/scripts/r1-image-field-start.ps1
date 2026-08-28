@@ -2,7 +2,7 @@ param(
   [switch]$EnableLocalFallback,
   [switch]$PullFallbackModel,
   [string]$GeminiModel = 'gemini-3.7-flash',
-  [string]$FallbackModel = 'qwen3-vl:4b'
+  [string]$FallbackModel = 'qwen3-vl:4b-instruct'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +49,8 @@ function Set-FieldEnvironment([string]$GitSha) {
     'TALOS_IMAGE_PERCEPTION_FALLBACK_TIMEOUT_MS',
     'TALOS_IMAGE_PERCEPTION_FALLBACK_BEARER_TOKEN',
     'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_CLASS',
-    'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE'
+    'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE',
+    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS'
   )) { Remove-EnvIfPresent $name }
 }
 
@@ -69,7 +70,8 @@ function Clear-FieldEnvironment {
     'TALOS_PRODUCT_PORT',
     'TALOS_GEMINI_MODEL',
     'TALOS_OLLAMA_FALLBACK_ENABLED',
-    'TALOS_OLLAMA_FALLBACK_MODEL'
+    'TALOS_OLLAMA_FALLBACK_MODEL',
+    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS'
   )) { Remove-EnvIfPresent $name }
 }
 
