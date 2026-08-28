@@ -1,7 +1,7 @@
 param(
   [switch]$EnableLocalFallback,
   [switch]$PullFallbackModel,
-  [string]$GeminiModel = 'gemini-3.7-flash',
+  [string]$GeminiModel = 'gemini-3.6-flash',
   [string]$FallbackModel = 'qwen3-vl:4b-instruct'
 )
 
