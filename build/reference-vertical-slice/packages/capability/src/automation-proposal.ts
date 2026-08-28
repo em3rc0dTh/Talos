@@ -277,6 +277,9 @@ export function admitAutomationProposal(
       if (!offering) throw new TypeError(`proposal step ${capabilityRequirementRef} references unavailable offering ${offeringId}`);
       if (offering.family !== proposedFamily) throw new TypeError(`proposal step ${capabilityRequirementRef} offering family mismatch`);
       if (offering.implementationKind !== implementationKind) throw new TypeError(`proposal step ${capabilityRequirementRef} offering implementation mismatch`);
+      if (!offering.supportedOperationIntents.includes(requirement.operationIntent)) {
+        throw new TypeError(`proposal step ${capabilityRequirementRef} offering does not support operation intent ${requirement.operationIntent}`);
+      }
     } else if (!implementationRef.startsWith('proposal:')) {
       throw new TypeError(`proposal step ${capabilityRequirementRef} implementationRef must reference a governed offering or explicit proposal namespace`);
     }
