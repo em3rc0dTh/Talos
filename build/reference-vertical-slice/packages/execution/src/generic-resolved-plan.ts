@@ -145,7 +145,7 @@ function relationComplete(process: ProcessRevision, edge: ProcessEdge): boolean 
   return ['SEQUENCE', 'DEFAULT', 'PARALLEL'].includes(edge.kind);
 }
 
-function completeWaitSemantics(node: ProcessNode): boolean {
+export function completeWaitExecutionSemantics(node: ProcessNode): boolean {
   if (node.kind !== 'WAIT') return true;
   const details = node.details ?? {};
   const waitKind = typeof details.waitKind === 'string' ? details.waitKind : '';
@@ -154,7 +154,19 @@ function completeWaitSemantics(node: ProcessNode): boolean {
     return typeof details.timezone === 'string' && details.timezone.length > 0 && details.expression !== undefined;
   }
   if (['EXTERNAL_EVENT', 'MESSAGE', 'HUMAN_RESPONSE', 'CONDITION'].includes(waitKind)) return details.resumeSemantics !== undefined;
-  if (waitKind === 'DURATION') return details.expression !== undefined;
+  if (waitKind === 'DURATION') {
+    const durationExpression = typeof details.durationExpression === 'string'
+      ? details.durationExpression.trim()
+      : typeof details.expression === 'string'
+        ? details.expression.trim()
+        : '';
+    const durationSeconds = typeof details.durationSeconds === 'number'
+      ? details.durationSeconds
+      : typeof details.durationSeconds === 'string' && details.durationSeconds.trim()
+        ? Number(details.durationSeconds)
+        : Number.NaN;
+    return Boolean(durationExpression) || (Number.isFinite(durationSeconds) && durationSeconds > 0);
+  }
   return false;
 }
 
@@ -244,7 +256,7 @@ export function designGenericResolvedExecutionPlan(
     } else if (node.kind === 'DECISION') kind = 'DECISION_COORDINATION';
     else if (node.kind === 'WAIT') {
       kind = 'WAIT_COORDINATION';
-      complete = completeWaitSemantics(node);
+      complete = completeWaitExecutionSemantics(node);
     } else if (node.kind === 'END') kind = 'COMPLETION_COORDINATION';
     else if (node.kind === 'STATE') kind = 'STATE_COORDINATION';
     else if (node.kind === 'SUBPROCESS') {
