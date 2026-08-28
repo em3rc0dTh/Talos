@@ -188,6 +188,7 @@ function bindActor(pathname: string, payload: Record<string, unknown>, actorId: 
       bindTop('approvedBy');
       break;
     case '/api/automation/suggestion/decide':
+    case '/api/automation/proposal/decide':
     case '/api/automation/deployment-design':
       bindTop('decidedBy');
       break;
