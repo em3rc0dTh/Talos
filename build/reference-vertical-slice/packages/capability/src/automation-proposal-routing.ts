@@ -4,6 +4,7 @@ import type {
   AutomationProposalProviderContext,
 } from './automation-proposal.ts';
 import { generateAutomationProposal } from './automation-proposal.ts';
+import { normalizeAutomationProposalForRouting } from './automation-proposal-normalization.ts';
 
 export type AutomationProposalRoutingDecision =
   | 'PRIMARY_ACCEPTED'
@@ -50,7 +51,8 @@ async function attempt(
   createdAt: string,
 ): Promise<AutomationProposalAttemptEvidence> {
   try {
-    const proposal = await generateAutomationProposal(provider, context, createdAt);
+    const admitted = await generateAutomationProposal(provider, context, createdAt);
+    const proposal = normalizeAutomationProposalForRouting(context, admitted);
     return {
       ...identity(provider),
       result: proposal.status,
