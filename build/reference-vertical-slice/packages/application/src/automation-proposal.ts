@@ -1,6 +1,8 @@
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import type {
   AutomationProposal,
+  AutomationProposalDecisionRecord,
+  AutomationProposalReadinessAssessment,
   AutomationProposalRoutingResult,
 } from '../../capability/src/index.ts';
 
@@ -34,4 +36,32 @@ export function persistAutomationProposalRouting(
   if (routing.fallback?.proposal && routing.fallback.proposal.id !== routing.primary.proposal?.id) {
     persistAutomationProposal(repo, routing.fallback.proposal);
   }
+}
+
+export function persistAutomationProposalReadiness(
+  repo: ImmutableDocumentRepository,
+  readinessId: string,
+  readiness: AutomationProposalReadinessAssessment,
+  createdAt: string,
+): void {
+  repo.append({
+    id: readinessId as any,
+    aggregateKind: 'AutomationProposalReadinessAssessment',
+    schemaVersion: 'talos-automation-proposal-readiness-v0.1',
+    payload: readiness,
+    createdAt,
+  });
+}
+
+export function persistAutomationProposalDecision(
+  repo: ImmutableDocumentRepository,
+  decision: AutomationProposalDecisionRecord,
+): void {
+  repo.append({
+    id: decision.id as any,
+    aggregateKind: 'AutomationProposalDecision',
+    schemaVersion: 'talos-automation-proposal-decision-v0.1',
+    payload: decision,
+    createdAt: decision.decidedAt,
+  });
 }
