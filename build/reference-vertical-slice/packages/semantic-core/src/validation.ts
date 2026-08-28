@@ -1,5 +1,6 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import type { AssessmentIntent,AssessmentScope,ClarificationPlan,ClarificationQuestion,ExecutionReadiness,ProcessNode,ProcessRevision,ReadinessDecision,SemanticVerdict,ValidationAssessment,ValidationBundle,ValidationFinding,ValidationId } from './types.ts';
+import { deriveExplicitDurationWaitSemantics } from './wait-semantics.ts';
 
 export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.3';
 export const SEMANTIC_RULESET_VERSION='semantic-validation-v0.3';
@@ -32,11 +33,12 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       if(!out.some(f=>f.code==='SV-ACT-001'&&f.targetRefs.includes(node.id)))out.push({code:'SV-ACT-001',family:'ACTOR_RESPONSIBILITY',title:'Actor or owner missing',description:`Human interaction ${node.name??node.id} has no responsible actor.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
     }
     if(node.kind==='WAIT'){
-      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??'');
+      const derivedDuration=deriveExplicitDurationWaitSemantics(node.name);
+      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??derivedDuration?.waitKind??'');
       const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
       const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
-      const durationExpression=node.details?.durationExpression??props.durationExpression??props['propertyValues.durationExpression'];
-      const durationSeconds=node.details?.durationSeconds??props.durationSeconds??props['propertyValues.durationSeconds'];
+      const durationExpression=node.details?.durationExpression??props.durationExpression??props['propertyValues.durationExpression']??derivedDuration?.durationExpression;
+      const durationSeconds=node.details?.durationSeconds??props.durationSeconds??props['propertyValues.durationSeconds']??derivedDuration?.durationSeconds;
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
         out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for an elapsed duration, schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
