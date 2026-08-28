@@ -147,6 +147,17 @@ function outgoing(process: ProcessRevision, nodeId: CanonicalId): ProcessEdge[] 
   return process.edges.filter((edge) => edge.sourceNodeId === nodeId);
 }
 
+function waitExpression(node: ProcessNode): { element: 'timeDuration' | 'timeDate' | 'timeCycle'; body: string } | undefined {
+  const waitKind = String(node.details?.waitKind ?? '');
+  if (waitKind === 'DURATION' && typeof node.details?.durationExpression === 'string' && node.details.durationExpression.trim()) {
+    return { element: 'timeDuration', body: node.details.durationExpression.trim() };
+  }
+  if ((waitKind === 'DEADLINE' || waitKind === 'SCHEDULE') && typeof node.details?.expression === 'string' && node.details.expression.trim()) {
+    return { element: waitKind === 'DEADLINE' ? 'timeDate' : 'timeCycle', body: node.details.expression.trim() };
+  }
+  return undefined;
+}
+
 function chooseNodeKind(
   process: ProcessRevision,
   node: ProcessNode,
@@ -181,12 +192,14 @@ function chooseNodeKind(
     case 'JOIN':
       return 'parallelGateway';
     case 'WAIT':
-      diagnostics.push({
-        code: 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED',
-        targetRef: node.id,
-        severity: 'INFO',
-        message: 'WAIT is rendered as a BPMN timer catch event for business review without an executable timing expression. Executable timing belongs to later automation design.',
-      });
+      if (!waitExpression(node)) {
+        diagnostics.push({
+          code: 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED',
+          targetRef: node.id,
+          severity: 'INFO',
+          message: 'WAIT is rendered as a BPMN timer catch event for business review without a materialized timer expression. Unresolved timing remains a validation/design concern rather than an invented BPMN value.',
+        });
+      }
       return 'intermediateCatchEvent';
     case 'SUBPROCESS':
       return 'subProcess';
@@ -282,9 +295,13 @@ function renderNode(node: ProjectedNode, defaultFlowBySource: Map<string, string
   if (node.kind === 'subProcess') {
     return `<bpmn:subProcess id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:subProcess>`;
   }
-  const eventDefinition = node.kind === 'intermediateCatchEvent' && node.canonical.kind === 'WAIT'
-    ? '<bpmn:timerEventDefinition/>'
-    : '';
+  let eventDefinition = '';
+  if (node.kind === 'intermediateCatchEvent' && node.canonical.kind === 'WAIT') {
+    const expression = waitExpression(node.canonical);
+    eventDefinition = expression
+      ? `<bpmn:timerEventDefinition><bpmn:${expression.element} xsi:type="bpmn:tFormalExpression">${xmlEscape(expression.body)}</bpmn:${expression.element}></bpmn:timerEventDefinition>`
+      : '<bpmn:timerEventDefinition/>';
+  }
   return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}${eventDefinition}</bpmn:${node.kind}>`;
 }
 
