@@ -3,6 +3,7 @@ import type { ImmutableDocumentRepository } from '../../foundation/src/repositor
 import {
   assessAutomationProposalCapabilityReadiness,
   routeAutomationProposal,
+  withTalosBuiltinAutomationOfferings,
   type AutomationProposalOfferingCandidate,
   type AutomationProposalProvider,
   type AutomationProposalReadinessAssessment,
@@ -47,8 +48,9 @@ export async function proposeOneAppAutomationDesign(
     throw new TypeError('one-app automation proposal requires exact ProcessRevision lineage');
   }
 
+  const governedOfferings = withTalosBuiltinAutomationOfferings(availableOfferings);
   const routing = await routeAutomationProposal(
-    { process: context.process, design: context.design, availableOfferings: [...availableOfferings] },
+    { process: context.process, design: context.design, availableOfferings: governedOfferings },
     primaryProvider,
     fallbackProvider,
     createdAt,
@@ -59,7 +61,7 @@ export async function proposeOneAppAutomationDesign(
   ) as string;
   persistAutomationProposalRouting(repo, routingId, routing, createdAt);
   const readiness = routing.selectedProposal
-    ? assessAutomationProposalCapabilityReadiness(routing.selectedProposal, availableOfferings)
+    ? assessAutomationProposalCapabilityReadiness(routing.selectedProposal, governedOfferings)
     : undefined;
 
   return {
