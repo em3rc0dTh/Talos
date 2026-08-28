@@ -71,6 +71,10 @@ function requireNonEmpty(value: string, label: string): void {
   if (!value.trim()) throw new TypeError(`${label} is required`);
 }
 
+function assignmentCardinality(human: GenericHumanDesignResolution): ParticipantRequirement['assignmentCardinality'] {
+  return human.assignmentCardinality ?? (human.roleRefs.length === 0 ? 'ANY_ELIGIBLE' : 'EXACTLY_ONE');
+}
+
 function normalizedResolution(spec: GenericRequirementResolution) {
   return {
     requirementRef: spec.requirementRef,
@@ -88,7 +92,7 @@ function normalizedResolution(spec: GenericRequirementResolution) {
         interactionKind: spec.human.interactionKind,
         responsibilityKind: spec.human.responsibilityKind,
         roleRefs: spec.human.roleRefs,
-        assignmentCardinality: spec.human.assignmentCardinality ?? 'EXACTLY_ONE',
+        assignmentCardinality: assignmentCardinality(spec.human),
         outcomes: spec.human.outcomes.map((outcome) => ({
           code: outcome.code,
           businessMeaning: outcome.businessMeaning,
@@ -119,7 +123,13 @@ function validateResolution(base: CapabilityDesignBundle, specs: GenericRequirem
     }
     if (spec.family === 'HUMAN_INTERACTION') {
       if (!spec.human) throw new TypeError(`HUMAN_INTERACTION resolution requires human design for ${requirement.id}`);
-      if (spec.human.roleRefs.length === 0) throw new TypeError(`human design requires at least one participant role for ${requirement.id}`);
+      const assignment = assignmentCardinality(spec.human);
+      if (spec.human.roleRefs.length === 0 && assignment !== 'ANY_ELIGIBLE') {
+        throw new TypeError(`roleless human design requires ANY_ELIGIBLE runtime assignment for ${requirement.id}`);
+      }
+      if (spec.human.roleRefs.length > 0 && assignment === 'ANY_ELIGIBLE') {
+        throw new TypeError(`role-constrained human design cannot use unconstrained ANY_ELIGIBLE assignment for ${requirement.id}`);
+      }
       if (spec.human.outcomes.length === 0) throw new TypeError(`human design requires at least one outcome for ${requirement.id}`);
       for (const outcome of spec.human.outcomes) {
         requireNonEmpty(outcome.code, 'human outcome code');
@@ -337,6 +347,7 @@ export function resolveGenericCapabilities(
 
     if (spec.family === 'HUMAN_INTERACTION') {
       const human = spec.human!;
+      const assignment = assignmentCardinality(human);
       const humanDesignId = cap(`generic-human-design:${requirementId}`);
       const participantId = cap(`generic-human-participant:${humanDesignId}`);
       const outcomeContractId = cap(`generic-human-outcomes:${humanDesignId}`);
@@ -353,7 +364,8 @@ export function resolveGenericCapabilities(
         interactionKind: human.interactionKind,
         responsibilityKind: human.responsibilityKind,
         roleRefs: human.roleRefs,
-        assignmentCardinality: human.assignmentCardinality ?? 'EXACTLY_ONE',
+        assignmentCardinality: assignment,
+        actorTypeConstraints: human.roleRefs.length === 0 ? ['HUMAN'] : [],
         outcomes: outcomes.map((outcome) => ({ code: outcome.outcomeCode, meaning: outcome.businessMeaning, terminal: outcome.terminalForInteraction ?? false })),
         authorityRef: spec.authorityRef,
       });
@@ -384,10 +396,10 @@ export function resolveGenericCapabilities(
         humanInteractionDesignRevisionId: humanDesignId,
         responsibilityKind: human.responsibilityKind,
         roleRefs: human.roleRefs,
-        actorTypeConstraints: [],
+        actorTypeConstraints: human.roleRefs.length === 0 ? ['HUMAN'] : [],
         organizationalConstraintRefs: [],
         eligibilityRuleRefs: [],
-        assignmentCardinality: human.assignmentCardinality ?? 'EXACTLY_ONE',
+        assignmentCardinality: assignment,
         participantState: 'COMPLETE',
         facetRefs: [],
       });
