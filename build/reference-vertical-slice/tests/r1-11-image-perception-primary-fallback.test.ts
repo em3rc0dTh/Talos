@@ -172,9 +172,9 @@ test('Gemini API key configures primary visual perception without exposing the k
 
 test('Ollama Qwen3-VL is opt-in and provides an independent local structured fallback without secrets',async()=>withRuntime(async(repo,bytes)=>{
   assert.equal(resolveOllamaImageFallbackRuntime({}).status,'DISABLED');
-  let model=''; let imageSeen=false; let formatSeen=false;
+  let model=''; let imageSeen=false; let jsonFormatSeen=false;
   const fakeOllama=(async(_input:RequestInfo|URL,init?:RequestInit)=>{
-    const body=JSON.parse(String(init?.body)); model=body.model; imageSeen=typeof body.messages?.[0]?.images?.[0]==='string'; formatSeen=body.format?.type==='object';
+    const body=JSON.parse(String(init?.body)); model=body.model; imageSeen=typeof body.messages?.[0]?.images?.[0]==='string'; jsonFormatSeen=body.format==='json';
     const extraction={completeCoverage:true,elements:[
       {id:'a',label:'Receive request',nodeKind:'ACTION',occurrenceKind:'NODE',sourcePlaneKind:'BUSINESS_GRAPH',bbox:[10,10,200,250],confidence:0.92,visibility:'VISIBLE'},
       {id:'b',label:'Approve request',nodeKind:'ACTION',occurrenceKind:'NODE',sourcePlaneKind:'BUSINESS_GRAPH',bbox:[10,600,200,850],confidence:0.92,visibility:'VISIBLE'}],connectors:[{id:'c',sourceElementId:'a',targetElementId:'b',direction:'SOURCE_TO_TARGET',role:'CONTROL_FLOW',guardText:'',bbox:[60,250,140,600],confidence:0.91}],uncertainties:[]};
@@ -182,11 +182,11 @@ test('Ollama Qwen3-VL is opt-in and provides an independent local structured fal
   }) as typeof fetch;
   const runtime=resolveOllamaImageFallbackRuntime({TALOS_OLLAMA_FALLBACK_ENABLED:'true'},fakeOllama);
   assert.equal(runtime.status,'CONFIGURED'); if(runtime.status!=='CONFIGURED') return;
-  assert.equal(runtime.binding.descriptor.modelRef,'qwen3-vl:4b');
+  assert.equal(runtime.binding.descriptor.modelRef,'qwen3-vl:4b-instruct');
   assert.equal(runtime.binding.descriptor.authMode,'NONE');
   const intake=intakePngUpload(repo,bytes,tinyPng(),{initiatedBy:'test'});
   const result=await runCorrelatedConfiguredImagePerceptionAdmission(repo,bytes,intake,runtime.binding,{},runtime.fetchImpl);
-  assert.equal(model,'qwen3-vl:4b'); assert.equal(imageSeen,true); assert.equal(formatSeen,true);
+  assert.equal(model,'qwen3-vl:4b-instruct'); assert.equal(imageSeen,true); assert.equal(jsonFormatSeen,true);
   assert.equal(result.providerResult.status,'SUCCEEDED');
   assert.equal(result.providerResult.providerId,'TALOS_OLLAMA_LOCAL_FALLBACK');
   assert.equal(assessImagePerceptionSufficiency(result.providerResult).status,'SUFFICIENT');
