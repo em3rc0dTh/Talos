@@ -11,6 +11,30 @@ export interface AutomationProposalOfferingCandidate {
   implementationRef: string;
 }
 
+/**
+ * Built-in Talos capability for Workflow-native human coordination.
+ *
+ * This is not an external provider claim. It represents Talos' own durable
+ * human-work coordination contract (UPDATE/SIGNAL + Workflow condition). When
+ * the business source does not name a role, the accepted automation design may
+ * use runtime assignment to any eligible authenticated human instead of
+ * inventing an organizational role or forcing one form per business task.
+ */
+export const TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING: AutomationProposalOfferingCandidate = Object.freeze({
+  id: 'talos-builtin-offering:workflow-native-human-v1',
+  family: 'HUMAN_INTERACTION',
+  supportedOperationIntents: ['PERFORM_ACTION', 'UNRESOLVED_HUMAN_INTERACTION'],
+  implementationKind: 'HUMAN_SERVICE',
+  implementationRef: 'talos://workflow-native/human-coordination/v1',
+});
+
+export function withTalosBuiltinAutomationOfferings(
+  availableOfferings: readonly AutomationProposalOfferingCandidate[] = [],
+): AutomationProposalOfferingCandidate[] {
+  const withoutDuplicate = availableOfferings.filter((offering) => offering.id !== TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING.id);
+  return [TALOS_WORKFLOW_NATIVE_HUMAN_OFFERING, ...withoutDuplicate];
+}
+
 export type AutomationProposalBindingReadiness = 'READY_FOR_CAPABILITY_SELECTION' | 'NEEDS_CAPABILITY_CONFIGURATION';
 
 export interface AutomationProposalCapabilityGap {
@@ -41,7 +65,8 @@ export function assessAutomationProposalCapabilityReadiness(
   proposal: AutomationProposal,
   availableOfferings: readonly AutomationProposalOfferingCandidate[] = [],
 ): AutomationProposalReadinessAssessment {
-  const byId = new Map(availableOfferings.map((offering) => [offering.id, offering]));
+  const governedOfferings = withTalosBuiltinAutomationOfferings(availableOfferings);
+  const byId = new Map(governedOfferings.map((offering) => [offering.id, offering]));
   const gaps: AutomationProposalCapabilityGap[] = [];
   const readyCapabilityRequirementRefs: string[] = [];
 
@@ -67,10 +92,13 @@ export function assessAutomationProposalCapabilityReadiness(
       gaps.push({ ...base, reason: 'OFFERING_MISMATCH' });
       continue;
     }
-    if (step.proposedFamily === 'HUMAN_INTERACTION' && (!step.human || step.human.roleRefs.length === 0)) {
+    if (step.proposedFamily === 'HUMAN_INTERACTION' && !step.human) {
       gaps.push({ ...base, reason: 'HUMAN_DESIGN_INCOMPLETE' });
       continue;
     }
+    // Empty roleRefs are intentional when the source has no actor evidence.
+    // Accepted design authority means Talos may use runtime assignment to an
+    // eligible authenticated human; it does not manufacture a business role.
     readyCapabilityRequirementRefs.push(step.capabilityRequirementRef);
   }
 
@@ -99,11 +127,12 @@ export function materializeApprovedAutomationProposalSelections(
   if (decision.decision !== 'ACCEPT_DESIGN' || !decision.acceptedForCapabilitySelection) {
     throw new TypeError('automation proposal must be explicitly accepted before capability selection materialization');
   }
-  const readiness = assessAutomationProposalCapabilityReadiness(proposal, availableOfferings);
+  const governedOfferings = withTalosBuiltinAutomationOfferings(availableOfferings);
+  const readiness = assessAutomationProposalCapabilityReadiness(proposal, governedOfferings);
   if (readiness.bindingReadiness !== 'READY_FOR_CAPABILITY_SELECTION') {
     throw new TypeError('automation proposal still requires capability configuration before binding');
   }
-  const byId = new Map(availableOfferings.map((offering) => [offering.id, offering]));
+  const byId = new Map(governedOfferings.map((offering) => [offering.id, offering]));
 
   return proposal.steps.map((step) => {
     const exactOfferingId = offeringId(step.implementationRef)!;
@@ -121,6 +150,7 @@ export function materializeApprovedAutomationProposalSelections(
           interactionKind: step.human.interactionKind,
           responsibilityKind: step.human.responsibilityKind,
           roleRefs: step.human.roleRefs as any,
+          assignmentCardinality: step.human.roleRefs.length === 0 ? 'ANY_ELIGIBLE' as const : 'EXACTLY_ONE' as const,
           outcomes: [{
             code: step.human.outcomeCode,
             businessMeaning: step.human.outcomeBusinessMeaning,
