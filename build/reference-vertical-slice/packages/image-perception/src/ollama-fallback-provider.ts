@@ -19,7 +19,7 @@ import {
 
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_ID = 'TALOS_OLLAMA_LOCAL_FALLBACK';
 export const OLLAMA_IMAGE_FALLBACK_PROVIDER_VERSION = '1.0.0';
-export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.1';
+export const OLLAMA_IMAGE_FALLBACK_PIPELINE_VERSION = 'talos-ollama-qwen3vl-fallback-v0.2';
 
 export const OLLAMA_IMAGE_FALLBACK_ENV = {
   enabled: 'TALOS_OLLAMA_FALLBACK_ENABLED',
@@ -29,9 +29,10 @@ export const OLLAMA_IMAGE_FALLBACK_ENV = {
 } as const;
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/api/chat';
-const DEFAULT_MODEL = 'qwen3-vl:4b';
+const DEFAULT_MODEL = 'qwen3-vl:4b-instruct';
 const DEFAULT_TIMEOUT_MS = 300_000;
 const MAX_TIMEOUT_MS = 600_000;
+const MAX_OUTPUT_TOKENS = 2_048;
 
 const NODE_KINDS = ['EVENT','ACTION','DECISION','PARALLEL_SPLIT','JOIN','WAIT','HUMAN_INTERACTION','SUBPROCESS','STATE','END','ACTOR','DATA_OBJECT','BUSINESS_RULE','UNKNOWN'] as const;
 const OCCURRENCE_KINDS = ['NODE','PARTICIPANT','OBJECT_NODE','ANNOTATION','EVENT_MARKER','REGION','SOURCE_DEFINED'] as const;
@@ -77,31 +78,17 @@ const PROMPT = `You are Talos' LOCAL independent fallback visual sensor. A prima
 
 Inspect top-left to bottom-right only for coverage. Never infer process order from position. Process order comes only from visible arrows/connectors and notation.
 
-Extract literal visible text plus process-relevant geometry and relationships. Do not output BPMN. Do not design automation. Do not invent missing arrows, labels, conditions, endpoints or process meaning.
+Return JSON only with exactly these top-level fields: completeCoverage, elements, connectors, uncertainties. Do not output BPMN. Do not design automation. Do not invent missing arrows, labels, conditions, endpoints or process meaning.
 
-For every visible process element return a stable id, literal label, nodeKind, occurrenceKind, sourcePlaneKind, bounding box [ymin,xmin,ymax,xmax] normalized 0..1000, confidence 0..1 and visibility. For every connector return visible source/target element ids, direction, relationship role, visible guard text, bbox and confidence. Use UNKNOWN or an uncertainty entry whenever evidence is unclear. completeCoverage must be false if any relevant region is unreadable, cropped, obscured or unresolved.`;
+For every visible process element return: id, literal label, nodeKind, occurrenceKind, sourcePlaneKind, bbox [ymin,xmin,ymax,xmax] normalized 0..1000, confidence 0..1, visibility. For every visible connector return: id, sourceElementId, targetElementId, direction, role, guardText, bbox, confidence. Use UNKNOWN or an uncertainty entry whenever evidence is unclear. completeCoverage must be false if any relevant region is unreadable, cropped, obscured or unresolved.
 
-function schema(): Record<string, unknown> {
-  return {
-    type: 'object',
-    properties: {
-      completeCoverage: { type: 'boolean' },
-      elements: { type: 'array', items: { type: 'object', properties: {
-        id: { type: 'string' }, label: { type: 'string' }, nodeKind: { type: 'string', enum: NODE_KINDS },
-        occurrenceKind: { type: 'string', enum: OCCURRENCE_KINDS }, sourcePlaneKind: { type: 'string', enum: SOURCE_PLANES },
-        bbox: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'number' } }, confidence: { type: 'number' },
-        visibility: { type: 'string', enum: VISIBILITY },
-      }, required: ['id','label','nodeKind','occurrenceKind','sourcePlaneKind','bbox','confidence','visibility'] } },
-      connectors: { type: 'array', items: { type: 'object', properties: {
-        id: { type: 'string' }, sourceElementId: { type: 'string' }, targetElementId: { type: 'string' },
-        direction: { type: 'string', enum: DIRECTIONS }, role: { type: 'string', enum: RELATION_ROLES }, guardText: { type: 'string' },
-        bbox: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'number' } }, confidence: { type: 'number' },
-      }, required: ['id','sourceElementId','targetElementId','direction','role','guardText','bbox','confidence'] } },
-      uncertainties: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, description: { type: 'string' } }, required: ['code','description'] } },
-    },
-    required: ['completeCoverage','elements','connectors','uncertainties'],
-  };
-}
+Allowed enum values:
+nodeKind=${NODE_KINDS.join('|')}
+occurrenceKind=${OCCURRENCE_KINDS.join('|')}
+sourcePlaneKind=${SOURCE_PLANES.join('|')}
+direction=${DIRECTIONS.join('|')}
+role=${RELATION_ROLES.join('|')}
+visibility=${VISIBILITY.join('|')}`;
 
 function envValue(env: Readonly<Record<string, string | undefined>>, name: string): string | undefined {
   const value = env[name]?.trim();
@@ -112,41 +99,94 @@ function enabled(env: Readonly<Record<string, string | undefined>>): boolean {
   return /^(1|true|yes|on)$/i.test(envValue(env, OLLAMA_IMAGE_FALLBACK_ENV.enabled) ?? '');
 }
 
-function confidence(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+function record(value: unknown, code: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(code);
+  return value as Record<string, unknown>;
 }
 
-function bbox(value: unknown): [number, number, number, number] {
-  if (!Array.isArray(value) || value.length !== 4 || value.some((item) => typeof item !== 'number' || !Number.isFinite(item))) return [0,0,1000,1000];
-  const numbers = value.map((item) => Math.max(0, Math.min(1000, Math.round(item)))) as [number,number,number,number];
-  return [Math.min(numbers[0],numbers[2]), Math.min(numbers[1],numbers[3]), Math.max(numbers[0],numbers[2]), Math.max(numbers[1],numbers[3])];
+function requiredString(value: unknown, code: string, allowEmpty = true): string {
+  if (typeof value !== 'string') throw new TypeError(code);
+  const trimmed = value.trim();
+  if (!allowEmpty && !trimmed) throw new TypeError(code);
+  return trimmed;
 }
 
-function stringValue(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
-function oneOf<T extends readonly string[]>(value: unknown, values: T, fallback: T[number]): T[number] { return typeof value === 'string' && values.includes(value) ? value as T[number] : fallback; }
+function requiredBoolean(value: unknown, code: string): boolean {
+  if (typeof value !== 'boolean') throw new TypeError(code);
+  return value;
+}
+
+function requiredConfidence(value: unknown, code: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new TypeError(code);
+  return value;
+}
+
+function requiredBbox(value: unknown, code: string): [number, number, number, number] {
+  if (!Array.isArray(value) || value.length !== 4 || value.some((item) => typeof item !== 'number' || !Number.isFinite(item) || item < 0 || item > 1000)) {
+    throw new TypeError(code);
+  }
+  const numbers = value as [number, number, number, number];
+  if (numbers[0] > numbers[2] || numbers[1] > numbers[3]) throw new TypeError(code);
+  return [...numbers];
+}
+
+function requiredEnum<T extends readonly string[]>(value: unknown, values: T, code: string): T[number] {
+  if (typeof value !== 'string' || !values.includes(value)) throw new TypeError(code);
+  return value as T[number];
+}
+
+function requiredArray(value: unknown, code: string): unknown[] {
+  if (!Array.isArray(value)) throw new TypeError(code);
+  return value;
+}
 
 function parseExtraction(raw: unknown): LocalExtraction {
-  const root = raw && typeof raw === 'object' ? raw as any : undefined;
-  const content = stringValue(root?.message?.content);
-  if (!content) throw new TypeError('OLLAMA_IMAGE_FALLBACK_EMPTY_RESPONSE');
-  const parsed = JSON.parse(content) as any;
+  const root = record(raw, 'OLLAMA_IMAGE_FALLBACK_INVALID_RESPONSE');
+  const message = record(root.message, 'OLLAMA_IMAGE_FALLBACK_MISSING_MESSAGE');
+  const content = requiredString(message.content, 'OLLAMA_IMAGE_FALLBACK_EMPTY_RESPONSE', false);
+  const parsed = record(JSON.parse(content), 'OLLAMA_IMAGE_FALLBACK_INVALID_JSON_OBJECT');
+
+  const elements = requiredArray(parsed.elements, 'OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENTS').map((value, index): LocalElement => {
+    const item = record(value, `OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENT_${index + 1}`);
+    return {
+      id: requiredString(item.id, `OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENT_ID_${index + 1}`, false),
+      label: requiredString(item.label, `OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENT_LABEL_${index + 1}`),
+      nodeKind: requiredEnum(item.nodeKind, NODE_KINDS, `OLLAMA_IMAGE_FALLBACK_INVALID_NODE_KIND_${index + 1}`),
+      occurrenceKind: requiredEnum(item.occurrenceKind, OCCURRENCE_KINDS, `OLLAMA_IMAGE_FALLBACK_INVALID_OCCURRENCE_KIND_${index + 1}`),
+      sourcePlaneKind: requiredEnum(item.sourcePlaneKind, SOURCE_PLANES, `OLLAMA_IMAGE_FALLBACK_INVALID_SOURCE_PLANE_${index + 1}`),
+      bbox: requiredBbox(item.bbox, `OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENT_BBOX_${index + 1}`),
+      confidence: requiredConfidence(item.confidence, `OLLAMA_IMAGE_FALLBACK_INVALID_ELEMENT_CONFIDENCE_${index + 1}`),
+      visibility: requiredEnum(item.visibility, VISIBILITY, `OLLAMA_IMAGE_FALLBACK_INVALID_VISIBILITY_${index + 1}`),
+    };
+  });
+
+  const connectors = requiredArray(parsed.connectors, 'OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTORS').map((value, index): LocalConnector => {
+    const item = record(value, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_${index + 1}`);
+    return {
+      id: requiredString(item.id, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_ID_${index + 1}`, false),
+      sourceElementId: requiredString(item.sourceElementId, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_SOURCE_${index + 1}`),
+      targetElementId: requiredString(item.targetElementId, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_TARGET_${index + 1}`),
+      direction: requiredEnum(item.direction, DIRECTIONS, `OLLAMA_IMAGE_FALLBACK_INVALID_DIRECTION_${index + 1}`),
+      role: requiredEnum(item.role, RELATION_ROLES, `OLLAMA_IMAGE_FALLBACK_INVALID_ROLE_${index + 1}`),
+      guardText: requiredString(item.guardText, `OLLAMA_IMAGE_FALLBACK_INVALID_GUARD_${index + 1}`),
+      bbox: requiredBbox(item.bbox, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_BBOX_${index + 1}`),
+      confidence: requiredConfidence(item.confidence, `OLLAMA_IMAGE_FALLBACK_INVALID_CONNECTOR_CONFIDENCE_${index + 1}`),
+    };
+  });
+
+  const uncertainties = requiredArray(parsed.uncertainties, 'OLLAMA_IMAGE_FALLBACK_INVALID_UNCERTAINTIES').map((value, index) => {
+    const item = record(value, `OLLAMA_IMAGE_FALLBACK_INVALID_UNCERTAINTY_${index + 1}`);
+    return {
+      code: requiredString(item.code, `OLLAMA_IMAGE_FALLBACK_INVALID_UNCERTAINTY_CODE_${index + 1}`, false),
+      description: requiredString(item.description, `OLLAMA_IMAGE_FALLBACK_INVALID_UNCERTAINTY_DESCRIPTION_${index + 1}`, false),
+    };
+  });
+
   return {
-    completeCoverage: parsed?.completeCoverage === true,
-    elements: Array.isArray(parsed?.elements) ? parsed.elements.map((item: any, index: number) => ({
-      id: stringValue(item?.id) || `element-${index + 1}`,
-      label: stringValue(item?.label),
-      nodeKind: oneOf(item?.nodeKind, NODE_KINDS, 'UNKNOWN'),
-      occurrenceKind: oneOf(item?.occurrenceKind, OCCURRENCE_KINDS, 'SOURCE_DEFINED'),
-      sourcePlaneKind: oneOf(item?.sourcePlaneKind, SOURCE_PLANES, 'UNKNOWN'),
-      bbox: bbox(item?.bbox), confidence: confidence(item?.confidence), visibility: oneOf(item?.visibility, VISIBILITY, 'UNKNOWN'),
-    })) : [],
-    connectors: Array.isArray(parsed?.connectors) ? parsed.connectors.map((item: any, index: number) => ({
-      id: stringValue(item?.id) || `connector-${index + 1}`,
-      sourceElementId: stringValue(item?.sourceElementId), targetElementId: stringValue(item?.targetElementId),
-      direction: oneOf(item?.direction, DIRECTIONS, 'UNKNOWN'), role: oneOf(item?.role, RELATION_ROLES, 'UNKNOWN'),
-      guardText: stringValue(item?.guardText), bbox: bbox(item?.bbox), confidence: confidence(item?.confidence),
-    })) : [],
-    uncertainties: Array.isArray(parsed?.uncertainties) ? parsed.uncertainties.map((item: any, index: number) => ({ code: stringValue(item?.code) || `LOCAL_UNCERTAINTY_${index + 1}`, description: stringValue(item?.description) || 'Local fallback reported unresolved visual evidence.' })) : [],
+    completeCoverage: requiredBoolean(parsed.completeCoverage, 'OLLAMA_IMAGE_FALLBACK_INVALID_COMPLETE_COVERAGE'),
+    elements,
+    connectors,
+    uncertainties,
   };
 }
 
@@ -220,7 +260,7 @@ function localFetch(endpoint:string, model:string, timeoutMs:number, baseFetch:t
   return (async (_input:RequestInfo|URL, init?:RequestInit) => {
     const envelope=talosEnvelope(init); const controller=new AbortController(); const timeout=setTimeout(()=>controller.abort(),timeoutMs);
     try {
-      const response=await baseFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:PROMPT,images:[envelope.imageBase64]}],stream:false,think:false,format:schema(),options:{temperature:0}}),signal:controller.signal});
+      const response=await baseFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:PROMPT,images:[envelope.imageBase64]}],stream:false,think:false,format:'json',options:{temperature:0,num_predict:MAX_OUTPUT_TOKENS}}),signal:controller.signal});
       if(!response.ok) return new Response(await response.text(),{status:response.status,statusText:response.statusText,headers:{'content-type':response.headers.get('content-type')??'text/plain'}});
       const extraction=parseExtraction(await response.json());
       return new Response(JSON.stringify(mapResult(extraction,envelope,model)),{status:200,headers:{'content-type':'application/json'}});
