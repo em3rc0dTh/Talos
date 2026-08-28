@@ -4,6 +4,8 @@ export * from './integration-suggestions.ts';
 export * from './automation-design-workspace.ts';
 export * from './automation-capability-selection.ts';
 export * from './automation-proposal.ts';
+export * from './automation-proposal-decision.ts';
+export * from './automation-proposal-readiness.ts';
 export * from './automation-proposal-routing.ts';
 export * from './gemini-automation-designer.ts';
 export * from './ollama-automation-designer.ts';
