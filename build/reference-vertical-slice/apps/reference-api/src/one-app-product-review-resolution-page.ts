@@ -144,4 +144,83 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
     });
   };
 })();
+
+(function(){
+  'use strict';
+  var scheduled=false;
+  function byId(id){return document.getElementById(id)}
+  function button(label){var b=document.createElement('button');b.type='button';b.textContent=label;return b}
+  function countChildren(node){return node?node.children.length:0}
+  function toggleTarget(control,target,openLabel,closedLabel){
+    var open=target.dataset.talosOpen==='true';
+    target.dataset.talosOpen=open?'false':'true';
+    target.style.display=open?'none':'';
+    control.textContent=open?closedLabel:openLabel;
+  }
+  function disclosureForList(id,label){
+    var target=byId(id);if(!target||target.dataset.talosDisclosure==='true')return;
+    target.dataset.talosDisclosure='true';target.dataset.talosOpen='false';target.style.display='none';
+    var heading=target.previousElementSibling;
+    var control=button('Show '+label+' ('+countChildren(target)+')');control.style.margin='6px 0 8px';
+    if(heading)heading.insertAdjacentElement('afterend',control);else target.insertAdjacentElement('beforebegin',control);
+    function refresh(){
+      var n=countChildren(target);var open=target.dataset.talosOpen==='true';
+      control.textContent=(open?'Hide ':'Show ')+label+' ('+n+')';
+      control.disabled=n===0;
+    }
+    control.addEventListener('click',function(){toggleTarget(control,target,'Hide '+label+' ('+countChildren(target)+')','Show '+label+' ('+countChildren(target)+')')});
+    new MutationObserver(refresh).observe(target,{childList:true,subtree:false});refresh();
+  }
+  function disclosureForField(controlId,label){
+    var controlNode=byId(controlId);if(!controlNode)return;
+    var field=controlNode.closest?controlNode.closest('.field'):controlNode.parentElement;
+    if(!field||field.dataset.talosDisclosure==='true')return;
+    field.dataset.talosDisclosure='true';field.dataset.talosOpen='false';field.style.display='none';
+    var toggle=button('Show '+label);toggle.style.margin='10px 0';field.insertAdjacentElement('beforebegin',toggle);
+    toggle.addEventListener('click',function(){toggleTarget(toggle,field,'Hide '+label,'Show '+label)});
+  }
+  function disclosureForEvidence(id,label){
+    var target=byId(id);if(!target||target.dataset.talosDisclosure==='true')return;
+    target.dataset.talosDisclosure='true';target.dataset.talosOpen='false';target.style.display='none';
+    var toggle=button('Show '+label);toggle.style.margin='8px 0';target.insertAdjacentElement('beforebegin',toggle);
+    toggle.addEventListener('click',function(){toggleTarget(toggle,target,'Hide '+label,'Show '+label)});
+  }
+  function compactProcessNodes(){
+    var nodes=byId('processNodes');if(!nodes||nodes.dataset.talosCompact==='true')return;
+    nodes.dataset.talosCompact='true';nodes.style.maxHeight='290px';nodes.style.overflow='auto';nodes.style.paddingRight='3px';
+  }
+  function compactRequirementCards(){
+    var host=byId('requirements');if(!host)return;
+    Array.prototype.forEach.call(host.children,function(card,index){
+      if(!card.classList.contains('requirement')||card.dataset.talosCompact==='true')return;
+      card.dataset.talosCompact='true';card.dataset.talosOpen='false';
+      var toggle=button('Review technical details');toggle.className='talos-requirement-toggle';toggle.style.marginTop='8px';
+      var keep=[];if(card.children[0])keep.push(card.children[0]);if(card.children[1])keep.push(card.children[1]);keep.push(toggle);
+      card.appendChild(toggle);
+      function apply(){
+        var open=card.dataset.talosOpen==='true';
+        Array.prototype.forEach.call(card.children,function(child){
+          if(keep.indexOf(child)>=0)return;
+          child.style.display=open?'':'none';
+        });
+        toggle.textContent=open?'Hide technical details':'Review technical details';
+      }
+      toggle.addEventListener('click',function(){card.dataset.talosOpen=card.dataset.talosOpen==='true'?'false':'true';apply()});
+      new MutationObserver(apply).observe(card,{childList:true});apply();
+    });
+  }
+  function install(){
+    scheduled=false;
+    disclosureForList('questions','review questions');
+    disclosureForList('findings','validation findings');
+    disclosureForField('bpmnEditor','advanced BPMN/XML');
+    disclosureForEvidence('evidenceTrace','evidence trace');
+    disclosureForEvidence('executionEvidence','runtime evidence');
+    compactProcessNodes();
+    compactRequirementCards();
+  }
+  function schedule(){if(scheduled)return;scheduled=true;setTimeout(install,0)}
+  if(document.body)new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
+  schedule();
+})();
 `;
