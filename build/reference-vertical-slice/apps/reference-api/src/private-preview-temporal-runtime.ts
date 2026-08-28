@@ -5,6 +5,7 @@ import { Client, Connection } from '@temporalio/client';
 import { NativeConnection } from '@temporalio/worker';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
 import type { OneAppAutomationContext } from '../../../packages/application/src/one-app-automation.ts';
+import { deriveIsoDurationWaitSemantics } from '../../../packages/semantic-core/src/wait-semantics.ts';
 import type { TalosPrivatePreviewTemporalTarget } from './private-preview-config.ts';
 import type { TalosPrivatePreviewRuntimeAdapters } from './private-preview-runtime.ts';
 import type {
@@ -100,10 +101,38 @@ function waitDurationMs(context: OneAppAutomationContext, executionElementId: st
   const semanticNode = context.process.nodes.find((node) => element.semanticSubjectRefs.includes(node.id));
   if (!semanticNode) throw new TypeError(`TALOS_RUNTIME_WAIT_SOURCE_MISSING: ${executionElementId}`);
   const details = semanticNode.details ?? {};
-  const raw = details.durationMs ?? details.waitDurationMs;
-  const durationMs = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : Number.NaN;
-  if (!Number.isFinite(durationMs) || durationMs < 0) throw new TypeError(`TALOS_RUNTIME_WAIT_DURATION_REQUIRED: ${semanticNode.id} must carry an explicit non-negative durationMs before execution`);
-  return { durationMs, sourceRef: semanticNode.id };
+
+  const rawMs = details.durationMs ?? details.waitDurationMs;
+  const legacyDurationMs = typeof rawMs === 'number'
+    ? rawMs
+    : typeof rawMs === 'string' && rawMs.trim()
+      ? Number(rawMs)
+      : Number.NaN;
+  if (Number.isFinite(legacyDurationMs) && legacyDurationMs >= 0) {
+    return { durationMs: legacyDurationMs, sourceRef: semanticNode.id };
+  }
+
+  const rawSeconds = details.durationSeconds;
+  const durationSeconds = typeof rawSeconds === 'number'
+    ? rawSeconds
+    : typeof rawSeconds === 'string' && rawSeconds.trim()
+      ? Number(rawSeconds)
+      : Number.NaN;
+  if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    return { durationMs: durationSeconds * 1000, sourceRef: semanticNode.id };
+  }
+
+  const durationExpression = typeof details.durationExpression === 'string'
+    ? details.durationExpression.trim()
+    : typeof details.expression === 'string'
+      ? details.expression.trim()
+      : '';
+  const parsedDuration = deriveIsoDurationWaitSemantics(durationExpression);
+  if (parsedDuration) {
+    return { durationMs: parsedDuration.durationSeconds * 1000, sourceRef: semanticNode.id };
+  }
+
+  throw new TypeError(`TALOS_RUNTIME_WAIT_DURATION_REQUIRED: ${semanticNode.id} must carry an explicit canonical duration before execution`);
 }
 export function buildOneAppRuntimeSemanticSnapshot(context: OneAppAutomationContext): GenericRuntimeSemanticSnapshot {
   if (!context.executionReview) throw new TypeError('TALOS_RUNTIME_EXECUTION_PLAN_REQUIRED: runtime semantic snapshot needs an ExecutionPlan');
