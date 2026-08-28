@@ -17,6 +17,7 @@ const DURATION_TOKEN = new RegExp(
   `\\b(\\d{1,9})\\s*(${UNIT_SECONDS.map((unit) => unit.pattern).join('|')})\\b`,
   'giu',
 );
+const ISO_DURATION = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i;
 
 function secondsForUnit(unitText: string): number | undefined {
   for (const unit of UNIT_SECONDS) {
@@ -43,6 +44,33 @@ function isoDuration(totalSeconds: number): string {
   ].join('');
   if (!datePart && !timePart) throw new TypeError('duration must be greater than zero');
   return `P${datePart}${timePart ? `T${timePart}` : ''}`;
+}
+
+/**
+ * Parse the deterministic elapsed-time subset of ISO-8601 durations that Talos
+ * can safely compile to a fixed Temporal timer. Years/months are intentionally
+ * excluded because their elapsed length is calendar-dependent.
+ */
+export function deriveIsoDurationWaitSemantics(expression: string | undefined): ExplicitDurationWaitSemantics | undefined {
+  const text = expression?.trim();
+  if (!text) return undefined;
+  const match = ISO_DURATION.exec(text);
+  if (!match) return undefined;
+  const weeks = Number(match[1] ?? 0);
+  const days = Number(match[2] ?? 0);
+  const hours = Number(match[3] ?? 0);
+  const minutes = Number(match[4] ?? 0);
+  const seconds = Number(match[5] ?? 0);
+  const components = [weeks, days, hours, minutes, seconds];
+  if (components.some((value) => !Number.isSafeInteger(value) || value < 0)) return undefined;
+  const totalSeconds = weeks * 604_800 + days * 86_400 + hours * 3_600 + minutes * 60 + seconds;
+  if (!Number.isSafeInteger(totalSeconds) || totalSeconds <= 0) return undefined;
+  return {
+    waitKind: 'DURATION',
+    durationExpression: isoDuration(totalSeconds),
+    durationSeconds: totalSeconds,
+    matchedText: text,
+  };
 }
 
 /**
