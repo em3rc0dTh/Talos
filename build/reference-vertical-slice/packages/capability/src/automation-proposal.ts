@@ -271,12 +271,14 @@ export function admitAutomationProposal(
     if (!VALID_IMPLEMENTATION_KINDS.has(implementationKind)) throw new TypeError(`proposal step ${capabilityRequirementRef} uses unsupported implementation kind`);
     const implementationRef = string(candidate.implementationRef, `proposal.steps[${index}].implementationRef`);
 
-    if (availableOfferingById.size > 0 && implementationRef.startsWith('offering:')) {
+    if (implementationRef.startsWith('offering:')) {
       const offeringId = implementationRef.slice('offering:'.length);
       const offering = availableOfferingById.get(offeringId);
       if (!offering) throw new TypeError(`proposal step ${capabilityRequirementRef} references unavailable offering ${offeringId}`);
       if (offering.family !== proposedFamily) throw new TypeError(`proposal step ${capabilityRequirementRef} offering family mismatch`);
       if (offering.implementationKind !== implementationKind) throw new TypeError(`proposal step ${capabilityRequirementRef} offering implementation mismatch`);
+    } else if (!implementationRef.startsWith('proposal:')) {
+      throw new TypeError(`proposal step ${capabilityRequirementRef} implementationRef must reference a governed offering or explicit proposal namespace`);
     }
 
     const human = proposedFamily === 'HUMAN_INTERACTION'
@@ -325,7 +327,7 @@ export function admitAutomationProposal(
     const candidate = object(item, `proposal.unresolvedQuestions[${index}]`);
     const semanticSubjectRefs = optionalStrings(candidate.semanticSubjectRefs, `proposal.unresolvedQuestions[${index}].semanticSubjectRefs`);
     for (const ref of semanticSubjectRefs) {
-      if (!processNodeById.has(ref) && !requirementById.has(ref)) throw new TypeError(`proposal question references unknown semantic subject ${ref}`);
+      if (!processNodeById.has(ref)) throw new TypeError(`proposal question references unknown canonical semantic subject ${ref}`);
     }
     if (typeof candidate.material !== 'boolean') throw new TypeError(`proposal.unresolvedQuestions[${index}].material must be boolean`);
     return {
