@@ -220,7 +220,7 @@ function localFetch(endpoint:string, model:string, timeoutMs:number, baseFetch:t
   return (async (_input:RequestInfo|URL, init?:RequestInit) => {
     const envelope=talosEnvelope(init); const controller=new AbortController(); const timeout=setTimeout(()=>controller.abort(),timeoutMs);
     try {
-      const response=await baseFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:PROMPT,images:[envelope.imageBase64]}],stream:false,format:schema(),options:{temperature:0}}),signal:controller.signal});
+      const response=await baseFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',content:PROMPT,images:[envelope.imageBase64]}],stream:false,think:false,format:schema(),options:{temperature:0}}),signal:controller.signal});
       if(!response.ok) return new Response(await response.text(),{status:response.status,statusText:response.statusText,headers:{'content-type':response.headers.get('content-type')??'text/plain'}});
       const extraction=parseExtraction(await response.json());
       return new Response(JSON.stringify(mapResult(extraction,envelope,model)),{status:200,headers:{'content-type':'application/json'}});
