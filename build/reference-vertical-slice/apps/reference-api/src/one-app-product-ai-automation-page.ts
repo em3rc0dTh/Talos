@@ -6,10 +6,11 @@ export const ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT = String.raw`
   var proposal=null;
   var readiness=null;
   var decision=null;
+  var actorId='one-app-product-user';
 
   function byId(id){return document.getElementById(id)}
   function authority(kind){return 'authority:talos-product:ai-automation:'+kind+':'+Date.now()}
-  function actor(){return 'one-app-product-user'}
+  function actor(){return actorId}
   function jsonPost(path,body){
     return nativeFetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(async function(response){
       var payload={};try{payload=await response.json()}catch(_){}
@@ -105,7 +106,7 @@ export const ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT = String.raw`
     }).catch(function(error){var s=byId('aiAutomationState');if(s){s.textContent=error.message;s.className='status bad'}});
   }
   function bind(){
-    jsonPost('/api/automation/proposal/bind',{workspaceId:workspaceId,proposalRef:proposal.id,proposalDigest:proposal.proposalDigest,decisionRef:decision.id}).then(function(body){
+    jsonPost('/api/automation/proposal/bind',{workspaceId:workspaceId,proposalRef:proposal.id,proposalDigest:proposal.proposalDigest,decisionRef:decision.id}).then(function(){
       var s=byId('aiAutomationState');if(s){s.textContent='Capabilities explicitly selected from the accepted proposal. ExecutionPlan review is now available.';s.className='status good'}
       var truth=byId('truthAutomation');if(truth)truth.textContent='AI design accepted · capabilities explicitly bound · ExecutionPlan not approved';
       var designState=byId('designState');if(designState){designState.textContent='AI DESIGN ACCEPTED · CAPABILITIES BOUND';designState.className='pill good'}
@@ -124,6 +125,7 @@ export const ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT = String.raw`
       return response;
     });
   };
+  nativeFetch('/api/product/runtime-profile').then(function(response){return response.ok?response.json():null}).then(function(profile){if(profile&&profile.actorId)actorId=profile.actorId}).catch(function(){});
   ensurePanel();render();
 })();
 `;
