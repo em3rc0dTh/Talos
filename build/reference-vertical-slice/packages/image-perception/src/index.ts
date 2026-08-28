@@ -10,4 +10,5 @@ export * from './runtime-provider-config.ts';
 export * from './correlated-http-provider.ts';
 export * from './perception-sufficiency.ts';
 export * from './perception-fallback.ts';
+export * from './gemini-provider.ts';
 export * from './reference-quarry-provider.ts';
