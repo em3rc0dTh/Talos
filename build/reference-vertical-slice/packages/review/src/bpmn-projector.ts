@@ -185,7 +185,7 @@ function chooseNodeKind(
         code: 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED',
         targetRef: node.id,
         severity: 'INFO',
-        message: 'WAIT is rendered for business review without a BPMN timerEventDefinition. Executable timing belongs to later automation design.',
+        message: 'WAIT is rendered as a BPMN timer catch event for business review without an executable timing expression. Executable timing belongs to later automation design.',
       });
       return 'intermediateCatchEvent';
     case 'SUBPROCESS':
@@ -282,7 +282,10 @@ function renderNode(node: ProjectedNode, defaultFlowBySource: Map<string, string
   if (node.kind === 'subProcess') {
     return `<bpmn:subProcess id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:subProcess>`;
   }
-  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:${node.kind}>`;
+  const eventDefinition = node.kind === 'intermediateCatchEvent' && node.canonical.kind === 'WAIT'
+    ? '<bpmn:timerEventDefinition/>'
+    : '';
+  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}${eventDefinition}</bpmn:${node.kind}>`;
 }
 
 function renderRule(edge: ProjectedEdge): string {
