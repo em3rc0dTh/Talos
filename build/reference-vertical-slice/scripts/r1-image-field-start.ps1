@@ -136,7 +136,7 @@ try {
   Write-Host ''
   Write-Host 'Configuration:' -ForegroundColor Green
   Write-Host "  Primary  : Gemini / $GeminiModel"
-  Write-Host "  Fallback : $(if ($EnableLocalFallback) { "Ollama / $FallbackModel (automatic only if Talos rejects primary sufficiency)" } else { 'disabled for this first pass' })"
+  Write-Host "  Fallback : $(if ($EnableLocalFallback) { "Ollama / $FallbackModel (automatic if the primary fails or Talos rejects primary sufficiency)" } else { 'disabled for this first pass' })"
   Write-Host '  Runtime  : DESIGN_ONLY (no Temporal execution in this perception test)'
   Write-Host '  Product  : http://127.0.0.1:8787'
   Write-Host "  State    : $env:TALOS_PRIVATE_PREVIEW_RUNTIME_DIR"
