@@ -119,14 +119,64 @@ export const ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT = String.raw`
     });
   }
 
+  function codes(assessment){return assessment&&Array.isArray(assessment.reasonCodes)?assessment.reasonCodes:[]}
+  function safeStopCause(body){
+    var routing=body&&body.perceptionRouting?body.perceptionRouting:{};
+    var primaryCodes=codes(routing.primaryAssessment);
+    var fallbackCodes=codes(routing.fallbackAssessment);
+    var all=primaryCodes.concat(fallbackCodes);
+    if(all.some(function(code){return /PROVIDER_STATUS|NO_RESULT|PROVIDER_FAILURE/i.test(String(code))}))return 'The vision provider did not return sufficient usable evidence.';
+    if(all.some(function(code){return /ENDPOINT|DIRECTION|RELATION|CONNECTOR/i.test(String(code))}))return 'Talos could not prove one or more process relationships from the visible diagram.';
+    if(all.some(function(code){return /COVERAGE|VISIBILITY|UNKNOWN|UNCERTAIN|PARTIAL/i.test(String(code))}))return 'The visual evidence was incomplete or ambiguous for safe Canonical admission.';
+    return 'The perception result did not meet Talos\' deterministic sufficiency gate.';
+  }
+  function detailRow(label,value){
+    var row=document.createElement('div');row.className='item';
+    var strong=document.createElement('strong');strong.textContent=label;
+    var small=document.createElement('small');small.textContent=value||'Not reported';
+    row.append(strong,small);return row;
+  }
+  function renderImageSafeStop(body){
+    if(!body||body.status==='BPMN_READY_FOR_PROCESS_REVIEW'){
+      var previous=byId('imageSafeStopDetails');if(previous)previous.remove();return;
+    }
+    if(String(body.status||'').indexOf('SAFE_STOP')===-1)return;
+    var status=byId('sourceStatus');if(!status)return;
+    status.textContent='SAFE STOP · '+safeStopCause(body)+' Source preserved; no business truth was created.';
+    status.className='pill warn';
+    var existing=byId('imageSafeStopDetails');if(existing)existing.remove();
+    var details=document.createElement('details');details.id='imageSafeStopDetails';details.style.marginTop='10px';
+    var summary=document.createElement('summary');summary.textContent='Why Talos stopped';details.appendChild(summary);
+    var list=document.createElement('div');list.className='list';list.style.marginTop='8px';
+    var routing=body.perceptionRouting||{};
+    list.appendChild(detailRow('Perception decision',String(body.perceptionDecision||body.status||'UNKNOWN')));
+    list.appendChild(detailRow('Routing',String(routing.decision||'NOT_REPORTED')));
+    list.appendChild(detailRow('Primary provider',String(routing.primaryProviderId||'NOT_REPORTED')));
+    list.appendChild(detailRow('Primary reasons',codes(routing.primaryAssessment).join(', ')||'No reason codes reported'));
+    if(routing.fallbackAttempted||routing.fallbackProviderId||routing.fallbackAssessment){
+      list.appendChild(detailRow('Fallback provider',String(routing.fallbackProviderId||'NOT_REPORTED')));
+      list.appendChild(detailRow('Fallback reasons',codes(routing.fallbackAssessment).join(', ')||'No reason codes reported'));
+    }
+    var diagnostics=Array.isArray(body.diagnostics)?body.diagnostics:[];
+    if(diagnostics.length){
+      list.appendChild(detailRow('Provider diagnostics',diagnostics.map(function(item){return typeof item==='string'?item:String(item&&item.code?item.code+(item.description?' · '+item.description:''):JSON.stringify(item))}).join(' | ')));
+    }
+    details.appendChild(list);
+    status.insertAdjacentElement('afterend',details);
+  }
+
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';
     var method=String((init&&init.method)||'GET').toUpperCase();
     var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
     var isDesign=path.indexOf('/api/bpmn/automation-design-approval')!==-1&&method==='POST';
+    var isImage=path.indexOf('/api/input/image')!==-1&&method==='POST';
     return nativeFetch(input,init).then(function(response){
       if(isReview&&response.ok){
         response.clone().json().then(function(body){setTimeout(function(){render(body)},0)}).catch(function(){});
+      }
+      if(isImage&&response.ok){
+        response.clone().json().then(function(body){setTimeout(function(){renderImageSafeStop(body)},60)}).catch(function(){});
       }
       if(isDesign&&response.ok){
         return response.clone().json().then(function(body){
