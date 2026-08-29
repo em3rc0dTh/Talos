@@ -11,7 +11,6 @@ import {
   resolveTalosPrivatePreviewRuntimeBinding,
   type TalosPrivatePreviewRuntimeDescriptor,
 } from './private-preview-config.ts';
-import { createTransientProviderRetryFetch } from './transient-provider-fetch.ts';
 import type {
   OneAppDeploymentAttemptExecutorInput,
   OneAppDeploymentAttemptExecutorResult,
@@ -59,7 +58,6 @@ export async function startTalosPrivatePreviewFromEnv(
   }
 
   const imagePerceptionEnv: Record<string, string | undefined> = { ...start.imagePerceptionEnv };
-  const geminiBaseFetchImpl = options.geminiBaseFetchImpl ?? createTransientProviderRetryFetch(fetch);
   let fallbackFetchImpl = options.imagePerceptionFallbackFetchImpl;
   if (binding.descriptor.imageMode === 'REQUIRED') {
     const explicitFallback = resolveImagePerceptionFallbackRuntimeBinding(imagePerceptionEnv);
@@ -92,7 +90,7 @@ export async function startTalosPrivatePreviewFromEnv(
       imagePerceptionEnv,
       automationDesignEnv: env,
       automationOfferings: [...(options.automationOfferings ?? [])],
-      geminiBaseFetchImpl,
+      ...(options.geminiBaseFetchImpl ? { geminiBaseFetchImpl: options.geminiBaseFetchImpl } : {}),
       ...(options.imagePerceptionFetchImpl ? { imagePerceptionFetchImpl: options.imagePerceptionFetchImpl } : {}),
       ...(fallbackFetchImpl ? { imagePerceptionFallbackFetchImpl: fallbackFetchImpl } : {}),
       ...(options.automationDesignFetchImpl ? { automationDesignFetchImpl: options.automationDesignFetchImpl } : {}),
