@@ -26,6 +26,46 @@ test('R1-11 transient Gemini transport retries 503 and returns the successful re
   assert.equal(calls, 2);
 });
 
+test('R1-11 transient Gemini transport honors Retry-After seconds for 429 before replay', async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const baseFetch = (async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('rate limited', { status: 429, headers: { 'retry-after': '2' } })
+      : new Response('ok', { status: 200 });
+  }) as typeof fetch;
+  const fetchImpl = createTransientProviderRetryFetch(baseFetch, {
+    maxAttempts: 2,
+    retryDelayMs: [0],
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+  });
+  const response = await request(fetchImpl);
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [2_000]);
+});
+
+test('R1-11 transient Gemini transport caps provider Retry-After and cannot stall indefinitely', async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const baseFetch = (async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('rate limited', { status: 429, headers: { 'retry-after': '120' } })
+      : new Response('ok', { status: 200 });
+  }) as typeof fetch;
+  const fetchImpl = createTransientProviderRetryFetch(baseFetch, {
+    maxAttempts: 2,
+    maxRetryAfterMs: 3_000,
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+  });
+  const response = await request(fetchImpl);
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [3_000]);
+});
+
 test('R1-11 transient Gemini transport never retries non-transient 4xx responses', async () => {
   let calls = 0;
   const baseFetch = (async () => {
