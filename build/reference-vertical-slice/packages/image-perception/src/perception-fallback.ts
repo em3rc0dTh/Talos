@@ -70,11 +70,16 @@ function routingId(intake: ImageIntakeBundle, primaryAttemptId: string, fallback
 /**
  * Gemini-first / local-second routing contract.
  *
- * Talos always runs the configured primary provider first. Only Talos' own
- * deterministic sufficiency gate may trigger the fallback. The primary model
- * cannot self-authorize continuation and the fallback cannot create business or
- * execution authority. If both attempts remain insufficient, this function
- * returns no selected attempt so canonical normalization must not proceed.
+ * Talos always runs the configured primary provider first. Primary continuation
+ * is allowed only when the primary admission is ADMITTED_FOR_REVIEW and Talos'
+ * deterministic sufficiency assessment is SUFFICIENT. Any other primary result
+ * — including provider failure, NO_RESULT, PARTIAL or deterministic evidence
+ * insufficiency — triggers exactly one independently evaluated fallback when a
+ * fallback binding is configured. Neither provider can self-authorize
+ * continuation, attempts are never voted or merged, and the fallback cannot
+ * create business or execution authority. If neither attempt is admitted and
+ * sufficient, this function returns no selected attempt so canonical
+ * normalization must not proceed.
  */
 export async function runCorrelatedImagePerceptionWithFallback(
   repo: ImmutableDocumentRepository,
