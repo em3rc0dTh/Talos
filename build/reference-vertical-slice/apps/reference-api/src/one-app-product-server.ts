@@ -10,6 +10,7 @@ import { ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT } from './one-app-prod
 import { ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT } from './one-app-product-ai-automation-page.ts';
 import { ONE_APP_PRODUCT_RUNTIME_POLICY_ACTIVITY_BOUNDARY_ENHANCEMENT } from './one-app-product-runtime-policy-page.ts';
 import { ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT } from './one-app-product-simple-journey-page.ts';
+import { ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT } from './one-app-product-client-surface-page.ts';
 import type { TalosProductHumanRuntimeControl } from './private-preview-human-control.ts';
 import type { TalosExecutionRecoveryItem, TalosExecutionRecoveryResult, TalosProductExecutionRecovery } from './private-preview-execution-recovery.ts';
 
@@ -110,7 +111,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
   const humanEnhancedPage = options.humanRuntimeControl
     ? runtimePolicyEnhancedPage.replace('</body>', '<script src="/talos-product-human-runtime.js"></script></body>')
     : runtimePolicyEnhancedPage;
-  const productPage = humanEnhancedPage.replace('</body>', '<script src="/talos-product-simple-journey.js"></script></body>');
+  const simpleJourneyPage = humanEnhancedPage.replace('</body>', '<script src="/talos-product-simple-journey.js"></script></body>');
+  const productPage = simpleJourneyPage.replace('</body>', '<script src="/talos-product-client-surface.js"></script></body>');
 
   async function reconcileForAccess(executionId: string): Promise<TalosExecutionRecoveryItem | undefined> {
     if (!options.executionRecovery) return undefined;
@@ -154,6 +156,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       if (req.method === 'GET' && url.pathname === '/talos-product-simple-journey.js') {
         res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'content-length': Buffer.byteLength(ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
         res.end(ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/talos-product-client-surface.js') {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'content-length': Buffer.byteLength(ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        res.end(ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/runtime-profile') { json(res, 200, runtimeProfile); return; }
       if (req.method === 'GET' && url.pathname === '/api/product/execution/recovery') {
