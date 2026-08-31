@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT } from '../apps/reference-api/src/one-app-product-simple-journey-page.ts';
+import { ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT } from '../apps/reference-api/src/one-app-product-client-surface-page.ts';
 import { startTalosOneAppProduct } from '../apps/reference-api/src/one-app-product-server.ts';
 
 test('R1-11 product experience exposes Process → Automation → Run instead of making eight internal gates the primary journey', () => {
@@ -70,20 +71,38 @@ test('R1-11 one automation approval may compile hidden plan/mapping/policy gates
   assert.doesNotMatch(script, /safeClick\('approveExecution'\).*startCompileIfReady/);
 });
 
-test('R1-11 product server serves the simplified experience as the last presentation enhancement', async () => {
+test('R1-11 normal client surface hides router/binding diagnostics and manual capability plumbing unless Advanced is opened', () => {
+  const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
+
+  assert.doesNotThrow(() => new Function(script));
+  assert.match(script, /PRIMARY_ACCEPTED/);
+  assert.match(script, /READY_FOR_CAPABILITY_SELECTION/);
+  assert.match(script, /manualCapabilityToggle/);
+  assert.match(script, /if\(advanced\)show\(manual\);else hide\(manual\)/);
+  assert.match(script, /designState/);
+  assert.match(script, /reviewState/);
+});
+
+test('R1-11 product server serves simplified journey and client-safe surface after the engine presentation enhancements', async () => {
   const product = await startTalosOneAppProduct({ port: 0 });
   try {
     const page = await fetch(product.baseUrl);
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /talos-product-simple-journey\.js/);
+    assert.match(html, /talos-product-client-surface\.js/);
     assert.ok(html.lastIndexOf('talos-product-simple-journey.js') > html.lastIndexOf('talos-product-ai-automation.js'));
+    assert.ok(html.lastIndexOf('talos-product-client-surface.js') > html.lastIndexOf('talos-product-simple-journey.js'));
 
     const enhancement = await fetch(`${product.baseUrl}/talos-product-simple-journey.js`);
     assert.equal(enhancement.status, 200);
     assert.match(enhancement.headers.get('content-type') ?? '', /application\/javascript/);
-    const script = await enhancement.text();
-    assert.equal(script, ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT);
+    assert.equal(await enhancement.text(), ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT);
+
+    const clientSurface = await fetch(`${product.baseUrl}/talos-product-client-surface.js`);
+    assert.equal(clientSurface.status, 200);
+    assert.match(clientSurface.headers.get('content-type') ?? '', /application\/javascript/);
+    assert.equal(await clientSurface.text(), ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT);
   } finally {
     await product.close();
   }
