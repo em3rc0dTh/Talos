@@ -14,7 +14,9 @@ test('R1-11 product experience exposes Process → Automation → Run instead of
   assert.match(script, /Show me how Talos would run it/);
   assert.match(script, /Deploy, execute and monitor/);
   assert.match(script, /old\.classList\.add\('talos-simple-hidden'\)/);
-  assert.match(script, /hide\(plan\);hide\(runtime\)/);
+  assert.match(script, /hide\(byId\('planCard'\)\);hide\(byId\('runtimeCard'\)\)/);
+  assert.match(script, /talosAdvancedToggle/);
+  assert.match(script, /Hide advanced/);
 });
 
 test('R1-11 process review renders a BPMN canvas before business confirmation and keeps evidence details advanced', () => {
@@ -36,11 +38,20 @@ test('R1-11 confirmed process automatically opens AI design and renders a Tempor
   assert.match(script, /Gemini is preparing the Temporal workflow proposal/);
   assert.match(script, /Temporal workflow canvas/);
   assert.match(script, /Suggested execution design · not deployed/);
+  assert.match(script, /Suggested tools & capabilities/);
   assert.match(script, /renderSvg\(latestProcess,'temporal',latestProposal\)/);
   assert.match(script, /step\.implementationKind\+' · '\+step\.implementationRef/);
   assert.match(script, /Approve automation/);
   assert.doesNotMatch(script, /car wash|lavado|l[aá]mpara|ampolleta/i);
   assert.doesNotMatch(script, /WhatsApp|Gmail|Google Drive|PostgreSQL|Mercado Pago/i);
+});
+
+test('R1-11 Temporal compilation follows proposal wait treatment rather than silently choosing a different visible design', () => {
+  const script = ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT;
+
+  assert.match(script, /Array\.isArray\(element\.semanticSubjectRefs\)\?element\.semanticSubjectRefs\.slice\(\)/);
+  assert.match(script, /o\.proposedTreatment==='DURABLE_TIMER'\|\|o\.proposedTreatment==='WORKFLOW_CONDITION'/);
+  assert.match(script, /select\.value=desired/);
 });
 
 test('R1-11 one automation approval may compile hidden plan/mapping/policy gates, while deployment and workflow start still require explicit visible actions', () => {
@@ -66,6 +77,7 @@ test('R1-11 product server serves the simplified experience as the last presenta
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /talos-product-simple-journey\.js/);
+    assert.ok(html.lastIndexOf('talos-product-simple-journey.js') > html.lastIndexOf('talos-product-ai-automation.js'));
 
     const enhancement = await fetch(`${product.baseUrl}/talos-product-simple-journey.js`);
     assert.equal(enhancement.status, 200);
