@@ -9,6 +9,7 @@ import { ONE_APP_PRODUCT_REVIEW_RESOLUTION_ENHANCEMENT } from './one-app-product
 import { ONE_APP_PRODUCT_CAPABILITY_SELECTION_ENHANCEMENT } from './one-app-product-capability-selection-page.ts';
 import { ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT } from './one-app-product-ai-automation-page.ts';
 import { ONE_APP_PRODUCT_RUNTIME_POLICY_ACTIVITY_BOUNDARY_ENHANCEMENT } from './one-app-product-runtime-policy-page.ts';
+import { ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT } from './one-app-product-simple-journey-page.ts';
 import type { TalosProductHumanRuntimeControl } from './private-preview-human-control.ts';
 import type { TalosExecutionRecoveryItem, TalosExecutionRecoveryResult, TalosProductExecutionRecovery } from './private-preview-execution-recovery.ts';
 
@@ -106,9 +107,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
   const capabilityEnhancedPage = reviewEnhancedPage.replace('</body>', '<script src="/talos-product-capability-selection.js"></script></body>');
   const aiAutomationEnhancedPage = capabilityEnhancedPage.replace('</body>', '<script src="/talos-product-ai-automation.js"></script></body>');
   const runtimePolicyEnhancedPage = aiAutomationEnhancedPage.replace('</body>', '<script src="/talos-product-runtime-policy-boundary.js"></script></body>');
-  const productPage = options.humanRuntimeControl
+  const humanEnhancedPage = options.humanRuntimeControl
     ? runtimePolicyEnhancedPage.replace('</body>', '<script src="/talos-product-human-runtime.js"></script></body>')
     : runtimePolicyEnhancedPage;
+  const productPage = humanEnhancedPage.replace('</body>', '<script src="/talos-product-simple-journey.js"></script></body>');
 
   async function reconcileForAccess(executionId: string): Promise<TalosExecutionRecoveryItem | undefined> {
     if (!options.executionRecovery) return undefined;
@@ -148,6 +150,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         if (!options.humanRuntimeControl) { json(res, 404, { error: 'human runtime unavailable', code: 'R1_PRODUCT_HUMAN_RUNTIME_UNAVAILABLE' }); return; }
         res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'content-length': Buffer.byteLength(ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
         res.end(ONE_APP_PRODUCT_HUMAN_RUNTIME_ENHANCEMENT); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/talos-product-simple-journey.js') {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'content-length': Buffer.byteLength(ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        res.end(ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/runtime-profile') { json(res, 200, runtimeProfile); return; }
       if (req.method === 'GET' && url.pathname === '/api/product/execution/recovery') {
