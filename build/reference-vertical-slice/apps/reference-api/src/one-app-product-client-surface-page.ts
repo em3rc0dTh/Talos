@@ -2,12 +2,16 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
 (function(){
   'use strict';
   var advanced=false;
+  var nativeFetch=window.fetch.bind(window);
+  var refreshTimer=0;
+
   function byId(id){return document.getElementById(id)}
   function all(selector,root){return Array.prototype.slice.call((root||document).querySelectorAll(selector))}
   function txt(node){return String(node&&node.textContent||'').trim()}
-  function hide(node){if(node)node.style.display='none'}
-  function show(node){if(node)node.style.display=''}
+  function hide(node){if(node&&node.style.display!=='none')node.style.display='none'}
+  function show(node){if(node&&node.style.display==='none')node.style.display=''}
   function technicalPill(node){return /^(SUGGESTED|DESIGN (COMPLETE|PARTIAL)|PRIMARY_ACCEPTED|FALLBACK_ACCEPTED|UNRESOLVED_AFTER_FALLBACK|READY_FOR_CAPABILITY_SELECTION|NEEDS_CAPABILITY_CONFIGURATION)$/i.test(txt(node))}
+
   function apply(){
     var reviewBadge=byId('reviewBadge');
     if(reviewBadge&&!advanced){
@@ -24,12 +28,32 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
     var truthAside=document.querySelector('aside.stack');
     if(truthAside&&!advanced)truthAside.classList.remove('talos-advanced-open');
   }
+
   function bind(){
     var toggle=byId('talosAdvancedToggle');if(!toggle||toggle.dataset.clientSurfaceBound==='true')return;
     toggle.dataset.clientSurfaceBound='true';
-    toggle.addEventListener('click',function(){advanced=txt(toggle)==='Hide advanced';setTimeout(apply,0)});
+    toggle.addEventListener('click',function(){advanced=txt(toggle)==='Hide advanced';scheduleApply()});
   }
-  new MutationObserver(function(){bind();apply()}).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','style']});
-  bind();apply();
+
+  function scheduleApply(){
+    if(refreshTimer)window.clearTimeout(refreshTimer);
+    refreshTimer=window.setTimeout(function(){refreshTimer=0;bind();apply()},24);
+  }
+
+  window.fetch=function(input,init){
+    return nativeFetch(input,init).then(function(response){
+      scheduleApply();
+      window.setTimeout(scheduleApply,140);
+      return response;
+    },function(error){
+      scheduleApply();
+      throw error;
+    });
+  };
+
+  document.addEventListener('talos:surface-refresh',scheduleApply);
+  bind();
+  apply();
+  window.setTimeout(scheduleApply,80);
 })();
 `;
