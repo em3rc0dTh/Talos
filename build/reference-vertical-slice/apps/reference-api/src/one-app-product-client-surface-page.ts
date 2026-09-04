@@ -28,6 +28,11 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
       .talos-canvas svg{min-width:1000px!important}\
       .talos-canvas-title{gap:10px!important}\
       .talos-canvas-open{margin-left:auto;white-space:nowrap;padding:6px 10px!important;font-size:12px!important}\
+      .talos-material-questions{display:block;margin:14px 0 4px!important;padding:14px!important;border:1px solid #5d4d22!important;border-left:4px solid var(--warn)!important;border-radius:14px!important;background:#17150e!important}\
+      .talos-material-questions>strong{font-size:15px}.talos-material-questions>small{color:#c8b77d!important}\
+      .talos-material-questions .item{background:#0e1117!important}.talos-material-questions input{font-size:14px!important}\
+      .talos-material-questions .row{margin-top:12px!important}.talos-material-questions .primary{background:#f0d576!important;color:#171105!important;border-color:#f0d576!important}\
+      .talos-evidence-count{display:inline-flex;margin-left:8px;padding:2px 7px;border:1px solid #42506a;border-radius:999px;color:#94a3b8;font-size:10px;font-weight:800}\
       #talosCanvasModal{position:fixed;inset:0;z-index:99999;background:rgba(3,7,13,.92);padding:18px;display:none;align-items:stretch;justify-content:center}\
       #talosCanvasModal.open{display:flex}\
       #talosCanvasModalPanel{width:min(98vw,1900px);height:calc(100vh - 36px);background:#0c1119;border:1px solid #33445f;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 100px rgba(0,0,0,.55)}\
@@ -36,7 +41,6 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
       #talosCanvasViewport{flex:1;overflow:auto;background:#f8fafc;padding:18px}\
       #talosCanvasViewport svg{display:block;height:auto!important;max-width:none!important;margin:0 auto}\
       #talosCanvasZoom{min-width:56px;text-align:center;color:#b8c8de;font-size:12px;font-weight:800}\
-      .talos-review-noise-hidden{display:none!important}\
       @media(max-width:900px){.shell{padding:16px!important}.talos-canvas svg{min-width:900px!important}#talosCanvasModal{padding:8px}#talosCanvasModalPanel{height:calc(100vh - 16px)}}\
     ';
     document.head.appendChild(style);
@@ -49,12 +53,56 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
     else grid.classList.add('talos-product-wide');
   }
 
+  function groupExactDuplicates(node,pattern){
+    if(!node)return;
+    var matching=all(':scope > .item',node).filter(function(item){return pattern.test(txt(item))});
+    if(matching.length<2)return;
+    matching.forEach(function(item,index){
+      if(index===0){
+        item.style.display='';
+        var badge=item.querySelector('.talos-evidence-count');
+        if(!badge){badge=document.createElement('span');badge.className='talos-evidence-count';item.appendChild(badge)}
+        badge.textContent='×'+matching.length;
+      }else item.style.display='none';
+    });
+  }
+
+  function compactTechnicalEvidence(){
+    groupExactDuplicates(byId('questions'),/^Reviewer input required$/i);
+    groupExactDuplicates(byId('findings'),/^SV-SRC-001\s*·\s*Material inferred meaning needs confirmation$/i);
+  }
+
   function applyReviewNoise(){
     var review=byId('reviewCard');if(!review)return;
     var nodes=byId('processNodes');var questions=byId('questions');var findings=byId('findings');var advancedReview=byId('talosReviewAdvanced');
     [nodes,questions,findings,advancedReview].forEach(function(node){if(!node)return;if(advanced)show(node);else hide(node)});
     all('h3',review).forEach(function(h){if(/^(Questions|Findings)$/i.test(txt(h))){if(advanced)show(h);else hide(h)}});
     all('button',review).forEach(function(button){if(/review questions|validation findings|advanced BPMN\/XML/i.test(txt(button))){if(advanced)show(button);else hide(button)}});
+  }
+
+  function applyMaterialQuestions(){
+    var review=byId('reviewCard');var canvas=byId('talosBpmnCanvas');var panel=byId('branchConditionResolution');
+    if(!review||!canvas||!panel)return;
+    if(panel.parentElement!==review||panel.previousElementSibling!==canvas)canvas.insertAdjacentElement('afterend',panel);
+    panel.classList.add('talos-material-questions');
+    var title=panel.children[0];if(title&&title.tagName==='STRONG')title.textContent='Confirm the decision branches';
+    var intro=panel.children[1];if(intro&&intro.tagName==='SMALL')intro.textContent='Talos read these branch meanings from the process. Confirm or edit them here before confirming the process.';
+    var action=all('button',panel).find(function(button){return /Apply branch conditions|Confirm branch meanings/i.test(txt(button))});
+    if(action){
+      action.textContent='Confirm branch meanings';
+      if(action.dataset.talosAutoSaveBound!=='true'){
+        action.dataset.talosAutoSaveBound='true';
+        action.addEventListener('click',function(){
+          window.setTimeout(function(){
+            var save=byId('saveCorrection');
+            if(save&&!save.disabled){
+              var state=all('.pill',panel).slice(-1)[0];if(state)state.textContent='Updating the process review…';
+              save.click();
+            }
+          },100);
+        });
+      }
+    }
   }
 
   function applyAiSurface(){
@@ -69,8 +117,10 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
     var panel=byId('aiAutomationProposal');var state=byId('talosCompileState');
     if(!panel||!state)return;
     var panelText=txt(panel);
-    var readyButton=all('button',panel).some(function(button){return /Approve automation/i.test(txt(button))&&!button.disabled});
-    var proposalReady=/DESIGN COMPLETE|AI design coverage is complete/i.test(panelText)||readyButton;
+    var temporal=byId('talosTemporalCanvas');
+    var hasTemporal=Boolean(temporal&&temporal.querySelector('svg'));
+    var readyButton=all('button',panel).some(function(button){return /Approve automation/i.test(txt(button))});
+    var proposalReady=hasTemporal||/DESIGN COMPLETE|AI design coverage is complete/i.test(panelText)||readyButton;
     if(proposalReady&&/Gemini is preparing the Temporal workflow proposal|Confirm the process to let Talos design the automation/i.test(txt(state))){
       state.textContent='Automation proposal ready for review.';
       state.className='talos-engine-state good';
@@ -123,7 +173,7 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
   }
 
   function apply(){
-    installStyle();applyLayout();
+    installStyle();applyLayout();compactTechnicalEvidence();applyMaterialQuestions();
     var reviewBadge=byId('reviewBadge');
     if(reviewBadge&&!advanced){var value=txt(reviewBadge);if(/INFERRED|SOURCE TRUTH|CORRECTED/i.test(value))reviewBadge.textContent=/CORRECTED/i.test(value)?'Updated · review again':'Ready for review'}
     var reviewState=byId('reviewState');if(reviewState){if(advanced)show(reviewState);else hide(reviewState)}
@@ -145,6 +195,17 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
     refreshTimer=window.setTimeout(function(){refreshTimer=0;bind();apply()},24);
   }
 
+  function installJsonHook(){
+    if(window.__talosClientSurfaceJsonHook)return;
+    window.__talosClientSurfaceJsonHook=true;
+    var responseJson=Response.prototype.json;
+    Response.prototype.json=function(){
+      return responseJson.call(this).then(function(body){
+        scheduleApply();window.setTimeout(scheduleApply,100);window.setTimeout(scheduleApply,700);return body;
+      });
+    };
+  }
+
   window.fetch=function(input,init){
     return nativeFetch(input,init).then(function(response){
       scheduleApply();window.setTimeout(scheduleApply,140);window.setTimeout(scheduleApply,600);return response;
@@ -152,7 +213,7 @@ export const ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT = String.raw`
   };
 
   document.addEventListener('talos:surface-refresh',scheduleApply);
-  document.addEventListener('click',function(event){var target=event.target;if(target&&target.tagName==='BUTTON')window.setTimeout(scheduleApply,80)});
-  bind();apply();window.setTimeout(scheduleApply,80);window.setTimeout(scheduleApply,400);
+  document.addEventListener('click',function(event){var target=event.target;if(target&&target.tagName==='BUTTON'){window.setTimeout(scheduleApply,80);window.setTimeout(scheduleApply,500)}});
+  installJsonHook();bind();apply();window.setTimeout(scheduleApply,80);window.setTimeout(scheduleApply,400);
 })();
 `;
