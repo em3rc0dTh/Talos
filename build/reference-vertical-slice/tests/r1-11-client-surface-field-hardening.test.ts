@@ -22,13 +22,16 @@ test('R1-11 BPMN and Temporal canvases can open in a large zoomable modal', () =
   assert.match(script, /Double-click to open this canvas large/);
 });
 
-test('R1-11 material branch questions live directly under the BPMN canvas and save through one explicit confirmation action', () => {
+test('R1-11 material business questions use a SweetAlert-style modal instead of Advanced or page scrolling', () => {
   const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
+  assert.match(script, /talosQuestionModal/);
+  assert.match(script, /role','dialog/);
+  assert.match(script, /Talos needs your confirmation/);
+  assert.match(script, /Answer now/);
+  assert.match(script, /materialPanels/);
+  assert.match(script, /data-talos-material-question/);
   assert.match(script, /branchConditionResolution/);
-  assert.match(script, /canvas\.insertAdjacentElement\('afterend',panel\)/);
-  assert.match(script, /Confirm the decision branches/);
-  assert.match(script, /Confirm branch meanings/);
-  assert.match(script, /talosAutoSaveBound/);
+  assert.match(script, /Confirm answers/);
   assert.match(script, /save\.click\(\)/);
 });
 
@@ -54,6 +57,19 @@ test('R1-11 completed automation proposal cannot remain visually stuck in Gemini
   assert.match(script, /DESIGN COMPLETE\|AI design coverage is complete/);
   assert.match(script, /Gemini is preparing the Temporal workflow proposal/);
   assert.match(script, /Automation proposal ready for review\./);
+});
+
+test('R1-11 final stage recovers generically from approved plan plus recorded runtime-policy truth instead of timing out on one process shape', () => {
+  const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
+  assert.match(script, /compiledTruth/);
+  assert.match(script, /READY_FOR_DEPLOYMENT_DESIGN\|Runtime policy recorded explicitly/);
+  assert.match(script, /APPROVED/);
+  assert.match(script, /applyCompileRecovery/);
+  assert.match(script, /Automation compiled and governed\. Ready for the configured runtime\./);
+  assert.match(script, /Temporal runtime required to deploy/);
+  assert.match(script, /driveDeployment/);
+  assert.match(script, /driveExecution/);
+  assert.doesNotMatch(script, /lavado|rines|veh[ií]culo|car-wash/i);
 });
 
 test('R1-11 dynamic AI modules refresh the client surface through parsed JSON even when they bypass the latest fetch wrapper', () => {
