@@ -20,6 +20,17 @@ test('R1-11 product experience exposes Process → Automation → Run instead of
   assert.match(script, /Hide advanced/);
 });
 
+test('R1-11 simplified surface is event-driven and cannot recursively repaint itself through MutationObserver', () => {
+  const script = ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT;
+
+  assert.doesNotMatch(script, /MutationObserver/);
+  assert.match(script, /Response\.prototype\.json/);
+  assert.match(script, /captureJson/);
+  assert.match(script, /scheduleDrive/);
+  assert.match(script, /if\(key===reviewRenderKey\)return/);
+  assert.match(script, /if\(key===temporalRenderKey\)return/);
+});
+
 test('R1-11 process review renders a BPMN canvas before business confirmation and keeps evidence details advanced', () => {
   const script = ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT;
 
