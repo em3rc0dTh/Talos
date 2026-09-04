@@ -22,7 +22,17 @@ test('R1-11 BPMN and Temporal canvases can open in a large zoomable modal', () =
   assert.match(script, /Double-click to open this canvas large/);
 });
 
-test('R1-11 reviewer plumbing stays behind Advanced instead of flooding the primary process review', () => {
+test('R1-11 material branch questions live directly under the BPMN canvas and save through one explicit confirmation action', () => {
+  const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
+  assert.match(script, /branchConditionResolution/);
+  assert.match(script, /canvas\.insertAdjacentElement\('afterend',panel\)/);
+  assert.match(script, /Confirm the decision branches/);
+  assert.match(script, /Confirm branch meanings/);
+  assert.match(script, /talosAutoSaveBound/);
+  assert.match(script, /save\.click\(\)/);
+});
+
+test('R1-11 repetitive validator receipts stay compact and behind Advanced instead of becoming the user journey', () => {
   const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
   assert.match(script, /processNodes/);
   assert.match(script, /questions/);
@@ -31,14 +41,27 @@ test('R1-11 reviewer plumbing stays behind Advanced instead of flooding the prim
   assert.match(script, /validation findings/);
   assert.match(script, /advanced BPMN/);
   assert.match(script, /applyReviewNoise/);
+  assert.match(script, /compactTechnicalEvidence/);
+  assert.match(script, /Reviewer input required/);
+  assert.match(script, /SV-SRC-001/);
+  assert.match(script, /×/);
 });
 
 test('R1-11 completed automation proposal cannot remain visually stuck in Gemini preparing state', () => {
   const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
   assert.match(script, /fixDesignStatus/);
+  assert.match(script, /talosTemporalCanvas/);
   assert.match(script, /DESIGN COMPLETE\|AI design coverage is complete/);
   assert.match(script, /Gemini is preparing the Temporal workflow proposal/);
   assert.match(script, /Automation proposal ready for review\./);
+});
+
+test('R1-11 dynamic AI modules refresh the client surface through parsed JSON even when they bypass the latest fetch wrapper', () => {
+  const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
+  assert.match(script, /installJsonHook/);
+  assert.match(script, /Response\.prototype\.json/);
+  assert.match(script, /__talosClientSurfaceJsonHook/);
+  assert.match(script, /window\.setTimeout\(scheduleApply,700\)/);
 });
 
 test('R1-11 client hardening remains event-driven and contains no recursive DOM observer', () => {
