@@ -21,14 +21,19 @@ test('R1-11 product experience exposes Process → Automation → Run instead of
 });
 
 test('R1-11 simplified surface is event-driven and cannot recursively repaint itself through MutationObserver', () => {
-  const script = ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT;
+  const journey = ONE_APP_PRODUCT_SIMPLE_JOURNEY_ENHANCEMENT;
+  const client = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
 
-  assert.doesNotMatch(script, /MutationObserver/);
-  assert.match(script, /Response\.prototype\.json/);
-  assert.match(script, /captureJson/);
-  assert.match(script, /scheduleDrive/);
-  assert.match(script, /if\(key===reviewRenderKey\)return/);
-  assert.match(script, /if\(key===temporalRenderKey\)return/);
+  assert.doesNotMatch(journey, /MutationObserver/);
+  assert.doesNotMatch(client, /MutationObserver/);
+  assert.match(journey, /Response\.prototype\.json/);
+  assert.match(journey, /captureJson/);
+  assert.match(journey, /scheduleDrive/);
+  assert.match(journey, /if\(key===reviewRenderKey\)return/);
+  assert.match(journey, /if\(key===temporalRenderKey\)return/);
+  assert.match(client, /nativeFetch=window\.fetch\.bind\(window\)/);
+  assert.match(client, /scheduleApply/);
+  assert.match(client, /talos:surface-refresh/);
 });
 
 test('R1-11 process review renders a BPMN canvas before business confirmation and keeps evidence details advanced', () => {
