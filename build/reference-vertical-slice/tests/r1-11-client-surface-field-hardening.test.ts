@@ -27,7 +27,9 @@ test('R1-11 reviewer plumbing stays behind Advanced instead of flooding the prim
   assert.match(script, /processNodes/);
   assert.match(script, /questions/);
   assert.match(script, /findings/);
-  assert.match(script, /review questions\|validation findings\|advanced BPMN\\\/XML/i);
+  assert.match(script, /review questions/);
+  assert.match(script, /validation findings/);
+  assert.match(script, /advanced BPMN/);
   assert.match(script, /applyReviewNoise/);
 });
 
