@@ -25,7 +25,7 @@ test('R1-11 BPMN and Temporal canvases can open in a large zoomable modal', () =
 test('R1-11 material business questions use a SweetAlert-style modal instead of Advanced or page scrolling', () => {
   const script = ONE_APP_PRODUCT_CLIENT_SURFACE_ENHANCEMENT;
   assert.match(script, /talosQuestionModal/);
-  assert.match(script, /role','dialog/);
+  assert.match(script, /setAttribute\('role','dialog'\)/);
   assert.match(script, /Talos needs your confirmation/);
   assert.match(script, /Answer now/);
   assert.match(script, /materialPanels/);
@@ -65,6 +65,7 @@ test('R1-11 final stage recovers generically from approved plan plus recorded ru
   assert.match(script, /READY_FOR_DEPLOYMENT_DESIGN\|Runtime policy recorded explicitly/);
   assert.match(script, /APPROVED/);
   assert.match(script, /applyCompileRecovery/);
+  assert.match(script, /talosCompileStateFinal/);
   assert.match(script, /Automation compiled and governed\. Ready for the configured runtime\./);
   assert.match(script, /Temporal runtime required to deploy/);
   assert.match(script, /driveDeployment/);
