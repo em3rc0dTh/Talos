@@ -30,6 +30,22 @@ test('R1-11 compiled DESIGN_ONLY workflow reveals Run instead of looking stuck a
   assert.match(script, /temporalExecutionAvailable/);
 });
 
+test('R1-11 visible Temporal action drives governed deployment stages and only claims Worker activation after backend SUCCEEDED proof', () => {
+  const script = ONE_APP_PRODUCT_RELEASE_CLOSURE_ENHANCEMENT;
+  assert.match(script, /Activate approved Worker/);
+  assert.match(script, /driveAuthorityStep\('designDeployment'/);
+  assert.match(script, /driveAuthorityStep\('realizeEnvironment'/);
+  assert.match(script, /driveAuthorityStep\('approveDeployment'/);
+  assert.match(script, /driveAuthorityStep\('deployWorker'/);
+  assert.match(script, /\/api\/automation\/deployment\/attempt/);
+  assert.match(script, /body\.deploymentAttempt/);
+  assert.match(script, /lastDeploymentAttempt\.result==='SUCCEEDED'/);
+  assert.match(script, /Temporal Worker activation confirmed by backend/);
+  assert.match(script, /Worker active/);
+  assert.match(script, /Worker activation failed/);
+  assert.doesNotMatch(script, /deployment succeeded.*setTimeout|assume.*deploy/i);
+});
+
 test('R1-11 release closure remains process agnostic', () => {
   const script = ONE_APP_PRODUCT_RELEASE_CLOSURE_ENHANCEMENT;
   assert.doesNotMatch(script, /lavado|rines|veh[ií]culo|l[aá]mpara|car-wash|image-test/i);
