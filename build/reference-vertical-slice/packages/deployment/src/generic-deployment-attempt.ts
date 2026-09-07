@@ -37,9 +37,23 @@ function assertRealizedDeployment(deployment:ReferenceDeploymentBundle):void{
   if(deployment.namespaceResolution.resolutionState!=='RESOLVED')throw new TypeError('deployment approval requires a resolved Temporal namespace');
   if(deployment.namingIntent.bindingState!=='REALIZED')throw new TypeError('deployment approval requires realized deployment naming');
   if(deployment.environmentRealizations.length===0)throw new TypeError('deployment approval requires exact environment binding realization lineage');
-  if(deployment.taskQueueBindings.length===0||deployment.workflowTypeBindings.length===0||deployment.activityTypeBindings.length===0||deployment.workerArtifactBindings.length===0){
-    throw new TypeError('deployment approval requires concrete Task Queue, Workflow, Activity and Worker artifact bindings');
+  if(deployment.taskQueueBindings.length===0||deployment.workflowTypeBindings.length===0||deployment.workerArtifactBindings.length===0){
+    throw new TypeError('deployment approval requires concrete Task Queue, Workflow and Worker artifact bindings');
   }
+
+  // Activity bindings are conditional. A human-only / durable-wait Workflow is
+  // valid Temporal work and must not manufacture a fake Activity merely to pass
+  // deployment approval. When Activities do exist, the realized Worker must pin
+  // the exact same ActivityTypeBinding set.
+  const activityBindingRefs=new Set(deployment.activityTypeBindings.map(item=>item.id));
+  if(activityBindingRefs.size!==deployment.activityTypeBindings.length){
+    throw new TypeError('deployment approval requires unique Activity type bindings');
+  }
+  const workerActivityRefs=new Set(deployment.workerArtifactBindings.flatMap(item=>item.supportedActivityTypeBindingRefs));
+  if(workerActivityRefs.size!==activityBindingRefs.size||[...workerActivityRefs].some(ref=>!activityBindingRefs.has(ref))){
+    throw new TypeError('deployment approval requires Worker Activity support to match the realized Activity bindings exactly');
+  }
+
   if(deployment.requirements.some(item=>item.state!=='RESOLVED'))throw new TypeError('deployment approval requires every material deployment requirement resolved');
   if(deployment.attempts.length>0)throw new TypeError('deployment approval cannot authorize a new first attempt after an attempt already exists');
 }
