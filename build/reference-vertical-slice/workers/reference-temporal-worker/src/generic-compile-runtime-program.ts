@@ -74,7 +74,14 @@ export function compileGenericRuntimeProgram(
     if(!snapshot)throw new TypeError(`human runtime snapshot missing for ${human.id}`);
     if(snapshot.capabilityUseOccurrenceRef!==human.capabilityUseOccurrenceRefs[0])throw new TypeError(`human runtime capability lineage mismatch for ${human.id}`);
     if(!human.constructKinds.includes(snapshot.messageKind)||!human.constructKinds.includes('WORKFLOW_CONDITION'))throw new TypeError(`human runtime Temporal mapping mismatch for ${human.id}`);
-    if(snapshot.participantRoleRefs.length===0)throw new TypeError(`human runtime participant role snapshot missing for ${human.id}`);
+    if(snapshot.participantRoleRefs.length===0){
+      const actorTypes=snapshot.participantActorTypeConstraints??[];
+      if(snapshot.participantAssignmentCardinality!=='ANY_ELIGIBLE'||!actorTypes.includes('HUMAN')){
+        throw new TypeError(`TALOS_RUNTIME_HUMAN_PARTICIPANT_INCOMPLETE: ${human.id} roleless execution requires frozen ANY_ELIGIBLE + HUMAN assignment semantics`);
+      }
+    }else if(snapshot.participantAssignmentCardinality==='ANY_ELIGIBLE'){
+      throw new TypeError(`TALOS_RUNTIME_HUMAN_PARTICIPANT_ASSIGNMENT_CONFLICT: ${human.id} role-constrained execution cannot use ANY_ELIGIBLE`);
+    }
     if(snapshot.outcomes.length===0)throw new TypeError(`human runtime outcome snapshot missing for ${human.id}`);
     const outcomeCodes=new Set<string>();
     for(const outcome of snapshot.outcomes){
