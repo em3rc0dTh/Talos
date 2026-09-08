@@ -1,12 +1,13 @@
 import type { ImagePerceptionProviderResult } from './perception-types.ts';
 
-export const IMAGE_PERCEPTION_SUFFICIENCY_POLICY_VERSION = 'talos-image-perception-sufficiency-v0.1';
+export const IMAGE_PERCEPTION_SUFFICIENCY_POLICY_VERSION = 'talos-image-perception-sufficiency-v0.2';
 
 export interface ImagePerceptionSufficiencyPolicy {
   minimumConfidence?: number;
   requireKnownRelationDirection?: boolean;
   requireResolvedRelationEndpoints?: boolean;
   requireBusinessSemanticType?: boolean;
+  requireConnectedBusinessFlow?: boolean;
 }
 
 export interface ImagePerceptionSufficiencyAssessment {
@@ -26,14 +27,97 @@ function below(value: number | undefined, minimum: number): boolean {
   return value !== undefined && value < minimum;
 }
 
+function uniqueResolvedEndpointKey(
+  candidates: ImagePerceptionProviderResult['relationCandidates'][number]['sourceEndpointCandidates'],
+): string | undefined {
+  const resolved = candidates.filter((item) =>
+    item.endpointState === 'SET_CANDIDATE' && Boolean(item.occurrenceCandidateKey),
+  );
+  return resolved.length === 1 ? resolved[0].occurrenceCandidateKey : undefined;
+}
+
+function assessBusinessGraphConnectivity(
+  result: ImagePerceptionProviderResult,
+  reasons: Set<string>,
+  businessOccurrences: ImagePerceptionProviderResult['occurrenceCandidates'],
+): void {
+  if (businessOccurrences.length <= 1) return;
+
+  const businessKeys = new Set(businessOccurrences.map((item) => item.providerOccurrenceKey));
+  const adjacency = new Map<string, Set<string>>(
+    [...businessKeys].map((key) => [key, new Set<string>()]),
+  );
+  const incoming = new Map<string, number>([...businessKeys].map((key) => [key, 0]));
+  const outgoing = new Map<string, number>([...businessKeys].map((key) => [key, 0]));
+
+  for (const relation of result.relationCandidates) {
+    const source = uniqueResolvedEndpointKey(relation.sourceEndpointCandidates);
+    const target = uniqueResolvedEndpointKey(relation.targetEndpointCandidates);
+    if (!source || !target || !businessKeys.has(source) || !businessKeys.has(target)) continue;
+
+    adjacency.get(source)!.add(target);
+    adjacency.get(target)!.add(source);
+
+    const knownDirections = relation.directionCandidates.filter((item) => item.value !== 'UNKNOWN');
+    if (knownDirections.length !== 1) continue;
+    const direction = knownDirections[0].value;
+    if (direction === 'SOURCE_TO_TARGET') {
+      outgoing.set(source, (outgoing.get(source) ?? 0) + 1);
+      incoming.set(target, (incoming.get(target) ?? 0) + 1);
+    } else if (direction === 'TARGET_TO_SOURCE') {
+      outgoing.set(target, (outgoing.get(target) ?? 0) + 1);
+      incoming.set(source, (incoming.get(source) ?? 0) + 1);
+    } else if (direction === 'BIDIRECTIONAL') {
+      outgoing.set(source, (outgoing.get(source) ?? 0) + 1);
+      outgoing.set(target, (outgoing.get(target) ?? 0) + 1);
+      incoming.set(source, (incoming.get(source) ?? 0) + 1);
+      incoming.set(target, (incoming.get(target) ?? 0) + 1);
+    }
+  }
+
+  const unseen = new Set(businessKeys);
+  let components = 0;
+  while (unseen.size > 0) {
+    components += 1;
+    const first = unseen.values().next().value as string;
+    const stack = [first];
+    unseen.delete(first);
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (!unseen.has(next)) continue;
+        unseen.delete(next);
+        stack.push(next);
+      }
+    }
+  }
+  add(reasons, components > 1, 'DISCONNECTED_BUSINESS_GRAPH');
+
+  const endOccurrences = businessOccurrences.filter((item) => item.candidateSemanticType === 'END');
+  for (const end of endOccurrences) {
+    add(reasons, (incoming.get(end.providerOccurrenceKey) ?? 0) === 0, 'END_WITHOUT_INCOMING_RELATION');
+  }
+
+  if (endOccurrences.length > 0) {
+    for (const occurrence of businessOccurrences) {
+      if (occurrence.candidateSemanticType === 'END') continue;
+      add(
+        reasons,
+        (outgoing.get(occurrence.providerOccurrenceKey) ?? 0) === 0,
+        'NON_TERMINAL_WITHOUT_OUTGOING_RELATION',
+      );
+    }
+  }
+}
+
 /**
  * Talos-owned deterministic gate for deciding whether a primary image
  * perception attempt is strong enough to continue without a second provider.
  *
  * This deliberately does not ask the model whether it "feels confident".
  * It inspects the structured evidence contract: status, visibility, business
- * occurrences, endpoint resolution, relation direction, alternatives,
- * diagnostics and any supplied numeric confidence values.
+ * occurrences, endpoint resolution, relation direction, graph connectivity,
+ * alternatives, diagnostics and any supplied numeric confidence values.
  */
 export function assessImagePerceptionSufficiency(
   result: ImagePerceptionProviderResult,
@@ -47,6 +131,7 @@ export function assessImagePerceptionSufficiency(
   const requireDirection = policy.requireKnownRelationDirection ?? true;
   const requireEndpoints = policy.requireResolvedRelationEndpoints ?? true;
   const requireBusinessSemanticType = policy.requireBusinessSemanticType ?? true;
+  const requireConnectedBusinessFlow = policy.requireConnectedBusinessFlow ?? true;
   const reasons = new Set<string>();
 
   add(reasons, result.status !== 'SUCCEEDED', `PRIMARY_PROVIDER_STATUS_${result.status}`);
@@ -92,6 +177,10 @@ export function assessImagePerceptionSufficiency(
       add(reasons, relation.directionCandidates.some((item) => item.value === 'UNKNOWN'), 'RELATION_DIRECTION_AMBIGUOUS');
       add(reasons, known.some((item) => below(item.confidence, minimum)), 'RELATION_DIRECTION_LOW_CONFIDENCE');
     }
+  }
+
+  if (requireConnectedBusinessFlow) {
+    assessBusinessGraphConnectivity(result, reasons, businessOccurrences);
   }
 
   for (const set of result.alternativeSets) {
