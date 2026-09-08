@@ -1,6 +1,7 @@
 import type { OpaqueId } from '../../foundation/src/ids.ts';
 import type { ImmutableDocumentRepository } from '../../foundation/src/repository.ts';
 import {
+  assessImagePerceptionSufficiency,
   intakePngUpload,
   runCorrelatedConfiguredImagePerceptionAdmission,
   runCorrelatedImagePerceptionWithFallback,
@@ -8,6 +9,7 @@ import {
   type ImagePerceptionAdmissionBundle,
   type ImagePerceptionFallbackRoutingRecord,
   type ImagePerceptionRuntimeBinding,
+  type ImagePerceptionSufficiencyAssessment,
   type ImagePerceptionSufficiencyPolicy,
   type LocalImageByteStore,
 } from '../../image-perception/src/index.ts';
@@ -21,6 +23,7 @@ const BPMN_WORKSPACE_SCHEMA = 'talos-bpmn-workspace-v0.1';
 
 interface ImageBpmnReviewRoutingContext {
   perceptionRouting?: ImagePerceptionFallbackRoutingRecord;
+  perceptionSufficiency?: ImagePerceptionSufficiencyAssessment;
 }
 
 export type ImageBpmnReviewResult =
@@ -73,11 +76,12 @@ function persistBpmnProjection(repo: ImmutableDocumentRepository, projection: Bp
 /**
  * Image-to-review orchestration.
  *
- * With only one provider configured, the historical path is preserved. When a
- * fallback binding is configured, Talos runs the primary provider first and
- * invokes the fallback automatically only when Talos' deterministic
- * sufficiency gate rejects the primary evidence. If neither attempt is
- * sufficient, canonical normalization is forbidden.
+ * Talos always applies its deterministic sufficiency gate to the primary
+ * provider evidence. A configured fallback is invoked only when that primary
+ * evidence is insufficient. Without a fallback, insufficient primary evidence
+ * safe-stops before canonical normalization rather than becoming a misleading
+ * review candidate. If neither configured attempt is sufficient, canonical
+ * normalization is forbidden.
  *
  * Any selected perception remains INFERRED business meaning and is projected
  * into a non-executable DRAFT BPMN revision for human review. No confirmation,
@@ -99,6 +103,7 @@ export async function buildImageBpmnReviewCandidate(
 
   let perception: ImagePerceptionAdmissionBundle;
   let perceptionRouting: ImagePerceptionFallbackRoutingRecord | undefined;
+  let perceptionSufficiency: ImagePerceptionSufficiencyAssessment | undefined;
 
   if (options.fallbackBinding) {
     const routed = await runCorrelatedImagePerceptionWithFallback(
@@ -116,6 +121,11 @@ export async function buildImageBpmnReviewCandidate(
     );
     perceptionRouting = routed.routing;
     perception = routed.selected ?? routed.fallback ?? routed.primary;
+    perceptionSufficiency = routed.selected
+      ? routed.selected === routed.primary
+        ? routed.routing.primaryAssessment
+        : routed.routing.fallbackAssessment
+      : routed.routing.fallbackAssessment ?? routed.routing.primaryAssessment;
 
     if (!routed.selected) {
       return {
@@ -123,6 +133,7 @@ export async function buildImageBpmnReviewCandidate(
         intake,
         perception,
         perceptionRouting,
+        ...(perceptionSufficiency ? { perceptionSufficiency } : {}),
         automaticConfirmationAuthorized: false,
         automaticFreezeAuthorized: false,
         automaticExecutionAuthorized: false,
@@ -137,6 +148,25 @@ export async function buildImageBpmnReviewCandidate(
       { ...(options.perceivedAt ? { now: options.perceivedAt } : {}) },
       options.fetchImpl ?? fetch,
     );
+    perceptionSufficiency = assessImagePerceptionSufficiency(
+      perception.providerResult,
+      options.sufficiencyPolicy,
+    );
+    if (
+      perception.admission.decision !== 'ADMITTED_FOR_REVIEW'
+      || !perception.attempt.result
+      || perceptionSufficiency.status !== 'SUFFICIENT'
+    ) {
+      return {
+        status: 'SAFE_STOP_BEFORE_CANONICAL',
+        intake,
+        perception,
+        perceptionSufficiency,
+        automaticConfirmationAuthorized: false,
+        automaticFreezeAuthorized: false,
+        automaticExecutionAuthorized: false,
+      };
+    }
   }
 
   if (perception.admission.decision !== 'ADMITTED_FOR_REVIEW' || !perception.attempt.result) {
@@ -145,6 +175,7 @@ export async function buildImageBpmnReviewCandidate(
       intake,
       perception,
       ...(perceptionRouting ? { perceptionRouting } : {}),
+      ...(perceptionSufficiency ? { perceptionSufficiency } : {}),
       automaticConfirmationAuthorized: false,
       automaticFreezeAuthorized: false,
       automaticExecutionAuthorized: false,
@@ -178,6 +209,7 @@ export async function buildImageBpmnReviewCandidate(
     intake,
     perception,
     ...(perceptionRouting ? { perceptionRouting } : {}),
+    ...(perceptionSufficiency ? { perceptionSufficiency } : {}),
     semantic,
     projection,
     automaticConfirmationAuthorized: false,
