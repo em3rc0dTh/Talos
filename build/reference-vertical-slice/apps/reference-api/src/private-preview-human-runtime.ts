@@ -37,8 +37,17 @@ export function buildOneAppHumanRuntimeSnapshots(
       throw new TypeError(`TALOS_RUNTIME_HUMAN_DESIGN_INCOMPLETE: ${requirement.id}`);
     }
     const participant = selection.participantRequirements.find((item) => item.id === humanDesign.participantRequirementRef);
-    if (!participant || participant.participantState !== 'COMPLETE' || participant.roleRefs.length === 0) {
+    if (!participant || participant.participantState !== 'COMPLETE') {
       throw new TypeError(`TALOS_RUNTIME_HUMAN_PARTICIPANT_INCOMPLETE: ${humanDesign.id}`);
+    }
+    const rolelessAnyEligible = participant.roleRefs.length === 0
+      && participant.assignmentCardinality === 'ANY_ELIGIBLE'
+      && participant.actorTypeConstraints.includes('HUMAN');
+    if (participant.roleRefs.length === 0 && !rolelessAnyEligible) {
+      throw new TypeError(`TALOS_RUNTIME_HUMAN_PARTICIPANT_INCOMPLETE: ${humanDesign.id}`);
+    }
+    if (participant.roleRefs.length > 0 && participant.assignmentCardinality === 'ANY_ELIGIBLE') {
+      throw new TypeError(`TALOS_RUNTIME_HUMAN_PARTICIPANT_ASSIGNMENT_CONFLICT: ${humanDesign.id}`);
     }
     const outcomeContract = selection.humanOutcomeContracts.find((item) => item.id === humanDesign.outcomeContractRef);
     if (!outcomeContract || outcomeContract.unresolvedOutcomeRefs.length > 0 || outcomeContract.outcomeRefs.length === 0) {
@@ -82,6 +91,8 @@ export function buildOneAppHumanRuntimeSnapshots(
       capabilityUseOccurrenceRef,
       messageKind: messageUnits[0].constructKind as 'UPDATE_HANDLER' | 'SIGNAL_HANDLER',
       participantRoleRefs: [...participant.roleRefs],
+      participantAssignmentCardinality: participant.assignmentCardinality,
+      participantActorTypeConstraints: [...participant.actorTypeConstraints],
       outcomes,
     };
   });
