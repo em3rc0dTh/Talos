@@ -3,6 +3,8 @@ param(
   [string]$TemporalNamespace = 'default',
   [string]$TemporalTaskQueue = 'talos-r1-image-field',
   [switch]$EnableLocalFallback,
+  [switch]$DisableLocalFallback,
+  [switch]$RequireLocalFallback,
   [switch]$PullFallbackModel,
   [string]$GeminiModel = 'gemini-3.6-flash',
   [string]$FallbackModel = 'qwen3-vl:4b-instruct'
@@ -53,7 +55,14 @@ function Set-FieldEnvironment([string]$GitSha) {
     'TALOS_IMAGE_PERCEPTION_FALLBACK_BEARER_TOKEN',
     'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_CLASS',
     'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE',
-    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS'
+    'TALOS_OLLAMA_FALLBACK_ENABLED',
+    'TALOS_OLLAMA_FALLBACK_MODEL',
+    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_MODEL',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_URL',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_TIMEOUT_MS',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_MAX_OUTPUT_TOKENS'
   )) { Remove-EnvIfPresent $name }
 }
 
@@ -77,8 +86,20 @@ function Clear-FieldEnvironment {
     'TALOS_GEMINI_MODEL',
     'TALOS_OLLAMA_FALLBACK_ENABLED',
     'TALOS_OLLAMA_FALLBACK_MODEL',
-    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS'
+    'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_MODEL',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_URL',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_TIMEOUT_MS',
+    'TALOS_OLLAMA_AUTOMATION_FALLBACK_MAX_OUTPUT_TOKENS'
   )) { Remove-EnvIfPresent $name }
+}
+
+function Enable-LocalProviderFallback([string]$Model) {
+  $env:TALOS_OLLAMA_FALLBACK_ENABLED = 'true'
+  $env:TALOS_OLLAMA_FALLBACK_MODEL = $Model
+  $env:TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED = 'true'
+  $env:TALOS_OLLAMA_AUTOMATION_FALLBACK_MODEL = $Model
 }
 
 $sliceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -86,6 +107,10 @@ Push-Location $sliceRoot
 $createdGeminiKey = $false
 
 try {
+  if ($DisableLocalFallback -and ($EnableLocalFallback -or $RequireLocalFallback -or $PullFallbackModel)) {
+    throw 'DisableLocalFallback cannot be combined with EnableLocalFallback, RequireLocalFallback or PullFallbackModel.'
+  }
+
   $gitSha = (git rev-parse HEAD).Trim()
   if (-not $gitSha) { throw 'Unable to resolve the current Git SHA.' }
 
@@ -119,37 +144,61 @@ try {
 
   Set-FieldEnvironment $gitSha
 
-  if ($EnableLocalFallback) {
-    if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-      throw 'Local fallback requested but Ollama is not installed or not available on PATH.'
+  $strictLocalFallback = [bool]($EnableLocalFallback -or $RequireLocalFallback)
+  $tryLocalFallback = -not [bool]$DisableLocalFallback
+  $localFallbackEnabled = $false
+  $localFallbackReason = 'explicitly disabled'
+
+  if ($tryLocalFallback) {
+    $ollama = Get-Command ollama -ErrorAction SilentlyContinue
+    if (-not $ollama) {
+      $localFallbackReason = 'Ollama not installed or not available on PATH'
+      if ($strictLocalFallback) { throw "Local AI fallback is required but $localFallbackReason." }
+      Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
+    } else {
+      if ($PullFallbackModel) {
+        Write-Host "Pulling local fallback model $FallbackModel ..." -ForegroundColor Yellow
+        ollama pull $FallbackModel
+        if ($LASTEXITCODE -ne 0) { throw "ollama pull failed with exit code $LASTEXITCODE" }
+      }
+
+      $availableModels = (ollama list 2>&1 | Out-String)
+      $ollamaListExit = $LASTEXITCODE
+      if ($ollamaListExit -ne 0) {
+        $localFallbackReason = 'Ollama is installed but its local service is unavailable'
+        if ($strictLocalFallback) { throw "Local AI fallback is required but $localFallbackReason." }
+        Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
+      } elseif ($availableModels -notmatch [Regex]::Escape($FallbackModel)) {
+        $localFallbackReason = "model '$FallbackModel' is not installed"
+        if ($strictLocalFallback) {
+          throw "Local AI fallback is required but $localFallbackReason. Run: ollama pull $FallbackModel  (or rerun with -PullFallbackModel)."
+        }
+        Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
+      } else {
+        Enable-LocalProviderFallback $FallbackModel
+        $localFallbackEnabled = $true
+        $localFallbackReason = 'configured'
+      }
     }
-    if ($PullFallbackModel) {
-      Write-Host "Pulling local fallback model $FallbackModel ..." -ForegroundColor Yellow
-      ollama pull $FallbackModel
-      if ($LASTEXITCODE -ne 0) { throw "ollama pull failed with exit code $LASTEXITCODE" }
-    }
-    $availableModels = (ollama list | Out-String)
-    if ($availableModels -notmatch [Regex]::Escape($FallbackModel)) {
-      throw "Local fallback model '$FallbackModel' is not installed. Run: ollama pull $FallbackModel  (or rerun this script with -PullFallbackModel)."
-    }
-    $env:TALOS_OLLAMA_FALLBACK_ENABLED = 'true'
-    $env:TALOS_OLLAMA_FALLBACK_MODEL = $FallbackModel
-  } else {
-    Remove-EnvIfPresent 'TALOS_OLLAMA_FALLBACK_ENABLED'
-    Remove-EnvIfPresent 'TALOS_OLLAMA_FALLBACK_MODEL'
   }
 
   Write-Host ''
   Write-Host 'Configuration:' -ForegroundColor Green
-  Write-Host "  Primary  : Gemini / $GeminiModel"
-  Write-Host "  Fallback : $(if ($EnableLocalFallback) { "Ollama / $FallbackModel (automatic on primary failure/insufficiency)" } else { 'disabled' })"
-  Write-Host '  Runtime  : TEMPORAL_EXECUTION'
-  Write-Host "  Temporal : $TemporalAddress"
-  Write-Host "  Namespace: $TemporalNamespace"
-  Write-Host "  TaskQueue: $TemporalTaskQueue"
-  Write-Host '  Product  : http://127.0.0.1:8787'
-  Write-Host "  State    : $env:TALOS_PRIVATE_PREVIEW_RUNTIME_DIR"
+  Write-Host "  Primary AI         : Gemini / $GeminiModel"
+  Write-Host "  Vision fallback    : $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
+  Write-Host "  Automation fallback: $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
+  Write-Host "  AI redundancy      : $(if ($localFallbackEnabled) { 'READY' } else { 'DEGRADED_AI_REDUNDANCY' })"
+  Write-Host '  Runtime            : TEMPORAL_EXECUTION'
+  Write-Host "  Temporal           : $TemporalAddress"
+  Write-Host "  Namespace          : $TemporalNamespace"
+  Write-Host "  TaskQueue          : $TemporalTaskQueue"
+  Write-Host '  Product            : http://127.0.0.1:8787'
+  Write-Host "  State              : $env:TALOS_PRIVATE_PREVIEW_RUNTIME_DIR"
   Write-Host ''
+  if (-not $localFallbackEnabled) {
+    Write-Host 'Talos remains available, but an unusable Gemini result will safe-stop AI-dependent work until a fallback/provider or manual source route is available.' -ForegroundColor Yellow
+    Write-Host 'For release-grade provider redundancy, install Ollama + the fallback model or run with -RequireLocalFallback.' -ForegroundColor Yellow
+  }
   Write-Host 'Talos will fail before serving if Temporal is not reachable.' -ForegroundColor Yellow
   Write-Host 'KEEP THIS TERMINAL RUNNING after READY appears.' -ForegroundColor Yellow
   Write-Host ''
