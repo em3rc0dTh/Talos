@@ -13,6 +13,13 @@ export interface GenericRuntimeHumanSnapshot {
   capabilityUseOccurrenceRef:string;
   messageKind:'UPDATE_HANDLER'|'SIGNAL_HANDLER';
   participantRoleRefs:string[];
+  /**
+   * Present on newly compiled human programs so roleless assignment remains an
+   * explicit frozen decision instead of being confused with missing role data.
+   * Optional for compatibility with already-persisted role-constrained programs.
+   */
+  participantAssignmentCardinality?:'EXACTLY_ONE'|'ONE_OR_MORE'|'ANY_ELIGIBLE'|'ALL_REQUIRED'|'N_OF_M'|'SOURCE_DEFINED';
+  participantActorTypeConstraints?:string[];
   outcomes:GenericRuntimeHumanOutcomeSnapshot[];
 }
 export interface GenericRuntimeSemanticSnapshot {
