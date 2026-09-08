@@ -32,3 +32,17 @@ test('R1-11 partial AI design is shown as governed safe-stop material and cannot
   assert.match(script, /AI DESIGN NEEDS INPUT/);
   assert.match(script, /No capability binding, deployment authority or execution authority is created automatically/);
 });
+
+test('R1-11 unresolved routing without a proposal exposes provider or policy diagnostics instead of inventing missing questions', () => {
+  const script = ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT;
+
+  assert.match(script, /Why Talos stopped/);
+  assert.match(script, /no reviewable automation proposal was produced/i);
+  assert.match(script, /provider\/policy diagnostics below/i);
+  assert.match(script, /attempt\.diagnostic/);
+  assert.match(script, /POLICY_REJECTION/);
+  assert.match(script, /PROVIDER_FAILURE/);
+  assert.match(script, /PARTIAL/);
+  assert.match(script, /materialQuestions\(\)\.length/);
+  assert.doesNotMatch(script, /Review the AI questions below or use the advanced editor/);
+});
