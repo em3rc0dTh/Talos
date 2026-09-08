@@ -66,6 +66,44 @@ export const ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT = String.raw`
     if(routing.primary&&routing.primary.proposal)return routing.primary.proposal;
     return null;
   }
+  function routingAttempts(){
+    if(!routing)return[];
+    var attempts=[];
+    if(routing.primary)attempts.push({stage:'Primary',attempt:routing.primary});
+    if(routing.fallback)attempts.push({stage:'Fallback',attempt:routing.fallback});
+    return attempts;
+  }
+  function attemptSummary(entry){
+    var attempt=entry.attempt||{};
+    var provider=[attempt.providerId,attempt.modelRef].filter(Boolean).join(' · ');
+    var diagnostic=String(attempt.diagnostic||'').trim();
+    if(!diagnostic){
+      if(attempt.result==='PARTIAL')diagnostic='The provider returned proposal material, but Talos could not validate it as a complete automation design.';
+      else if(attempt.result==='POLICY_REJECTION')diagnostic='Talos rejected the provider output because it violated the governed automation-proposal contract.';
+      else if(attempt.result==='PROVIDER_FAILURE')diagnostic='The automation-design provider did not return a usable proposal.';
+      else diagnostic='No additional diagnostic detail was returned.';
+    }
+    return {title:entry.stage+' · '+String(attempt.result||'UNKNOWN'),detail:(provider?provider+' · ':'')+diagnostic};
+  }
+  function materialQuestions(){
+    var attempt=unresolvedAttempt();
+    return attempt?(attempt.unresolvedQuestions||[]).filter(function(q){return q&&q.material}):[];
+  }
+  function renderSafeStopEvidence(panel){
+    if(!routing||routing.decision!=='UNRESOLVED_AFTER_FALLBACK')return;
+    var questions=materialQuestions();
+    if(questions.length){
+      var qh=document.createElement('h3');qh.textContent='AI needs business/design input';panel.appendChild(qh);
+      var qlist=document.createElement('div');qlist.className='list';questions.forEach(function(q){qlist.appendChild(listItem(q.question,q.reason,'question'))});panel.appendChild(qlist);
+    }
+    var attempts=routingAttempts();
+    if(attempts.length){
+      var dh=document.createElement('h3');dh.textContent='Why Talos stopped';panel.appendChild(dh);
+      var dlist=document.createElement('div');dlist.className='list';
+      attempts.forEach(function(entry){var item=attemptSummary(entry);dlist.appendChild(listItem(item.title,item.detail,'finding'))});
+      panel.appendChild(dlist);
+    }
+  }
   function appendRetry(panel,label){
     if(!workspaceId)return;
     var retry=document.createElement('button');retry.type='button';retry.textContent=label||'Generate AI design';retry.style.marginTop='10px';
@@ -86,21 +124,16 @@ export const ONE_APP_PRODUCT_AI_AUTOMATION_ENHANCEMENT = String.raw`
     if(!proposal){
       var state=document.createElement('div');state.id='aiAutomationState';state.className='status '+(routing?'warn':'');
       if(routing&&routing.decision==='UNRESOLVED_AFTER_FALLBACK'){
-        state.textContent='AI design stopped safely because material design information is unresolved. Review the AI questions below or use the advanced editor only when you intentionally want manual control.';
+        state.textContent=materialQuestions().length
+          ? 'AI design stopped safely because material business/design input is unresolved. Review the questions below; no capability binding or authority was created.'
+          : 'AI design stopped safely because no reviewable automation proposal was produced. Review the provider/policy diagnostics below or redesign; no capability binding or authority was created.';
       }else if(workspaceId){
         state.textContent='AI Automation Design is ready to generate a proposal.';
       }else{
         state.textContent='Confirm the business process, then open AI Automation Design. Talos will ask Gemini to propose the implementation automatically.';
       }
       panel.appendChild(state);
-      var attempt=unresolvedAttempt();
-      if(attempt){
-        var questions=(attempt.unresolvedQuestions||[]).filter(function(q){return q.material});
-        if(questions.length){
-          var h=document.createElement('h3');h.textContent='AI needs business/design input';panel.appendChild(h);
-          var list=document.createElement('div');list.className='list';questions.forEach(function(q){list.appendChild(listItem(q.question,q.reason,'question'))});panel.appendChild(list);
-        }
-      }
+      renderSafeStopEvidence(panel);
       appendRetry(panel,routing?'Redesign with Gemini':'Generate AI design');
       return;
     }
