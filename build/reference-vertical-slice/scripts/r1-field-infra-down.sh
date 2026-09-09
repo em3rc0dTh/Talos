@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Git policy: this launcher must remain LF-only for WSL/Linux execution.
 set -euo pipefail
 
 slice_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
