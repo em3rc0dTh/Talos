@@ -7,13 +7,33 @@ param(
   [switch]$RequireLocalFallback,
   [switch]$PullFallbackModel,
   [string]$GeminiModel = 'gemini-3.6-flash',
-  [string]$FallbackModel = 'qwen3-vl:4b-instruct'
+  [string]$FallbackModel = 'qwen3-vl:4b-instruct',
+  [string]$OllamaBaseUrl = 'http://127.0.0.1:11434'
 )
 
 $ErrorActionPreference = 'Stop'
 
 function Remove-EnvIfPresent([string]$Name) {
   Remove-Item "Env:$Name" -ErrorAction SilentlyContinue
+}
+
+function Normalize-BaseUrl([string]$Value) {
+  return $Value.Trim().TrimEnd('/')
+}
+
+function Get-OllamaModelNames([string]$BaseUrl) {
+  try {
+    $response = Invoke-RestMethod -Method Get -Uri "$(Normalize-BaseUrl $BaseUrl)/api/tags" -TimeoutSec 5
+    if (-not $response.models) { return @() }
+    return @($response.models | ForEach-Object { [string]$_.name })
+  } catch {
+    return $null
+  }
+}
+
+function Pull-OllamaModel([string]$BaseUrl, [string]$Model) {
+  $body = @{ model = $Model; stream = $false } | ConvertTo-Json -Compress
+  Invoke-RestMethod -Method Post -Uri "$(Normalize-BaseUrl $BaseUrl)/api/pull" -ContentType 'application/json' -Body $body -TimeoutSec 1800 | Out-Null
 }
 
 function Set-FieldEnvironment([string]$GitSha) {
@@ -56,6 +76,7 @@ function Set-FieldEnvironment([string]$GitSha) {
     'TALOS_IMAGE_PERCEPTION_FALLBACK_PROVIDER_CLASS',
     'TALOS_IMAGE_PERCEPTION_FALLBACK_EVIDENCE_MODE',
     'TALOS_OLLAMA_FALLBACK_ENABLED',
+    'TALOS_OLLAMA_FALLBACK_URL',
     'TALOS_OLLAMA_FALLBACK_MODEL',
     'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS',
     'TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED',
@@ -85,6 +106,7 @@ function Clear-FieldEnvironment {
     'TALOS_PRODUCT_PORT',
     'TALOS_GEMINI_MODEL',
     'TALOS_OLLAMA_FALLBACK_ENABLED',
+    'TALOS_OLLAMA_FALLBACK_URL',
     'TALOS_OLLAMA_FALLBACK_MODEL',
     'TALOS_OLLAMA_FALLBACK_TIMEOUT_MS',
     'TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED',
@@ -95,10 +117,13 @@ function Clear-FieldEnvironment {
   )) { Remove-EnvIfPresent $name }
 }
 
-function Enable-LocalProviderFallback([string]$Model) {
+function Enable-LocalProviderFallback([string]$Model, [string]$BaseUrl) {
+  $chatEndpoint = "$(Normalize-BaseUrl $BaseUrl)/api/chat"
   $env:TALOS_OLLAMA_FALLBACK_ENABLED = 'true'
+  $env:TALOS_OLLAMA_FALLBACK_URL = $chatEndpoint
   $env:TALOS_OLLAMA_FALLBACK_MODEL = $Model
   $env:TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED = 'true'
+  $env:TALOS_OLLAMA_AUTOMATION_FALLBACK_URL = $chatEndpoint
   $env:TALOS_OLLAMA_AUTOMATION_FALLBACK_MODEL = $Model
 }
 
@@ -150,32 +175,32 @@ try {
   $localFallbackReason = 'explicitly disabled'
 
   if ($tryLocalFallback) {
-    $ollama = Get-Command ollama -ErrorAction SilentlyContinue
-    if (-not $ollama) {
-      $localFallbackReason = 'Ollama not installed or not available on PATH'
-      if ($strictLocalFallback) { throw "Local AI fallback is required but $localFallbackReason." }
+    $ollamaModels = Get-OllamaModelNames $OllamaBaseUrl
+    if ($null -eq $ollamaModels) {
+      $localFallbackReason = "Ollama service is not reachable at $(Normalize-BaseUrl $OllamaBaseUrl)"
+      if ($strictLocalFallback) {
+        throw "Local AI fallback is required but $localFallbackReason. Start it with: .\scripts\r1-field-infra-up.ps1"
+      }
       Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
     } else {
-      if ($PullFallbackModel) {
-        Write-Host "Pulling local fallback model $FallbackModel ..." -ForegroundColor Yellow
-        ollama pull $FallbackModel
-        if ($LASTEXITCODE -ne 0) { throw "ollama pull failed with exit code $LASTEXITCODE" }
+      if ($PullFallbackModel -and ($ollamaModels -notcontains $FallbackModel)) {
+        Write-Host "Pulling Docker/local fallback model $FallbackModel through the Ollama API..." -ForegroundColor Yellow
+        Pull-OllamaModel $OllamaBaseUrl $FallbackModel
+        $ollamaModels = Get-OllamaModelNames $OllamaBaseUrl
       }
 
-      $availableModels = (ollama list 2>&1 | Out-String)
-      $ollamaListExit = $LASTEXITCODE
-      if ($ollamaListExit -ne 0) {
-        $localFallbackReason = 'Ollama is installed but its local service is unavailable'
+      if ($null -eq $ollamaModels) {
+        $localFallbackReason = 'Ollama became unavailable while checking its model inventory'
         if ($strictLocalFallback) { throw "Local AI fallback is required but $localFallbackReason." }
         Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
-      } elseif ($availableModels -notmatch [Regex]::Escape($FallbackModel)) {
-        $localFallbackReason = "model '$FallbackModel' is not installed"
+      } elseif ($ollamaModels -notcontains $FallbackModel) {
+        $localFallbackReason = "model '$FallbackModel' is not installed in the Ollama runtime"
         if ($strictLocalFallback) {
-          throw "Local AI fallback is required but $localFallbackReason. Run: ollama pull $FallbackModel  (or rerun with -PullFallbackModel)."
+          throw "Local AI fallback is required but $localFallbackReason. Run: .\scripts\r1-field-infra-up.ps1 -FallbackModel '$FallbackModel'"
         }
         Write-Host "Local AI fallback unavailable: $localFallbackReason. Talos will start with degraded provider redundancy." -ForegroundColor Yellow
       } else {
-        Enable-LocalProviderFallback $FallbackModel
+        Enable-LocalProviderFallback $FallbackModel $OllamaBaseUrl
         $localFallbackEnabled = $true
         $localFallbackReason = 'configured'
       }
@@ -184,20 +209,21 @@ try {
 
   Write-Host ''
   Write-Host 'Configuration:' -ForegroundColor Green
-  Write-Host "  Primary AI         : Gemini / $GeminiModel"
-  Write-Host "  Vision fallback    : $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
-  Write-Host "  Automation fallback: $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
-  Write-Host "  AI redundancy      : $(if ($localFallbackEnabled) { 'READY' } else { 'DEGRADED_AI_REDUNDANCY' })"
-  Write-Host '  Runtime            : TEMPORAL_EXECUTION'
-  Write-Host "  Temporal           : $TemporalAddress"
-  Write-Host "  Namespace          : $TemporalNamespace"
-  Write-Host "  TaskQueue          : $TemporalTaskQueue"
-  Write-Host '  Product            : http://127.0.0.1:8787'
-  Write-Host "  State              : $env:TALOS_PRIVATE_PREVIEW_RUNTIME_DIR"
+  Write-Host "  Primary AI          : Gemini / $GeminiModel"
+  Write-Host "  Ollama runtime      : $(Normalize-BaseUrl $OllamaBaseUrl)"
+  Write-Host "  Vision fallback     : $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
+  Write-Host "  Automation fallback : $(if ($localFallbackEnabled) { "Ollama / $FallbackModel" } else { "not configured ($localFallbackReason)" })"
+  Write-Host "  AI redundancy       : $(if ($localFallbackEnabled) { 'READY' } else { 'DEGRADED_AI_REDUNDANCY' })"
+  Write-Host '  Runtime             : TEMPORAL_EXECUTION'
+  Write-Host "  Temporal            : $TemporalAddress"
+  Write-Host "  Namespace           : $TemporalNamespace"
+  Write-Host "  TaskQueue           : $TemporalTaskQueue"
+  Write-Host '  Product             : http://127.0.0.1:8787'
+  Write-Host "  State               : $env:TALOS_PRIVATE_PREVIEW_RUNTIME_DIR"
   Write-Host ''
   if (-not $localFallbackEnabled) {
     Write-Host 'Talos remains available, but an unusable Gemini result will safe-stop AI-dependent work until a fallback/provider or manual source route is available.' -ForegroundColor Yellow
-    Write-Host 'For release-grade provider redundancy, install Ollama + the fallback model or run with -RequireLocalFallback.' -ForegroundColor Yellow
+    Write-Host 'For release-grade provider redundancy, start the Docker Compose field infrastructure and run with -RequireLocalFallback.' -ForegroundColor Yellow
   }
   Write-Host 'Talos will fail before serving if Temporal is not reachable.' -ForegroundColor Yellow
   Write-Host 'KEEP THIS TERMINAL RUNNING after READY appears.' -ForegroundColor Yellow
