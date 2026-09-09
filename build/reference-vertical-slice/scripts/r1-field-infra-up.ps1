@@ -32,6 +32,16 @@ function Get-OllamaModelNames([string]$BaseUrl) {
   }
 }
 
+function Stop-LegacyTemporalIfRunning {
+  $legacy = (docker ps --filter 'name=^/talos-temporal$' --format '{{.Names}}' 2>$null | Out-String).Trim()
+  if ($legacy -eq 'talos-temporal') {
+    Write-Host 'Stopping legacy talos-temporal container so Compose can own 127.0.0.1:17233...' -ForegroundColor Yellow
+    docker stop talos-temporal | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to stop legacy talos-temporal container.' }
+    Write-Host 'Legacy container stopped and preserved (not deleted).' -ForegroundColor Yellow
+  }
+}
+
 $sliceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $composeFile = Join-Path $sliceRoot 'docker-compose.r1-field.yml'
 if (-not (Test-Path $composeFile)) { throw "Compose file not found: $composeFile" }
@@ -52,6 +62,8 @@ try {
   Write-Host '  Ollama  : http://127.0.0.1:11434'
   Write-Host "  Model   : $FallbackModel"
   Write-Host ''
+
+  Stop-LegacyTemporalIfRunning
 
   docker compose -f $composeFile up -d
   if ($LASTEXITCODE -ne 0) { throw "docker compose up failed with exit code $LASTEXITCODE" }
