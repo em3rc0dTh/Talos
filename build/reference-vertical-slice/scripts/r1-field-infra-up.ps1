@@ -34,6 +34,17 @@ function Get-OllamaModelNames([string]$BaseUrl) {
   }
 }
 
+function Convert-WindowsPathToWsl([string]$WindowsPath) {
+  $full = [System.IO.Path]::GetFullPath($WindowsPath)
+  $match = [Regex]::Match($full, '^([A-Za-z]):\\(.*)$')
+  if (-not $match.Success) {
+    throw "Unable to translate non-drive Windows path for WSL Docker: $full"
+  }
+  $drive = $match.Groups[1].Value.ToLowerInvariant()
+  $rest = $match.Groups[2].Value -replace '\\', '/'
+  return "/mnt/$drive/$rest"
+}
+
 function Initialize-Docker([string]$ComposeFile) {
   $nativeDocker = Get-Command docker -ErrorAction SilentlyContinue
   if ($nativeDocker) {
@@ -49,10 +60,8 @@ function Initialize-Docker([string]$ComposeFile) {
   if ($wsl) {
     & wsl.exe docker compose version | Out-Null
     if ($LASTEXITCODE -eq 0) {
-      $wslPath = (& wsl.exe wslpath -a $ComposeFile | Out-String).Trim()
-      if (-not $wslPath) { throw 'Unable to translate the Compose path for WSL Docker.' }
       $script:DockerMode = 'WSL'
-      $script:ComposeFileForDocker = $wslPath
+      $script:ComposeFileForDocker = Convert-WindowsPathToWsl $ComposeFile
       return
     }
   }
@@ -65,7 +74,14 @@ function Invoke-Docker {
   if ($script:DockerMode -eq 'WINDOWS') {
     & docker @Arguments
   } elseif ($script:DockerMode -eq 'WSL') {
-    & wsl.exe docker @Arguments
+    $wslArgs = @()
+    if ($env:TALOS_OLLAMA_MODEL) {
+      $wslArgs += 'env'
+      $wslArgs += "TALOS_OLLAMA_MODEL=$($env:TALOS_OLLAMA_MODEL)"
+    }
+    $wslArgs += 'docker'
+    $wslArgs += $Arguments
+    & wsl.exe @wslArgs
   } else {
     throw 'Docker runtime has not been initialized.'
   }
