@@ -1,0 +1,53 @@
+name: talos-r1-field
+
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:17233:7233"
+      - "127.0.0.1:18233:8233"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - talos_ollama_models:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      TALOS_OLLAMA_MODEL: ${TALOS_OLLAMA_MODEL:-qwen3-vl:4b-instruct}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        echo "[talos-ollama-init] target model: $${TALOS_OLLAMA_MODEL}"
+        if ollama show "$${TALOS_OLLAMA_MODEL}" >/dev/null 2>&1; then
+          echo "[talos-ollama-init] model already present; keeping persisted copy"
+        else
+          echo "[talos-ollama-init] pulling $${TALOS_OLLAMA_MODEL}"
+          ollama pull "$${TALOS_OLLAMA_MODEL}"
+        fi
+        ollama show "$${TALOS_OLLAMA_MODEL}" >/dev/null
+        echo "[talos-ollama-init] READY"
+    restart: "no"
+
+volumes:
+  talos_ollama_models:
+    name: talos-r1-ollama-models
