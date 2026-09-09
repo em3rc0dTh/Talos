@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
+  GEMINI_IMAGE_PERCEPTION_ENV,
+  IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV,
   IMAGE_PERCEPTION_RUNTIME_ENV,
+  OLLAMA_IMAGE_FALLBACK_ENV,
+  resolveGeminiImagePerceptionRuntime,
   resolveImagePerceptionRuntimeBinding,
   type ImagePerceptionRuntimeDescriptor,
 } from '../../../packages/image-perception/src/index.ts';
@@ -52,6 +56,7 @@ export interface TalosPrivatePreviewRuntimeDescriptor {
   accessSecretEnvName: typeof TALOS_PRIVATE_PREVIEW_ENV.bearerToken;
   imageMode: TalosPrivatePreviewImageMode;
   imageProvider?: Readonly<ImagePerceptionRuntimeDescriptor>;
+  imageProviderSelection?: 'EXPLICIT_TALOS_PROVIDER' | 'GEMINI_API_KEY';
   runtimeMode: TalosPrivatePreviewRuntimeMode;
   temporalTarget?: TalosPrivatePreviewTemporalTarget;
   configurationFingerprint: string;
@@ -150,16 +155,27 @@ function temporalName(raw: string, label: string): string {
   return raw;
 }
 
-function imageEnvironment(env: Environment): Record<string, string | undefined> {
+const IMAGE_ENV_NAMES = [
+  ...Object.values(IMAGE_PERCEPTION_RUNTIME_ENV),
+  ...Object.values(IMAGE_PERCEPTION_FALLBACK_RUNTIME_ENV),
+  ...Object.values(GEMINI_IMAGE_PERCEPTION_ENV),
+  ...Object.values(OLLAMA_IMAGE_FALLBACK_ENV),
+] as const;
+
+function selectedImageEnvironment(env: Environment): Record<string, string | undefined> {
   const selected: Record<string, string | undefined> = {};
-  for (const name of Object.values(IMAGE_PERCEPTION_RUNTIME_ENV)) {
+  for (const name of IMAGE_ENV_NAMES) {
     if (env[name] !== undefined) selected[name] = env[name];
   }
   return selected;
 }
 
-function imageConfigPresent(env: Environment): boolean {
+function explicitPrimaryConfigPresent(env: Environment): boolean {
   return Object.values(IMAGE_PERCEPTION_RUNTIME_ENV).some((name) => optional(env, name) !== undefined);
+}
+
+function anyImageConfigPresent(env: Environment): boolean {
+  return IMAGE_ENV_NAMES.some((name) => optional(env, name) !== undefined);
 }
 
 function fingerprint(value: object): string {
@@ -198,18 +214,29 @@ export function resolveTalosPrivatePreviewRuntimeBinding(
     TALOS_PRIVATE_PREVIEW_ENV.imageMode,
   );
   let imageProvider: Readonly<ImagePerceptionRuntimeDescriptor> | undefined;
+  let imageProviderSelection: 'EXPLICIT_TALOS_PROVIDER' | 'GEMINI_API_KEY' | undefined;
   let selectedImageEnv: Record<string, string | undefined> = {};
   if (imageMode === 'DISABLED') {
-    if (imageConfigPresent(env)) {
-      throw new TypeError('R0_PREVIEW_CONFIG_CONFLICT: image provider variables are present while private-preview image mode is DISABLED');
+    if (anyImageConfigPresent(env)) {
+      throw new TypeError('R0_PREVIEW_CONFIG_CONFLICT: image provider/fallback variables are present while private-preview image mode is DISABLED');
     }
   } else {
-    const imageRuntime = resolveImagePerceptionRuntimeBinding(env);
-    if (imageRuntime.status !== 'CONFIGURED') {
-      throw new TypeError('R0_PREVIEW_CONFIG_MISSING: image mode REQUIRED needs a complete image-perception provider configuration');
+    if (explicitPrimaryConfigPresent(env)) {
+      const imageRuntime = resolveImagePerceptionRuntimeBinding(env);
+      if (imageRuntime.status !== 'CONFIGURED') {
+        throw new TypeError('R0_PREVIEW_CONFIG_MISSING: explicit image provider configuration is incomplete');
+      }
+      imageProvider = imageRuntime.binding.descriptor;
+      imageProviderSelection = 'EXPLICIT_TALOS_PROVIDER';
+    } else {
+      const geminiRuntime = resolveGeminiImagePerceptionRuntime(env);
+      if (geminiRuntime.status !== 'CONFIGURED') {
+        throw new TypeError('R0_PREVIEW_CONFIG_MISSING: image mode REQUIRED needs GEMINI_API_KEY or a complete explicit Talos image provider');
+      }
+      imageProvider = geminiRuntime.binding.descriptor;
+      imageProviderSelection = 'GEMINI_API_KEY';
     }
-    imageProvider = imageRuntime.binding.descriptor;
-    selectedImageEnv = imageEnvironment(env);
+    selectedImageEnv = selectedImageEnvironment(env);
   }
 
   const runtimeMode = enumValue(
@@ -250,6 +277,7 @@ export function resolveTalosPrivatePreviewRuntimeBinding(
     accessSecretEnvName: TALOS_PRIVATE_PREVIEW_ENV.bearerToken,
     imageMode,
     ...(imageProvider ? { imageProvider } : {}),
+    ...(imageProviderSelection ? { imageProviderSelection } : {}),
     runtimeMode,
     ...(target ? { temporalTarget: target } : {}),
   };

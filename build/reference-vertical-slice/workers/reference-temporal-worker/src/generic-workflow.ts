@@ -1,7 +1,33 @@
-import { proxyActivities, sleep } from '@temporalio/workflow';
-import type { GenericCapabilityActivityInput,GenericCapabilityActivityResult,GenericWorkflowInput,GenericWorkflowResult } from './generic-contracts.ts';
+import {
+  condition,
+  defineQuery,
+  defineSignal,
+  defineUpdate,
+  proxyActivities,
+  setHandler,
+  sleep,
+} from '@temporalio/workflow';
+import type {
+  GenericCapabilityActivityInput,
+  GenericCapabilityActivityResult,
+  GenericHumanOutcomeSubmission,
+  GenericHumanSubmissionReceipt,
+  GenericPendingHumanTask,
+  GenericWorkflowInput,
+  GenericWorkflowResult,
+  GenericWorkflowRuntimeState,
+} from './generic-contracts.ts';
+import {
+  GENERIC_HUMAN_SIGNAL_NAME,
+  GENERIC_HUMAN_UPDATE_NAME,
+  GENERIC_RUNTIME_STATE_QUERY_NAME,
+} from './generic-contracts.ts';
 
 type GenericActivities={executeGenericCapability(input:GenericCapabilityActivityInput):Promise<GenericCapabilityActivityResult>};
+
+const humanOutcomeUpdate=defineUpdate<GenericHumanSubmissionReceipt,[GenericHumanOutcomeSubmission]>(GENERIC_HUMAN_UPDATE_NAME);
+const humanOutcomeSignal=defineSignal<[GenericHumanOutcomeSubmission]>(GENERIC_HUMAN_SIGNAL_NAME);
+const runtimeStateQuery=defineQuery<GenericWorkflowRuntimeState>(GENERIC_RUNTIME_STATE_QUERY_NAME);
 
 function evaluate(expression:unknown,facts:Record<string,unknown>):boolean{
   if(!expression||typeof expression!=='object')throw new TypeError('runtime condition expression must be an object');
@@ -17,11 +43,66 @@ function evaluate(expression:unknown,facts:Record<string,unknown>):boolean{
   }
 }
 function activityOptions(policy:any){return{startToCloseTimeout:policy.timeout.startToCloseMs,scheduleToCloseTimeout:policy.timeout.scheduleToCloseMs,retry:{initialInterval:policy.retry.initialIntervalMs,backoffCoefficient:policy.retry.backoffCoefficient,maximumInterval:policy.retry.maximumIntervalMs,maximumAttempts:policy.retry.maximumAttempts,nonRetryableErrorTypes:[...policy.retry.nonRetryableErrorTypes]}};}
+function required(value:string,label:string):string{const normalized=value.trim();if(!normalized)throw new TypeError(`${label} is required`);return normalized;}
+function submissionFingerprint(input:GenericHumanOutcomeSubmission):string{return JSON.stringify({submissionId:input.submissionId,executionElementRef:input.executionElementRef,outcomeCode:input.outcomeCode,actorRef:input.actorRef,authorityRef:input.authorityRef,rationale:input.rationale??''});}
 
 export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<GenericWorkflowResult>{
   if(!input.executionId||input.program.schemaVersion!=='talos.generic-runtime-program.v1')throw new TypeError('invalid generic workflow input/program');
   let current=input.program.graph.entryElementRef;
+  let workflowStatus:'RUNNING'|'COMPLETED'='RUNNING';
+  let pendingHumanTask:GenericPendingHumanTask|undefined;
   const visited:string[]=[],capabilityResults:GenericCapabilityActivityResult[]=[];
+  const humanSubmissions:GenericHumanSubmissionReceipt[]=[];
+  const acceptedByElement=new Map<string,GenericHumanSubmissionReceipt>();
+  const submissionById=new Map<string,{fingerprint:string;receipt:GenericHumanSubmissionReceipt}>();
+
+  function acceptHumanSubmission(submission:GenericHumanOutcomeSubmission,channel:'UPDATE_HANDLER'|'SIGNAL_HANDLER'):GenericHumanSubmissionReceipt{
+    const submissionId=required(submission.submissionId,'human submissionId');
+    const executionElementRef=required(submission.executionElementRef,'human executionElementRef');
+    const outcomeCode=required(submission.outcomeCode,'human outcomeCode');
+    const actorRef=required(submission.actorRef,'human actorRef');
+    const authorityRef=required(submission.authorityRef,'human authorityRef');
+    const fingerprint=submissionFingerprint({...submission,submissionId,executionElementRef,outcomeCode,actorRef,authorityRef});
+    const prior=submissionById.get(submissionId);
+    if(prior){
+      if(prior.fingerprint!==fingerprint)throw new TypeError('human submissionId was reused with different content');
+      return prior.receipt;
+    }
+    if(!pendingHumanTask)throw new TypeError('workflow is not waiting for a human outcome');
+    if(pendingHumanTask.executionElementRef!==executionElementRef)throw new TypeError('human submission targets a non-active execution element');
+    if(pendingHumanTask.messageKind!==channel)throw new TypeError(`human submission must use the approved ${pendingHumanTask.messageKind} channel`);
+    const outcome=pendingHumanTask.outcomes.find(item=>item.outcomeCode===outcomeCode);
+    if(!outcome)throw new TypeError(`human outcome is not allowed by the frozen design: ${outcomeCode}`);
+    const existingForElement=acceptedByElement.get(executionElementRef);
+    if(existingForElement)throw new TypeError('human coordination already has an accepted outcome');
+    const receipt:GenericHumanSubmissionReceipt={
+      submissionId,
+      executionElementRef,
+      capabilityUseOccurrenceRef:pendingHumanTask.capabilityUseOccurrenceRef,
+      outcomeRef:outcome.outcomeRef,
+      outcomeCode:outcome.outcomeCode,
+      actorRef,
+      authorityRef,
+      accepted:true,
+    };
+    acceptedByElement.set(executionElementRef,receipt);
+    submissionById.set(submissionId,{fingerprint,receipt});
+    humanSubmissions.push(receipt);
+    return receipt;
+  }
+
+  setHandler(humanOutcomeUpdate,(submission)=>acceptHumanSubmission(submission,'UPDATE_HANDLER'));
+  setHandler(humanOutcomeSignal,(submission)=>{
+    try{acceptHumanSubmission(submission,'SIGNAL_HANDLER');}catch(_){/* Invalid/unexpected Signals never advance or poison replay. */}
+  });
+  setHandler(runtimeStateQuery,()=>({
+    executionId:input.executionId,
+    status:workflowStatus,
+    ...(workflowStatus==='RUNNING'?{currentElementRef:current}:{}),
+    ...(pendingHumanTask?{pendingHumanTask:{...pendingHumanTask,outcomes:pendingHumanTask.outcomes.map(item=>({...item})),participantRoleRefs:[...pendingHumanTask.participantRoleRefs]}}:{}),
+    acceptedHumanSubmissions:humanSubmissions.map(item=>({...item})),
+  }));
+
   for(let step=0;step<1000;step++){
     const element=input.program.graph.elements.find(e=>e.id===current);if(!element)throw new TypeError(`runtime graph element missing ${current}`);
     visited.push(element.id);
@@ -33,15 +114,29 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
       if(effective>0)await sleep(effective);
     }
     if(element.kind==='CAPABILITY_INVOCATION'){
-      if(element.capabilityUseOccurrenceRefs.length!==1)throw new TypeError('generic runtime v0.1 requires exactly one capability use per invocation element');
+      if(element.capabilityUseOccurrenceRefs.length!==1)throw new TypeError('generic runtime v0.2 requires exactly one capability use per invocation element');
       const useRef=element.capabilityUseOccurrenceRefs[0];const policy=input.program.activity.policies.find(p=>p.capabilityUseOccurrenceRef===useRef);if(!policy)throw new TypeError(`compiled Activity policy missing for ${useRef}`);
       const activities=proxyActivities<GenericActivities>(activityOptions(policy));
       capabilityResults.push(await activities.executeGenericCapability({executionId:input.executionId,capabilityUseOccurrenceRef:useRef,input:input.capabilityInputs?.[useRef]??null}));
     }
+    if(element.kind==='HUMAN_COORDINATION'){
+      const human=input.program.semantics.humans?.find(item=>item.executionElementRef===element.id);
+      if(!human)throw new TypeError(`runtime human snapshot missing for ${element.id}`);
+      pendingHumanTask={
+        executionElementRef:human.executionElementRef,
+        capabilityUseOccurrenceRef:human.capabilityUseOccurrenceRef,
+        messageKind:human.messageKind,
+        participantRoleRefs:[...human.participantRoleRefs],
+        outcomes:human.outcomes.map(item=>({...item})),
+      };
+      await condition(()=>acceptedByElement.has(element.id));
+      pendingHumanTask=undefined;
+    }
     const outgoing=input.program.graph.relations.filter(r=>r.sourceElementRef===element.id);
     if(outgoing.length===0){
       if(element.kind!=='COMPLETION_COORDINATION')throw new TypeError(`runtime graph terminated without completion at ${element.id}`);
-      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults};
+      workflowStatus='COMPLETED';
+      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults,...(humanSubmissions.length?{humanSubmissions:humanSubmissions.map(item=>({...item}))}:{})};
     }
     const conditional=outgoing.filter(r=>r.relationKind==='CONDITIONAL');
     let next:string|undefined;
@@ -52,7 +147,7 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
       else{const def=outgoing.find(r=>r.relationKind==='DEFAULT');if(def)next=def.targetElementRef;}
     }else{
       const deterministic=outgoing.filter(r=>r.relationKind==='SEQUENCE'||r.relationKind==='DEFAULT');
-      if(deterministic.length!==1)throw new TypeError(`generic runtime v0.1 requires one deterministic outgoing relation at ${element.id}`);
+      if(deterministic.length!==1)throw new TypeError(`generic runtime v0.2 requires one deterministic outgoing relation at ${element.id}`);
       next=deterministic[0].targetElementRef;
     }
     if(!next)throw new TypeError(`no executable branch selected at ${element.id}`);

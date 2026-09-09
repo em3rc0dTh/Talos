@@ -34,6 +34,7 @@ import type {
   TransformationRecord,
   TruthClass,
 } from '../../semantic-core/src/types.ts';
+import { deriveExplicitDurationWaitSemantics } from '../../semantic-core/src/wait-semantics.ts';
 
 export interface CommonNormalizationProfile {
   sourceFamily: string;
@@ -92,7 +93,14 @@ function actorKind(props: Record<string, unknown>): Actor['kind'] {
     ? candidate as Actor['kind'] : 'UNKNOWN';
 }
 
-function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>): Record<string, unknown> {
+function explicitDurationFor(kind: ProcessNodeKind, props: Record<string, unknown>, label?: string) {
+  if (kind !== 'WAIT') return undefined;
+  const sourceWaitKind = String(unbox(props['propertyValues.waitKind']) ?? '');
+  if (sourceWaitKind && sourceWaitKind !== 'DURATION' && sourceWaitKind !== 'UNKNOWN' && sourceWaitKind !== 'SOURCE_DEFINED') return undefined;
+  return deriveExplicitDurationWaitSemantics(label);
+}
+
+function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>, label?: string): Record<string, unknown> {
   const details: Record<string, unknown> = {};
   if (Object.keys(props).length) details.sourceProperties = props;
   if (sourceState(props['propertyValues.actor']) === 'UNKNOWN') details.responsibilityState = 'UNKNOWN';
@@ -102,7 +110,16 @@ function buildNodeDetails(kind: ProcessNodeKind, props: Record<string, unknown>)
   }
   if (kind === 'WAIT') {
     const waitKind = unbox(props['propertyValues.waitKind']);
-    if (waitKind) details.waitKind = waitKind;
+    const durationExpression = unbox(props['propertyValues.durationExpression']);
+    const durationSeconds = unbox(props['propertyValues.durationSeconds']);
+    const derivedDuration = explicitDurationFor(kind, props, label);
+    if (waitKind && waitKind !== 'UNKNOWN' && waitKind !== 'SOURCE_DEFINED') details.waitKind = waitKind;
+    else if (derivedDuration) details.waitKind = derivedDuration.waitKind;
+    if (durationExpression) details.durationExpression = durationExpression;
+    else if (derivedDuration) details.durationExpression = derivedDuration.durationExpression;
+    if (durationSeconds !== undefined) details.durationSeconds = durationSeconds;
+    else if (derivedDuration) details.durationSeconds = derivedDuration.durationSeconds;
+    if (derivedDuration) details.durationEvidenceText = derivedDuration.matchedText;
     const resume = unbox(props['propertyValues.resumeCondition']) ?? unbox(props['propertyValues.eventDescriptor']);
     if (resume) details.resumeSemantics = resume;
   }
@@ -243,11 +260,21 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
 
     const kind = nodeKind(descriptor.candidateSemanticType);
     if (!kind) continue;
-    const details = buildNodeDetails(kind, props);
+    const derivedDuration = explicitDurationFor(kind, props, descriptor.literalLabel);
+    const details = buildNodeDetails(kind, props, descriptor.literalLabel);
     nodes.push({ id: canonicalId, kind, ...(descriptor.literalLabel ? { name: descriptor.literalLabel } : {}), actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], ...(Object.keys(details).length ? { details } : {}), truthClass: profile.defaultTruthClass, provenanceRefs: [baseLink.id], sourceExtensionRefs: [] });
     for (const [path, value] of Object.entries(props)) {
       const propertyPath = path.startsWith('propertyValues.') ? `details.${path.slice('propertyValues.'.length)}` : path;
       makeClaim(canonicalId, propertyPath, value, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, propertyPath));
+    }
+    if (derivedDuration && !unbox(props['propertyValues.waitKind'])) {
+      makeClaim(canonicalId, 'details.waitKind', derivedDuration.waitKind, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, 'details.waitKind'));
+    }
+    if (derivedDuration && !unbox(props['propertyValues.durationExpression'])) {
+      makeClaim(canonicalId, 'details.durationExpression', derivedDuration.durationExpression, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, 'details.durationExpression'));
+    }
+    if (derivedDuration && unbox(props['propertyValues.durationSeconds']) === undefined) {
+      makeClaim(canonicalId, 'details.durationSeconds', derivedDuration.durationSeconds, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, 'details.durationSeconds'));
     }
   }
 

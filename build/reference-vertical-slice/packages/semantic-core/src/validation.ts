@@ -1,5 +1,6 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import type { AssessmentIntent,AssessmentScope,ClarificationPlan,ClarificationQuestion,ExecutionReadiness,ProcessNode,ProcessRevision,ReadinessDecision,SemanticVerdict,ValidationAssessment,ValidationBundle,ValidationFinding,ValidationId } from './types.ts';
+import { deriveExplicitDurationWaitSemantics } from './wait-semantics.ts';
 
 export const SEMANTIC_VALIDATOR_VERSION='talos-semantic-validator-reference-0.3';
 export const SEMANTIC_RULESET_VERSION='semantic-validation-v0.3';
@@ -9,6 +10,7 @@ interface FindingDraft { code:string; family:string; title:string; description:s
 function sourceProps(node:ProcessNode):Record<string,unknown>{return (node.details?.sourceProperties as Record<string,unknown>|undefined)??{};}
 function stateOf(value:unknown):string|undefined{return value&&typeof value==='object'&&'state' in value?String((value as any).state):undefined;}
 function valueOf(value:unknown):unknown{return value&&typeof value==='object'&&'value' in value?(value as any).value:value;}
+function usable(value:unknown):boolean{return value!==undefined&&value!==null&&stateOf(value)!=='UNKNOWN'&&String(valueOf(value)??'').trim().length>0;}
 
 function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):FindingDraft[]{
   const out:FindingDraft[]=[];
@@ -31,11 +33,18 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       if(!out.some(f=>f.code==='SV-ACT-001'&&f.targetRefs.includes(node.id)))out.push({code:'SV-ACT-001',family:'ACTOR_RESPONSIBILITY',title:'Actor or owner missing',description:`Human interaction ${node.name??node.id} has no responsible actor.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
     }
     if(node.kind==='WAIT'){
-      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??'');
+      const derivedDuration=deriveExplicitDurationWaitSemantics(node.name);
+      const waitKind=String(node.details?.waitKind??valueOf(props.waitKind)??valueOf(props['propertyValues.waitKind'])??derivedDuration?.waitKind??'');
       const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
       const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
+      const durationExpression=node.details?.durationExpression??props.durationExpression??props['propertyValues.durationExpression']??derivedDuration?.durationExpression;
+      const durationSeconds=node.details?.durationSeconds??props.durationSeconds??props['propertyValues.durationSeconds']??derivedDuration?.durationSeconds;
+      const durationParsingState=String(node.details?.durationParsingState??'');
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
-        out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+        out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for an elapsed duration, schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }
+      if(waitKind==='DURATION'&&(durationParsingState==='UNRESOLVED'||(!usable(durationExpression)&&!usable(durationSeconds)))){
+        out.push({code:'SV-EVT-004',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} is an elapsed-duration wait but does not contain a safely materialized duration expression.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
       if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
         out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
@@ -71,7 +80,7 @@ function readinessFor(findings:ValidationFinding[],revision:ProcessRevision,inte
   if(intent==='BUSINESS_MODEL_UNDERSTANDING')return findings.some(f=>f.blockerClass==='SEMANTIC_UNDERSTANDING')?'INSUFFICIENT_DETAIL':'SEMANTICALLY_COMPLETE';
   if(intent!=='AUTOMATION_DESIGN_READINESS')return findings.length?'INSUFFICIENT_DETAIL':'SEMANTICALLY_COMPLETE';
   if(findings.some(f=>f.code==='SV-CNF-001'))return'BLOCKED_BY_CONFLICT';
-  const missingCodes=new Set(['SV-STR-001','SV-STR-002','SV-STR-003','SV-STR-004','SV-CFL-001','SV-CFL-002','SV-CFL-004','SV-CMP-001','SV-CMP-002','SV-CMP-003','SV-ACT-001','SV-ACT-002','SV-HUM-001','SV-HUM-002','SV-DAT-001','SV-DAT-002','SV-DAT-003','SV-RUL-001','SV-EVT-001','SV-EVT-002','SV-EVT-003','SV-COR-001','SV-COR-002','SV-COR-003','SV-CON-001','SV-CON-002','SV-CON-003','SV-LOP-001','SV-SUB-001','SV-SUB-002','SV-SFX-001','SV-SFX-002','SV-SFX-003']);
+  const missingCodes=new Set(['SV-STR-001','SV-STR-002','SV-STR-003','SV-STR-004','SV-CFL-001','SV-CFL-002','SV-CFL-004','SV-CMP-001','SV-CMP-002','SV-CMP-003','SV-ACT-001','SV-ACT-002','SV-HUM-001','SV-HUM-002','SV-DAT-001','SV-DAT-002','SV-DAT-003','SV-RUL-001','SV-EVT-001','SV-EVT-002','SV-EVT-003','SV-EVT-004','SV-COR-001','SV-COR-002','SV-COR-003','SV-CON-001','SV-CON-002','SV-CON-003','SV-LOP-001','SV-SUB-001','SV-SUB-002','SV-SFX-001','SV-SFX-002','SV-SFX-003']);
   if(findings.some(f=>missingCodes.has(f.code)))return'INSUFFICIENT_DETAIL';
   if(findings.some(f=>f.blockerClass==='SOURCE_ACCEPTANCE'||f.code==='SV-SRC-001'||f.code==='SV-SRC-002'))return'NEEDS_CONFIRMATION';
   return'READY_FOR_AUTOMATION_DESIGN';
@@ -88,7 +97,8 @@ function questionText(f:ValidationFinding):string{
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
     case'SV-EVT-001':return'What exact event, message, response, or condition resumes this wait?';
     case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';
-    case'SV-EVT-003':return'What kind of wait is this: schedule, deadline, message, event, human response, or condition?';
+    case'SV-EVT-003':return'What kind of wait is this: elapsed duration, schedule, deadline, message, event, human response, or condition?';
+    case'SV-EVT-004':return'What exact duration must elapse before this wait resumes?';
     case'SV-CON-001':return'What synchronization rule determines when this join may continue?';
     case'SV-CMP-001':return'What explicit business outcome completes this process scope?';
     default:return`Please clarify: ${f.title}.`;

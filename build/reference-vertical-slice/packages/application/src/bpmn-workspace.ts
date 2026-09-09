@@ -161,7 +161,12 @@ export class BpmnWorkspaceService {
     editedBy: string;
     editedAt?: string;
   }): Promise<BpmnWorkspaceEditResult> {
-    const baseRevision = this.getRevision(input.baseRevisionId);
+    // Business confirmation is an independent append-only record. The persisted
+    // BPMN payload remains immutable and DRAFT-shaped, so a confirmed active head
+    // may safely derive a new DRAFT child without mutating or inheriting its
+    // confirmation authority. The One-App router is responsible for rejecting
+    // stale/superseded heads before this method is called.
+    const baseRevision = this.#storedRevision(input.baseRevisionId);
     if (!baseRevision) throw new TypeError('BPMN workspace base revision not found');
     const result = await createBpmnRoundTripEdit({
       baseRevision,

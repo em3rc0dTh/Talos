@@ -1,87 +1,387 @@
-export const ONE_APP_PRODUCT_PAGE = String.raw`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Talos · Process Review</title>
-  <style>
-    :root{color-scheme:dark;--bg:#080c12;--panel:#0f1620;--line:#263548;--text:#f4f7fb;--muted:#98a8bb;--accent:#66e4bd;--warn:#ffca6b;--bad:#ff7f8e;--blue:#78aef7}
-    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 12% -8%,#152a3d 0,#080c12 42%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    button,input,textarea{font:inherit}.shell{width:min(1320px,calc(100% - 32px));margin:0 auto;padding:28px 0 46px}.top{display:flex;justify-content:space-between;gap:22px;align-items:flex-end;margin-bottom:20px}.eyebrow{font-size:11px;font-weight:900;letter-spacing:.16em;color:var(--accent)}h1{font-size:clamp(34px,5vw,62px);letter-spacing:-.045em;line-height:.98;margin:8px 0}.lead{max-width:820px;color:var(--muted);line-height:1.55;margin:0}.runtime{border:1px solid var(--line);border-radius:999px;padding:9px 13px;color:var(--muted);font-size:12px;white-space:nowrap}.runtime.ready{border-color:#2b745f;background:#0b251e;color:var(--accent)}.runtime.warn{border-color:#725c2d;background:#211a0a;color:var(--warn)}
-    .truth{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px}.truthStep{border:1px solid var(--line);border-radius:12px;padding:10px;background:#0b1119;color:var(--muted);font-size:11px}.truthStep strong{display:block;color:var(--text);font-size:12px;margin-bottom:4px}.truthStep.pass{border-color:#2d6e5c;background:#0b211b}.truthStep.pass strong{color:var(--accent)}.truthStep.blocked{border-color:#66562f;background:#1d180d}.truthStep.blocked strong{color:var(--warn)}
-    .grid{display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:16px}.card{border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(20,29,40,.97),rgba(12,18,27,.97));padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.card h2{font-size:16px;margin:0 0 6px}.sub{margin:0;color:var(--muted);font-size:12px;line-height:1.5}.drop{margin-top:16px;border:1px dashed #40536b;border-radius:16px;min-height:300px;display:grid;place-items:center;overflow:hidden;background:#080d14;position:relative}.drop img{max-width:100%;max-height:440px;display:none}.drop.hasImage img{display:block}.drop.hasImage .empty{display:none}.empty{text-align:center;padding:30px;color:var(--muted)}.empty strong{display:block;color:var(--text);font-size:15px;margin-bottom:6px}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}button{border:0;border-radius:11px;background:var(--accent);color:#062019;font-weight:850;padding:11px 15px;cursor:pointer}button.secondary{background:#223044;color:var(--text);border:1px solid #34465f}button:disabled{opacity:.45;cursor:not-allowed}.fileName{font-size:12px;color:var(--muted)}
-    .stage{margin-top:16px;border:1px solid var(--line);border-radius:14px;padding:13px;background:#0a1018}.stageTitle{font-weight:850;font-size:13px}.stageText{font-size:12px;color:var(--muted);line-height:1.5;margin-top:5px}.stage.ok .stageTitle{color:var(--accent)}.stage.warn .stageTitle{color:var(--warn)}.stage.bad .stageTitle{color:var(--bad)}
-    .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}.metric{border:1px solid #202d3d;border-radius:11px;background:#0a1018;padding:10px;min-height:68px}.k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}.v{font-size:12px;margin-top:6px;word-break:break-word}.review{margin-top:14px;display:none}.review.open{display:block}.reviewTop{display:flex;justify-content:space-between;gap:12px;align-items:center}.badge{font-size:10px;padding:5px 8px;border:1px solid #38506a;border-radius:999px;color:var(--blue)}.badge.corrected{border-color:#725c2d;color:var(--warn)}.nodes{display:grid;gap:7px;margin-top:10px}.node{border:1px solid #223247;border-radius:10px;padding:9px 10px;background:#0a1018}.node strong{font-size:12px}.node span{display:block;margin-top:3px;font-size:10px;color:var(--muted)}.findings,.questions{margin-top:12px;display:grid;gap:7px}.finding,.question{border-left:3px solid var(--warn);padding:9px 10px;background:#17140c;border-radius:0 9px 9px 0;font-size:11px;color:#d9c393}.question{border-left-color:var(--blue);background:#0d1622;color:#b7cee9}.sectionLabel{margin-top:16px;font-size:10px;font-weight:900;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}.editor{margin-top:10px;border:1px solid #2a3b50;border-radius:13px;padding:12px;background:#080d14}.editor textarea{width:100%;min-height:260px;resize:vertical;border:1px solid #263548;border-radius:10px;background:#05090e;color:#c7d7e8;padding:11px;font:10px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.editorNote{font-size:11px;color:var(--muted);line-height:1.5}.next{margin-top:14px;padding:12px;border:1px solid #2b3a4e;border-radius:11px;color:var(--muted);font-size:11px;line-height:1.5}.next strong{color:var(--text)}details{margin-top:12px}summary{cursor:pointer;color:var(--muted);font-size:11px}pre{white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;background:#070b10;border:1px solid #202d3d;border-radius:11px;padding:12px;color:#b9c9da;font:10px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    @media(max-width:900px){.grid{grid-template-columns:1fr}.truth{grid-template-columns:1fr 1fr}.top{align-items:flex-start;flex-direction:column}.runtime{white-space:normal}.meta{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-<main class="shell">
-  <header class="top">
-    <div><div class="eyebrow">TALOS · ONE APP</div><h1>Bring the real process.</h1><p class="lead">Talos preserves the source first, distinguishes observed evidence from inferred business meaning, and lets you correct the review candidate without rewriting the original evidence.</p></div>
-    <div class="runtime" id="runtimeBadge">Checking runtime…</div>
-  </header>
+import { ONE_APP_PRODUCT_JOURNEY_PAGE } from './one-app-product-journey-page.ts';
 
-  <section class="truth" aria-label="Talos authority chain">
-    <div class="truthStep" id="truthSource"><strong>1 · SOURCE</strong>Waiting for input</div>
-    <div class="truthStep" id="truthPerception"><strong>2 · PERCEPTION</strong>Not reached</div>
-    <div class="truthStep" id="truthMeaning"><strong>3 · REVIEWED MEANING</strong>Not reached</div>
-    <div class="truthStep"><strong>4 · BUSINESS CONFIRMATION</strong>Never automatic</div>
-    <div class="truthStep"><strong>5 · EXECUTION</strong>Separate authority</div>
-  </section>
+// Keep the R1-02 product truth language visible while the product grows into
+// later authority stages. Interpretation is never automatic business truth and
+// each later authority remains separate.
+const R1_02_TRUTH_FOOTER = '<footer style="max-width:1460px;margin:0 auto;padding:0 28px 28px;color:#94a3b8;font:12px/1.5 Inter,ui-sans-serif,system-ui">Bring the real process. Never automatic. Separate authority.</footer>';
 
-  <div class="grid">
-    <section class="card">
-      <h2>Original process source</h2>
-      <p class="sub">PNG input goes through the One-App source boundary. Corrections create new process revisions; this source preview and its persisted identity remain the origin evidence.</p>
-      <div class="drop" id="drop"><div class="empty"><strong>Choose a process image</strong>PNG · exact source preserved before interpretation</div><img id="preview" alt="Selected process source" /></div>
-      <input id="file" type="file" accept="image/png,.png" hidden />
-      <div class="actions"><button class="secondary" id="choose">Choose PNG</button><button id="inspect" disabled>Preserve & understand</button><span class="fileName" id="fileName">No file selected</span></div>
-      <div class="stage" id="sourceStatus"><div class="stageTitle">WAITING_FOR_SOURCE</div><div class="stageText">Talos has not received a process source yet.</div></div>
-    </section>
+// R1-06 closes the first arbitrary-process product dead-end without changing
+// the semantic or execution engines. The backend already models these as
+// explicit authority-bearing ExecutionPlan decisions; this product-shell layer
+// merely renders those decisions and injects them into the existing review
+// request. Unknown blocker kinds remain blocked rather than guessed.
+const PLAN_BLOCKER_MARKER = '<div id="planBlockers" class="list"></div>';
+const PLAN_DECISION_UI = String.raw`
+<div id="planDecisionUi" class="requirement hidden" style="margin-top:12px">
+  <strong>Execution-design decisions required</strong>
+  <small style="display:block;color:#94a3b8;margin-top:4px">Talos will not invent subprocess boundaries or ambiguous relation behavior. Choose each material treatment explicitly, then rebuild the ExecutionPlan.</small>
+  <div id="planDecisionChoices" class="list" style="margin-top:10px"></div>
+  <div class="row" style="margin-top:10px"><button id="rebuildPlanDecisions" class="primary" disabled>Rebuild ExecutionPlan with decisions</button><span id="planDecisionState" class="pill warn">No execution-design authority inferred</span></div>
+</div>`;
 
-    <section class="card">
-      <h2>Process review</h2>
-      <p class="sub">What Talos inferred is reviewable, not automatically true. Inspect findings and questions, then correct the BPMN candidate when the business meaning is wrong or incomplete.</p>
-      <div class="meta" id="meta"></div>
-      <div class="review" id="review">
-        <div class="reviewTop"><strong>Current process candidate</strong><span class="badge" id="reviewBadge">INFERRED · NOT CONFIRMED</span></div>
-        <div class="sectionLabel">Process elements</div><div class="nodes" id="nodes"></div>
-        <div class="sectionLabel" id="questionsLabel">Questions</div><div class="questions" id="questions"></div>
-        <div class="sectionLabel" id="findingsLabel">Validation findings</div><div class="findings" id="findings"></div>
-        <div class="sectionLabel">Correct the review candidate</div>
-        <div class="editor">
-          <p class="editorNote">Advanced correction surface for R1-03: edit the review BPMN XML. Saving never mutates the original revision; Talos appends a new BPMN revision and re-runs Canonical reconciliation + validation.</p>
-          <textarea id="bpmnEditor" spellcheck="false" aria-label="BPMN review XML"></textarea>
-          <div class="actions"><button id="saveCorrection" disabled>Save correction</button><span class="fileName" id="correctionState">No correction pending</span></div>
-        </div>
-        <div class="next"><strong>Next authority:</strong> business-process confirmation remains separate. A correction cannot freeze semantics, approve automation, deploy, or execute anything.</div>
-      </div>
-      <details><summary>Technical evidence</summary><pre id="json">No result yet.</pre></details>
-    </section>
-  </div>
-</main>
-<script>
+const PLAN_DECISION_SCRIPT = String.raw`<script>
 (function(){
-  var fileInput=document.getElementById('file');
-  var selected=null;
-  var currentRevisionId=null;
-  var currentBpmnXml='';
-  function el(id){return document.getElementById(id)}
-  function esc(value){return String(value==null?'—':value)}
-  function metric(key,value){var d=document.createElement('div');d.className='metric';var k=document.createElement('div');k.className='k';k.textContent=key;var v=document.createElement('div');v.className='v';v.textContent=esc(value);d.append(k,v);el('meta').appendChild(d)}
-  function step(id,state,text){var d=el(id);d.className='truthStep '+state;d.childNodes[d.childNodes.length-1].textContent=text}
-  function stage(title,text,kind){var box=el('sourceStatus');box.className='stage '+(kind||'');box.innerHTML='';var a=document.createElement('div');a.className='stageTitle';a.textContent=title;var b=document.createElement('div');b.className='stageText';b.textContent=text;box.append(a,b)}
-  function toBase64(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){var s=String(r.result||'');resolve(s.slice(s.indexOf(',')+1));};r.onerror=reject;r.readAsDataURL(file)})}
-  async function api(path,options){var r=await fetch(path,options);var text=await r.text();var body=text?JSON.parse(text):{};if(!r.ok){var e=new Error(body.error||('HTTP '+r.status));e.body=body;throw e}return body}
-  function renderList(containerId,items,className,formatter){var box=el(containerId);box.innerHTML='';if(!items||!items.length){var empty=document.createElement('div');empty.className=className;empty.textContent='None';box.appendChild(empty);return}items.slice(0,12).forEach(function(item){var d=document.createElement('div');d.className=className;d.textContent=formatter(item);box.appendChild(d)})}
-  function renderCandidate(revision,reconciliation,mode){var rec=reconciliation||{};var process=rec.processRevision||{};var validation=rec.validation||{};currentRevisionId=revision&&revision.id?revision.id:null;currentBpmnXml=revision&&revision.bpmnXml?revision.bpmnXml:'';el('bpmnEditor').value=currentBpmnXml;el('saveCorrection').disabled=!currentRevisionId;el('meta').innerHTML='';metric('BPMN review revision',currentRevisionId||'—');metric('Canonical revision',process.id||'—');metric('Semantic status',process.semanticStatus||'INFERRED');metric('Execution readiness',validation.assessment?validation.assessment.executionReadiness:'NOT AUTHORIZED');var nodes=el('nodes');nodes.innerHTML='';(process.nodes||[]).forEach(function(n){var d=document.createElement('div');d.className='node';var a=document.createElement('strong');a.textContent=n.name||n.kind||n.id;var b=document.createElement('span');b.textContent=(n.kind||'NODE')+' · '+(n.truthClass||'INFERRED');d.append(a,b);nodes.appendChild(d)});renderList('questions',(validation&&validation.questions)||[],'question',function(q){return (q.code?q.code+' · ':'')+(q.question||q.prompt||q.description||'Reviewer input required')});renderList('findings',(validation&&validation.findings)||[],'finding',function(f){return (f.code?f.code+' · ':'')+(f.title||f.description||'Validation finding')});var badge=el('reviewBadge');if(mode==='CORRECTED'){badge.textContent='CORRECTED · RECONFIRMATION REQUIRED';badge.className='badge corrected';el('correctionState').textContent='New immutable review revision active';step('truthMeaning','pass','Corrected review candidate')}else{badge.textContent='INFERRED · NOT CONFIRMED';badge.className='badge';el('correctionState').textContent='Edit BPMN to correct meaning';step('truthMeaning','pass','Review candidate created')}el('review').className='review open'}
-  async function boot(){try{var s=await api('/api/status');var configured=Boolean(s.image&&s.image.liveVisionInterpretation);var badge=el('runtimeBadge');badge.textContent=configured?'READY · '+s.image.provider.providerId:'SOURCE READY · VISION NOT CONFIGURED';badge.className='runtime '+(configured?'ready':'warn');el('meta').innerHTML='';metric('One-App',s.status);metric('Image intake',s.image&&s.image.exactSourceIntake?'AVAILABLE':'UNAVAILABLE');metric('Interpreted image route',s.inputRoutes&&s.inputRoutes.indexOf('IMAGE_PNG')>=0?'AVAILABLE':'UNAVAILABLE');metric('Live perception',configured?'CONFIGURED':'NOT CONFIGURED');metric('Authority',s.automaticWorkflowExecutionAuthorized===false?'EXPLICIT':'UNKNOWN');if(configured){metric('Model',s.image.provider.modelRef);metric('Model version',s.image.provider.modelVersion)}}catch(e){el('runtimeBadge').textContent='RUNTIME ERROR';el('runtimeBadge').className='runtime warn';stage('RUNTIME_ERROR',e.message,'bad')}}
-  function select(file){selected=file;el('fileName').textContent=file?file.name:'No file selected';el('inspect').disabled=!file;if(!file)return;var url=URL.createObjectURL(file);el('preview').src=url;el('drop').className='drop hasImage';stage('SOURCE_SELECTED','The browser has selected '+file.name+'. Talos has not preserved it yet.','')}
-  async function inspect(){if(!selected)return;if(selected.type&&selected.type!=='image/png'){stage('UNSUPPORTED_SOURCE','The One-App image product route accepts PNG.','bad');return}el('inspect').disabled=true;stage('PRESERVING_SOURCE','Sending exact PNG bytes into the One-App intake boundary…','');try{var imageBase64=await toBase64(selected);var data=await api('/api/input/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({imageBase64:imageBase64,fileName:selected.name,initiatedBy:'one-app-product-user'})});el('json').textContent=JSON.stringify(data,null,2);var hash=data.sourceContentSha256||(data.sourceRepresentation&&data.sourceRepresentation.contentHash)||(data.representation&&data.representation.contentHash);el('meta').innerHTML='';metric('Result',data.status||(data.interpretation&&data.interpretation.status)||'SOURCE_PRESERVED');metric('SHA-256',hash||'preserved by One-App');metric('Dimensions',data.width&&data.height?(data.width+' × '+data.height):'recorded at intake');metric('Perception decision',data.perceptionDecision||(data.interpretation&&data.interpretation.status)||'NOT RUN');step('truthSource','pass','Exact source preserved');if(data.interpretation&&data.interpretation.status==='NOT_CONFIGURED'){step('truthPerception','blocked','Provider not configured');step('truthMeaning','blocked','Not reached');stage('SOURCE_PRESERVED','Source truth is durable. No perception provider is configured, so Talos stops here instead of inventing a process.','warn');el('review').className='review';return}if(data.status!=='BPMN_READY_FOR_PROCESS_REVIEW'){step('truthPerception','blocked',esc(data.perceptionDecision||data.status));step('truthMeaning','blocked','No admitted review candidate');stage(esc(data.status||'PERCEPTION_NOT_ADMITTED'),'The source is preserved, but the current evidence was not admitted as a reviewable business-process candidate.','warn');el('review').className='review';return}step('truthPerception','pass','Evidence admitted');stage('BPMN_READY_FOR_PROCESS_REVIEW','Talos produced an inferred process candidate. Inspect and correct it before business confirmation.','ok');renderCandidate(data.revision,data.reconciliation,'INFERRED');var review=await api('/api/process-review?revisionId='+encodeURIComponent(data.revision.id));el('json').textContent=JSON.stringify({intake:data,review:review},null,2)}catch(e){stage('INTAKE_ERROR',e.message,'bad');if(e.body)el('json').textContent=JSON.stringify(e.body,null,2)}finally{el('inspect').disabled=false}}
-  async function saveCorrection(){if(!currentRevisionId)return;var editedXml=el('bpmnEditor').value;if(!editedXml.trim()){stage('CORRECTION_REJECTED','BPMN XML cannot be empty.','bad');return}if(editedXml===currentBpmnXml){el('correctionState').textContent='No semantic or visual change to save';return}el('saveCorrection').disabled=true;el('correctionState').textContent='Appending correction and revalidating…';try{var result=await api('/api/bpmn/edit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({baseRevisionId:currentRevisionId,bpmnXml:editedXml,editMode:'XML_EDIT',editedBy:'one-app-product-user'})});el('json').textContent=JSON.stringify(result,null,2);if(result.status==='CORRECTION_BLOCKED'){stage('CORRECTION_BLOCKED','Talos preserved the attempted edit as evidence but could not reconcile it. The previous review remains active.','warn');el('correctionState').textContent='Correction blocked · previous review still active';return}renderCandidate(result.revision,result.reconciliation,result.requiresProcessReconfirmation?'CORRECTED':'INFERRED');stage(result.status,result.requiresProcessReconfirmation?'Correction accepted as a new immutable process revision. Business confirmation is required again.':'New review revision created without changing business semantics.','ok');var review=await api('/api/process-review?revisionId='+encodeURIComponent(result.revision.id));el('json').textContent=JSON.stringify({correction:result,review:review},null,2)}catch(e){stage('CORRECTION_ERROR',e.message,'bad');el('correctionState').textContent='Correction not applied';if(e.body)el('json').textContent=JSON.stringify(e.body,null,2)}finally{el('saveCorrection').disabled=!currentRevisionId}}
-  el('choose').onclick=function(){fileInput.click()};fileInput.onchange=function(){select(fileInput.files&&fileInput.files[0])};el('inspect').onclick=inspect;el('saveCorrection').onclick=saveCorrection;boot();
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  var actorId='one-app-product-user';
+  var decisions={subprocessResolutions:[],relationResolutions:[]};
+  var actionableCount=0;
+
+  function authority(kind,ref){return 'authority:talos-product:execution-design:'+kind+':'+ref+':'+Date.now()}
+  function byId(id){return document.getElementById(id)}
+  function upsert(list,key,value){
+    var index=list.findIndex(function(item){return item[key]===value[key]});
+    if(index>=0)list[index]=value;else list.push(value);
+  }
+  function remove(list,key,value){
+    var index=list.findIndex(function(item){return item[key]===value});
+    if(index>=0)list.splice(index,1);
+  }
+  function selectedCount(){return decisions.subprocessResolutions.length+decisions.relationResolutions.length}
+  function updateReady(){
+    var button=byId('rebuildPlanDecisions');
+    var state=byId('planDecisionState');
+    if(!button||!state)return;
+    var ready=actionableCount>0&&selectedCount()===actionableCount;
+    button.disabled=!ready;
+    state.textContent=ready?'DECISIONS COMPLETE · REBUILD REQUIRED':selectedCount()+' / '+actionableCount+' explicit decisions recorded';
+    state.className='pill '+(ready?'good':'warn');
+  }
+  function option(select,value,label){var item=document.createElement('option');item.value=value;item.textContent=label;select.appendChild(item)}
+  function decisionRow(title,description,values,current,onChange){
+    var row=document.createElement('div');row.className='item';
+    var strong=document.createElement('strong');strong.textContent=title;
+    var small=document.createElement('small');small.textContent=description;
+    var select=document.createElement('select');select.style.marginTop='8px';option(select,'','Choose explicit treatment…');
+    values.forEach(function(item){option(select,item[0],item[1])});
+    select.value=current||'';
+    select.addEventListener('change',function(){onChange(select.value);updateReady()});
+    row.append(strong,small,select);return row;
+  }
+  function renderPlanDecisions(body){
+    if(!body||!body.review||!body.execution)return;
+    var panel=byId('planDecisionUi');var choices=byId('planDecisionChoices');var build=byId('buildPlan');
+    if(!panel||!choices||!build)return;
+    var unresolved=(body.execution.requirements||[]).filter(function(item){return item.resolutionState==='UNRESOLVED'});
+    choices.innerHTML='';actionableCount=0;
+    if(!unresolved.length){
+      panel.classList.add('hidden');
+      build.textContent='Build ExecutionPlan review';
+      return;
+    }
+    panel.classList.remove('hidden');
+    unresolved.forEach(function(requirement){
+      var description=String(requirement.description||'Execution design remains unresolved.');
+      var element=(body.execution.elements||[]).find(function(item){return item.id===requirement.targetRef});
+      var relation=(body.execution.relations||[]).find(function(item){return item.id===requirement.targetRef});
+      if(element&&/Subprocess business boundary/i.test(description)){
+        var semanticSubjectRef=(element.semanticSubjectRefs||[])[0]||(requirement.evidenceRefs||[])[0];
+        if(!semanticSubjectRef)return;
+        actionableCount++;
+        var existing=decisions.subprocessResolutions.find(function(item){return item.semanticSubjectRef===semanticSubjectRef});
+        choices.appendChild(decisionRow(
+          'Subprocess boundary · '+semanticSubjectRef,
+          description,
+          [['INLINE_COORDINATION','Inline coordination — keep it inside this workflow'],['SEPARATE_EXECUTION_BOUNDARY','Separate execution boundary — preserve it as its own execution boundary']],
+          existing&&existing.boundaryKind,
+          function(value){
+            remove(decisions.subprocessResolutions,'semanticSubjectRef',semanticSubjectRef);
+            if(value)upsert(decisions.subprocessResolutions,'semanticSubjectRef',{
+              semanticSubjectRef:semanticSubjectRef,
+              boundaryKind:value,
+              authorityRef:authority('subprocess',semanticSubjectRef),
+              decidedBy:actorId,
+              rationale:'I explicitly choose this subprocess execution-boundary treatment for the reviewed ExecutionPlan.'
+            });
+          }
+        ));
+        return;
+      }
+      if(relation){
+        var semanticRelationRef=(relation.semanticRelationRefs||[])[0]||(requirement.evidenceRefs||[])[0];
+        if(!semanticRelationRef)return;
+        actionableCount++;
+        var existingRelation=decisions.relationResolutions.find(function(item){return item.semanticRelationRef===semanticRelationRef});
+        choices.appendChild(decisionRow(
+          'Ambiguous relation · '+semanticRelationRef,
+          description,
+          [['SEQUENCE','Sequence — continue directly'],['WAIT_RESUME','Wait / resume — preserve an explicit coordination boundary']],
+          existingRelation&&existingRelation.executionRelationKind,
+          function(value){
+            remove(decisions.relationResolutions,'semanticRelationRef',semanticRelationRef);
+            if(value)upsert(decisions.relationResolutions,'semanticRelationRef',{
+              semanticRelationRef:semanticRelationRef,
+              executionRelationKind:value,
+              authorityRef:authority('relation',semanticRelationRef),
+              decidedBy:actorId,
+              rationale:'I explicitly choose this execution relation treatment for the reviewed ExecutionPlan.'
+            });
+          }
+        ));
+        return;
+      }
+      var blocked=document.createElement('div');blocked.className='item finding';
+      var blockedTitle=document.createElement('strong');blockedTitle.textContent='Semantic correction required';
+      var blockedText=document.createElement('small');blockedText.textContent=description+' This blocker has no safe execution-only decision and must be corrected upstream.';
+      blocked.append(blockedTitle,blockedText);choices.appendChild(blocked);
+    });
+    build.disabled=false;
+    build.textContent='Rebuild ExecutionPlan review';
+    updateReady();
+  }
+
+  nativeFetch('/api/product/runtime-profile').then(function(response){return response.ok?response.json():null}).then(function(profile){if(profile&&profile.actorId)actorId=profile.actorId}).catch(function(){});
+
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var options=init;
+    var isPlan=path.indexOf('/api/automation/execution-plan/review')!==-1&&options&&String(options.method||'GET').toUpperCase()==='POST';
+    if(isPlan&&options.body){
+      try{
+        var body=JSON.parse(String(options.body));
+        body.decisions={
+          subprocessResolutions:decisions.subprocessResolutions.slice(),
+          relationResolutions:decisions.relationResolutions.slice()
+        };
+        options=Object.assign({},options,{body:JSON.stringify(body)});
+      }catch(_){}
+    }
+    return nativeFetch(input,options).then(function(response){
+      if(isPlan&&response.ok){
+        response.clone().json().then(function(body){setTimeout(function(){renderPlanDecisions(body)},0)}).catch(function(){});
+      }
+      return response;
+    });
+  };
+
+  var rebuild=byId('rebuildPlanDecisions');
+  if(rebuild)rebuild.addEventListener('click',function(){
+    if(rebuild.disabled)return;
+    var build=byId('buildPlan');
+    if(build){build.disabled=false;build.click()}
+  });
 })();
-</script>
-</body>
-</html>`;
+</script>`;
+
+// R1-10 truthful blocked-source UX. A valid BPMN upload may still be preserved
+// while Canonical reconciliation is blocked by an unsupported or ambiguous BPMN
+// construct. That state is not an authority-order failure. The product exposes
+// exact diagnostics and keeps the source XML editable without granting Canonical
+// review/confirmation authority until a corrected revision reconciles.
+const SOURCE_RECONCILIATION_GUARD_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  var blockedByRevision={};
+
+  function byId(id){return document.getElementById(id)}
+  function setText(id,value){var node=byId(id);if(node)node.textContent=value}
+  function renderDiagnostics(box,diagnostics){
+    if(!box)return;box.innerHTML='';
+    if(!diagnostics||!diagnostics.length){var none=document.createElement('div');none.className='item';none.textContent='No diagnostic detail was returned.';box.appendChild(none);return}
+    diagnostics.forEach(function(item){
+      var row=document.createElement('div');row.className='item finding';
+      var strong=document.createElement('strong');strong.textContent=item.code||'BPMN_RECONCILIATION_BLOCKED';
+      var small=document.createElement('small');
+      var location=item.bpmnElementId?(' · element '+item.bpmnElementId+(item.bpmnType?' ('+item.bpmnType+')':'')):'';
+      small.textContent=(item.message||'Canonical reconciliation is blocked.')+location;
+      row.append(strong,small);box.appendChild(row);
+    });
+  }
+  function renderBlocked(body){
+    var diagnostics=(body.reconciliation&&body.reconciliation.diagnostics)||[];
+    var reviewCard=byId('reviewCard');if(reviewCard)reviewCard.classList.remove('closed');
+    var sourceStep=byId('psource');if(sourceStep)sourceStep.className='pstep done';
+    var reviewStep=byId('preview');if(reviewStep)reviewStep.className='pstep blocked';
+    var badge=byId('reviewBadge');if(badge){badge.textContent='RECONCILIATION BLOCKED · SOURCE PRESERVED';badge.className='pill warn'}
+    setText('reviewState','Canonical review has not been created. Correct the BPMN source and retry reconciliation.');
+    setText('truthInferred','Blocked · no Canonical ProcessRevision created');
+    setText('correctionState','Source correction available · no business authority exists');
+    var editor=byId('bpmnEditor');if(editor&&body.revision&&body.revision.bpmnXml)editor.value=body.revision.bpmnXml;
+    var save=byId('saveCorrection');if(save)save.disabled=false;
+    var confirm=byId('confirmProcess');if(confirm)confirm.disabled=true;
+    renderDiagnostics(byId('findings'),diagnostics);
+    var questions=byId('questions');if(questions){questions.innerHTML='';var q=document.createElement('div');q.className='item question';q.textContent='Resolve the BPMN reconciliation diagnostic(s) before business confirmation.';questions.appendChild(q)}
+    var nodes=byId('processNodes');if(nodes){nodes.innerHTML='';var n=document.createElement('div');n.className='item';n.textContent='No Canonical nodes admitted yet.';nodes.appendChild(n)}
+    var sourceStatus=byId('sourceStatus');if(sourceStatus){sourceStatus.textContent='BPMN source preserved. Canonical reconciliation is blocked by '+diagnostics.length+' diagnostic(s). No business meaning or authority was created.';sourceStatus.className='status warn'}
+  }
+  function updateRuntimeCopy(profile){
+    var node=byId('runtimeLimit');if(!node||!profile)return;
+    if(profile.runtimeMode==='DESIGN_ONLY'){
+      node.textContent='Design mode: execution is disabled. Human UPDATE/SIGNAL runtime is implemented and becomes available when TEMPORAL_EXECUTION is configured.';
+      node.className='status warn';return;
+    }
+    if(profile.humanRuntimeAvailable){
+      node.textContent='Temporal execution and governed human UPDATE/SIGNAL runtime are enabled.';
+      node.className='status good';return;
+    }
+    node.textContent='Temporal execution is configured, but human runtime control is unavailable in this launcher.';
+    node.className='status warn';
+  }
+
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isNativeImport=path.indexOf('/api/input/bpmn')!==-1&&method==='POST';
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    var isRuntimeProfile=path.indexOf('/api/product/runtime-profile')!==-1&&method==='GET';
+    var isEdit=path.indexOf('/api/bpmn/edit')!==-1&&method==='POST';
+
+    if(isReview){
+      try{
+        var url=new URL(path,window.location.href);
+        var revisionId=url.searchParams.get('revisionId');
+        var blocked=revisionId&&blockedByRevision[revisionId];
+        if(blocked){
+          setTimeout(function(){renderBlocked(blocked)},0);
+          var diagnostics=(blocked.reconciliation&&blocked.reconciliation.diagnostics)||[];
+          return Promise.resolve(new Response(JSON.stringify({
+            error:'BPMN source was preserved, but Canonical reconciliation is blocked. Review the diagnostics and correct the BPMN source.',
+            code:'R1_BPMN_RECONCILIATION_BLOCKED',
+            sourcePreserved:true,
+            revisionId:revisionId,
+            diagnostics:diagnostics
+          }),{status:409,headers:{'content-type':'application/json'}}));
+        }
+      }catch(_){}
+    }
+
+    return nativeFetch(input,init).then(function(response){
+      if(isNativeImport&&response.ok){
+        return response.clone().json().then(function(body){
+          if(body&&body.reconciliation&&body.reconciliation.status==='BLOCKED'&&body.revision&&body.revision.id){
+            blockedByRevision[body.revision.id]=body;
+          }
+          return response;
+        }).catch(function(){return response});
+      }
+      if(isRuntimeProfile&&response.ok){
+        response.clone().json().then(function(profile){setTimeout(function(){updateRuntimeCopy(profile)},0)}).catch(function(){});
+      }
+      if(isEdit&&response.ok){
+        response.clone().json().then(function(body){
+          if(body&&body.status==='CORRECTION_BLOCKED'&&body.hasActiveCanonicalReview===false){
+            var attempted=body.attemptedRevision;
+            var blocked={revision:attempted,reconciliation:body.reconciliation};
+            setTimeout(function(){renderBlocked(blocked)},0);
+          }
+        }).catch(function(){});
+      }
+      return response;
+    });
+  };
+
+  nativeFetch('/api/product/runtime-profile').then(function(response){return response.ok?response.json():null}).then(function(profile){setTimeout(function(){updateRuntimeCopy(profile)},0)}).catch(function(){});
+})();
+</script>`;
+
+// Native BPMN is source truth; image interpretation is inferred meaning. The
+// base journey renderer predates that distinction and used one hard-coded
+// INFERRED badge. This thin product-shell correction keeps review truth truthful
+// without granting business confirmation or any later authority.
+const REVIEW_TRUTH_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  function byId(id){return document.getElementById(id)}
+  function applyReviewTruth(body){
+    if(!body||!body.revision||!body.reconciliation)return;
+    var process=body.reconciliation.processRevision||{};
+    var route=body.revision.sourceRoute;
+    var badge=byId('reviewBadge');
+    var inferred=byId('truthInferred');
+    if(route==='IMAGE_INTERPRETATION'){
+      if(badge&&String(badge.textContent||'').indexOf('CORRECTED')!==0){badge.textContent='INFERRED · NOT BUSINESS-CONFIRMED';badge.className='pill warn'}
+      if(inferred)inferred.textContent='Inferred review candidate '+String(process.id||'—');
+      return;
+    }
+    if(badge&&String(badge.textContent||'').indexOf('CORRECTED')!==0){badge.textContent='SOURCE TRUTH · NOT BUSINESS-CONFIRMED';badge.className='pill good'}
+    if(inferred)inferred.textContent='No inferred meaning · Canonical review derived from BPMN source truth';
+  }
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    return nativeFetch(input,init).then(function(response){
+      if(isReview&&response.ok){
+        response.clone().json().then(function(body){setTimeout(function(){applyReviewTruth(body)},0)}).catch(function(){});
+      }
+      return response;
+    });
+  };
+})();
+</script>`;
+
+// R1-11 field-trial hardening. Native BPMN confirmation already returns an
+// authoritative BusinessProcessConfirmationRecord that pins the exact Canonical
+// ProcessRevision, but the original journey renderer expected the richer image
+// confirmation response shape. Normalize that browser-facing response without
+// changing authority, and keep Save correction disabled until XML actually
+// differs from the active immutable review head.
+const FIELD_TRIAL_CONFIRMATION_GUARD_SCRIPT = String.raw`<script>
+(function(){
+  'use strict';
+  var nativeFetch=window.fetch.bind(window);
+  var reviewXml='';
+
+  function byId(id){return document.getElementById(id)}
+  function syncCorrectionDirty(){
+    var editor=byId('bpmnEditor');
+    var save=byId('saveCorrection');
+    var state=byId('correctionState');
+    if(!editor||!save)return;
+    var dirty=String(editor.value||'')!==String(reviewXml||'');
+    save.disabled=!dirty;
+    if(state){
+      state.textContent=dirty?'Unsaved BPMN correction':'No BPMN changes to save';
+      state.className='pill '+(dirty?'warn':'good');
+    }
+  }
+  function responseWithJson(response,body){
+    var headers=new Headers(response.headers);
+    headers.set('content-type','application/json; charset=utf-8');
+    return new Response(JSON.stringify(body),{status:response.status,statusText:response.statusText,headers:headers});
+  }
+
+  var editor=byId('bpmnEditor');
+  if(editor)editor.addEventListener('input',syncCorrectionDirty);
+
+  window.fetch=function(input,init){
+    var path=typeof input==='string'?input:(input&&input.url)||'';
+    var method=String((init&&init.method)||'GET').toUpperCase();
+    var isReview=path.indexOf('/api/process-review')!==-1&&method==='GET';
+    var isConfirm=path.indexOf('/api/bpmn/confirm')!==-1&&method==='POST';
+
+    return nativeFetch(input,init).then(function(response){
+      if(isReview&&response.ok){
+        response.clone().json().then(function(body){
+          if(body&&body.revision&&typeof body.revision.bpmnXml==='string'){
+            reviewXml=body.revision.bpmnXml;
+            setTimeout(syncCorrectionDirty,0);
+          }
+        }).catch(function(){});
+      }
+      if(isConfirm&&response.ok){
+        return response.clone().json().then(function(body){
+          if(body&&!body.reconciliation&&body.confirmation&&body.confirmation.canonicalProcessRevisionId){
+            body.reconciliation={processRevision:{id:body.confirmation.canonicalProcessRevisionId}};
+            return responseWithJson(response,body);
+          }
+          return response;
+        }).catch(function(){return response});
+      }
+      return response;
+    });
+  };
+})();
+</script>`;
+
+const withPlanDecisionUi = ONE_APP_PRODUCT_JOURNEY_PAGE.replace(
+  PLAN_BLOCKER_MARKER,
+  `${PLAN_BLOCKER_MARKER}${PLAN_DECISION_UI}`,
+);
+
+export const ONE_APP_PRODUCT_PAGE = withPlanDecisionUi.replace(
+  '</body>',
+  `${PLAN_DECISION_SCRIPT}${SOURCE_RECONCILIATION_GUARD_SCRIPT}${REVIEW_TRUTH_SCRIPT}${FIELD_TRIAL_CONFIRMATION_GUARD_SCRIPT}${R1_02_TRUTH_FOOTER}</body>`,
+);

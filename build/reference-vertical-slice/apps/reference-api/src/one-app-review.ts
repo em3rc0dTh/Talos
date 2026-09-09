@@ -67,13 +67,14 @@ function reviewAuthorityEnvelope() {
 }
 
 /**
- * R1-03 review/correction routes over the same One-App repository and binding map.
+ * R1-03/R1-10/R1-11 review and correction routes over the same One-App repository.
  *
- * The router does not own a parallel semantic engine. Semantic BPMN corrections
- * are appended by BpmnWorkspaceService and immediately re-enter the certified
- * source-aware structured BPMN reconciler. When a correction succeeds, the old
- * review head is retired from the active binding map so stale confirmation cannot
- * bypass the corrected revision.
+ * A reconciled active review head may be edited whether it is still DRAFT or has
+ * an append-only business confirmation. Editing a confirmed head creates a new
+ * immutable DRAFT child and therefore requires explicit reconfirmation; the old
+ * confirmation never transfers. Historical/superseded heads remain read-only.
+ * A preserved DRAFT BPMN that failed Canonical reconciliation may also be edited,
+ * but it gains no review or confirmation authority until reconciliation succeeds.
  */
 export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDependencies) {
   const { repo, workspace, bindings } = dependencies;
@@ -134,13 +135,13 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         const input = await jsonBody(req);
         const baseRevisionId = text(input.baseRevisionId, 'baseRevisionId');
         const baseBinding = bindings.get(baseRevisionId);
-        if (!baseBinding) {
-          if (historyBindings.has(baseRevisionId)) throw new TypeError('one-app process review cannot use a stale base revision');
-          throw new TypeError('one-app process review context not found for this BPMN revision');
+        if (!baseBinding && historyBindings.has(baseRevisionId)) {
+          throw new TypeError('one-app process review cannot use a stale base revision');
         }
         const baseRevision = workspace.getRevision(baseRevisionId);
         if (!baseRevision) throw new TypeError('one-app process review BPMN revision not found');
-        if (baseRevision.state !== 'DRAFT') throw new TypeError('one-app process correction requires a DRAFT BPMN review revision');
+        if (baseRevision.state === 'SUPERSEDED') throw new TypeError('one-app process correction cannot use a SUPERSEDED BPMN review revision');
+        const baseWasConfirmed = baseRevision.state === 'CONFIRMED';
 
         const editMode = text(input.editMode, 'editMode');
         if (editMode !== 'GRAPH_EDIT' && editMode !== 'XML_EDIT') {
@@ -164,21 +165,24 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
           if (reconciled.status !== 'RECONCILED') {
             json(res, 200, {
               status: 'CORRECTION_BLOCKED',
-              activeReviewRevisionId: baseRevisionId,
+              ...(baseBinding ? { activeReviewRevisionId: baseRevisionId } : {}),
+              sourceCorrectionBaseRevisionId: baseRevisionId,
               attemptedRevision: edited.revision,
               changeClass: edited.changeClass,
               reconciliation: {
                 status: reconciled.status,
                 diagnostics: reconciled.diagnostics,
               },
+              hasActiveCanonicalReview: Boolean(baseBinding),
               sourceTruthChanged: false,
               requiresBusinessProcessConfirmation: true,
+              requiresProcessReconfirmation: baseWasConfirmed,
               ...reviewAuthorityEnvelope(),
             });
             return true;
           }
 
-          retireActiveHead(baseRevisionId, baseBinding);
+          if (baseBinding) retireActiveHead(baseRevisionId, baseBinding);
           bindings.set(reconciled.alignedBpmnRevision.id, reconciled);
           json(res, 201, {
             status: 'CORRECTED_PROCESS_REVIEW_REQUIRED',
@@ -188,7 +192,25 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             reconciliation: publicBinding(reconciled),
             sourceTruthChanged: false,
             requiresBusinessProcessConfirmation: true,
-            requiresProcessReconfirmation: true,
+            requiresProcessReconfirmation: baseWasConfirmed,
+            createdCanonicalReviewFromSourceCorrection: !baseBinding,
+            previousConfirmationStillApplies: false,
+            ...reviewAuthorityEnvelope(),
+          });
+          return true;
+        }
+
+        if (!baseBinding) {
+          json(res, 200, {
+            status: 'SOURCE_CORRECTION_NOT_RECONCILED',
+            sourceCorrectionBaseRevisionId: baseRevisionId,
+            attemptedRevision: edited.revision,
+            changeClass: edited.changeClass,
+            message: 'The edit was preserved, but no semantic change created a Canonical review candidate.',
+            hasActiveCanonicalReview: false,
+            sourceTruthChanged: false,
+            requiresBusinessProcessConfirmation: true,
+            requiresProcessReconfirmation: baseWasConfirmed,
             ...reviewAuthorityEnvelope(),
           });
           return true;
@@ -210,7 +232,8 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
           reconciliation: publicBinding(nextBinding),
           sourceTruthChanged: false,
           requiresBusinessProcessConfirmation: true,
-          requiresProcessReconfirmation: false,
+          requiresProcessReconfirmation: baseWasConfirmed,
+          previousConfirmationStillApplies: false,
           ...reviewAuthorityEnvelope(),
         });
         return true;

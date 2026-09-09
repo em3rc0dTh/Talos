@@ -53,8 +53,11 @@ import {
 import {
   approveGenericWorkflowExecution,
   recordAuthorizedWorkflowExecution,
+  recordAuthorizedWorkflowExecutionCompletion,
+  recordAuthorizedWorkflowExecutionStart,
   type GenericWorkflowExecutionApprovalInput,
   type GenericWorkflowExecutionResult,
+  type GenericWorkflowExecutionStartResult,
 } from '../../deployment/src/generic-workflow-execution.ts';
 import type {
   DeploymentApprovalRecord,
@@ -62,6 +65,7 @@ import type {
   ReferenceDeploymentBundle,
   WorkflowExecutionApprovalRecord,
   WorkflowExecutionObservation,
+  WorkflowExecutionStartRecord,
 } from '../../deployment/src/types.ts';
 import {
   persistAutomationCapabilitySelection,
@@ -84,6 +88,7 @@ import {
 import {
   persistOneAppWorkflowExecutionApproval,
   persistOneAppWorkflowExecutionObservation,
+  persistOneAppWorkflowExecutionStart,
 } from './workflow-execution.ts';
 
 export interface OneAppAutomationContext {
@@ -104,6 +109,7 @@ export interface OneAppAutomationContext {
   deploymentApproval?: DeploymentApprovalRecord;
   deploymentAttempt?: DeploymentAttempt;
   workflowExecutionApproval?: WorkflowExecutionApprovalRecord;
+  workflowExecutionStart?: WorkflowExecutionStartRecord;
   workflowExecutionObservation?: WorkflowExecutionObservation;
 }
 
@@ -174,7 +180,7 @@ export function reviewOneAppExecutionPlan(
   createdAt: string,
 ): OneAppAutomationContext {
   if (!context.selection) throw new TypeError('one-app ExecutionPlan review requires an explicit capability selection first');
-  const executionReview = openAutomationExecutionPlanReview(
+  const candidate = openAutomationExecutionPlanReview(
     context.process,
     context.scope,
     context.assessment,
@@ -184,6 +190,24 @@ export function reviewOneAppExecutionPlan(
     decisions,
     createdAt,
   );
+  const previous = context.executionReview;
+  if (previous && candidate.execution.revision.id === previous.execution.revision.id) {
+    return context;
+  }
+  const executionReview: AutomationExecutionPlanReviewBundle = previous
+    ? {
+        ...candidate,
+        execution: {
+          ...candidate.execution,
+          definition: previous.execution.definition,
+          revision: {
+            ...candidate.execution.revision,
+            revision: previous.execution.revision.revision + 1,
+            parentRevisionRefs: [previous.execution.revision.id],
+          },
+        },
+      }
+    : candidate;
   persistAutomationExecutionPlanReview(repo, executionReview);
   return { ...context, executionReview };
 }
@@ -339,6 +363,41 @@ export function approveOneAppWorkflowExecution(
   return{...context,workflowExecutionApproval};
 }
 
+export function recordOneAppAuthorizedWorkflowExecutionStart(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  input:{executionId:string;facts:Record<string,unknown>;capabilityInputs?:Record<string,unknown>},
+  result:GenericWorkflowExecutionStartResult,
+):OneAppAutomationContext{
+  if(!context.deploymentRealization||!context.deploymentAttempt||!context.workflowExecutionApproval){
+    throw new TypeError('one-app workflow execution start requires explicit execution approval and successful deployment context');
+  }
+  if(context.workflowExecutionStart||context.workflowExecutionObservation){
+    throw new TypeError('one-app workflow execution start is append-only and already exists for this context');
+  }
+  const workflowExecutionStart=recordAuthorizedWorkflowExecutionStart(
+    context.deploymentRealization,
+    context.deploymentAttempt,
+    context.workflowExecutionApproval,
+    input,
+    result,
+  );
+  persistOneAppWorkflowExecutionStart(repo,workflowExecutionStart);
+  return{...context,workflowExecutionStart};
+}
+
+export function completeOneAppAuthorizedWorkflowExecution(
+  repo:ImmutableDocumentRepository,
+  context:OneAppAutomationContext,
+  result:GenericWorkflowExecutionResult,
+):OneAppAutomationContext{
+  if(!context.workflowExecutionStart)throw new TypeError('one-app workflow completion requires a persisted authorized workflow start');
+  if(context.workflowExecutionObservation)throw new TypeError('one-app workflow execution observation is append-only and already exists for this context');
+  const workflowExecutionObservation=recordAuthorizedWorkflowExecutionCompletion(context.workflowExecutionStart,result);
+  persistOneAppWorkflowExecutionObservation(repo,workflowExecutionObservation);
+  return{...context,workflowExecutionObservation};
+}
+
 export function recordOneAppAuthorizedWorkflowExecution(
   repo:ImmutableDocumentRepository,
   context:OneAppAutomationContext,
@@ -348,6 +407,7 @@ export function recordOneAppAuthorizedWorkflowExecution(
   if(!context.deploymentRealization||!context.deploymentAttempt||!context.workflowExecutionApproval){
     throw new TypeError('one-app workflow execution requires explicit execution approval and successful deployment context');
   }
+  if(context.workflowExecutionStart)throw new TypeError('atomic workflow execution cannot overwrite a separately persisted workflow start');
   if(context.workflowExecutionObservation)throw new TypeError('one-app workflow execution observation is append-only and already exists for this context');
   const workflowExecutionObservation=recordAuthorizedWorkflowExecution(
     context.deploymentRealization,

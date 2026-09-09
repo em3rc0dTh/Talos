@@ -27,6 +27,10 @@ const PLANE_KINDS = new Set([
 const ENDPOINT_STATES = new Set(['SET_CANDIDATE','UNKNOWN','OUT_OF_FRAME','OCCLUDED','UNRESOLVED','SOURCE_DEFINED']);
 const DIRECTIONS = new Set(['SOURCE_TO_TARGET','TARGET_TO_SOURCE','BIDIRECTIONAL','UNKNOWN']);
 const PROVIDER_STATUSES = new Set(['SUCCEEDED','PARTIAL','NO_RESULT']);
+const TRANSIENT_PROVIDER_HTTP_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_TRANSIENT_PROVIDER_ATTEMPTS = 3;
+const RETRY_BASE_MS = 750;
+const RETRY_MAX_MS = 5_000;
 
 export interface AsyncHttpImagePerceptionProviderConfig {
   endpoint: string;
@@ -314,25 +318,57 @@ function throwingSyncProvider(config: AsyncHttpImagePerceptionProviderConfig, er
   };
 }
 
+function retryAfterDelayMs(response: Response, attempt: number): number {
+  const header = response.headers.get('retry-after')?.trim();
+  if (header) {
+    if (/^\d+(?:\.\d+)?$/.test(header)) {
+      return Math.min(RETRY_MAX_MS, Math.max(0, Math.round(Number(header) * 1000)));
+    }
+    const retryAt = Date.parse(header);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(RETRY_MAX_MS, Math.max(0, retryAt - Date.now()));
+    }
+  }
+  return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * (2 ** Math.max(0, attempt - 1)));
+}
+
+async function delay(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 async function postProviderRequest(
   config: AsyncHttpImagePerceptionProviderConfig,
   envelope: AsyncImagePerceptionTransportEnvelope,
 ): Promise<unknown> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 30_000);
-  try {
-    const response = await fetchImpl(config.endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(config.headers ?? {}) },
-      body: JSON.stringify(envelope),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`IMAGE_PERCEPTION_PROVIDER_HTTP_${response.status}`);
-    return await response.json();
-  } finally {
-    clearTimeout(timeout);
+
+  for (let attempt = 1; attempt <= MAX_TRANSIENT_PROVIDER_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 30_000);
+    try {
+      const response = await fetchImpl(config.endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(config.headers ?? {}) },
+        body: JSON.stringify(envelope),
+        signal: controller.signal,
+      });
+      if (response.ok) return await response.json();
+
+      const transient = TRANSIENT_PROVIDER_HTTP_STATUSES.has(response.status);
+      if (!transient || attempt === MAX_TRANSIENT_PROVIDER_ATTEMPTS) {
+        throw new Error(`IMAGE_PERCEPTION_PROVIDER_HTTP_${response.status}`);
+      }
+
+      const waitMs = retryAfterDelayMs(response, attempt);
+      try { await response.body?.cancel(); } catch { /* best-effort response cleanup */ }
+      await delay(waitMs);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  throw new Error('IMAGE_PERCEPTION_PROVIDER_RETRY_EXHAUSTED');
 }
 
 export async function runAsyncHttpImagePerceptionAdmission(
