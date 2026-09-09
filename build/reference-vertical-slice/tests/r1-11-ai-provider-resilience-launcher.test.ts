@@ -6,15 +6,53 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const launcher = readFileSync(path.join(ROOT, 'scripts', 'r1-image-temporal-field-start.ps1'), 'utf8');
+const infraUp = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-up.ps1'), 'utf8');
+const infraDown = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-down.ps1'), 'utf8');
+const compose = readFileSync(path.join(ROOT, 'docker-compose.r1-field.yml'), 'utf8');
 
-test('R1-11 field launcher attempts independent local AI redundancy by default', () => {
+test('R1-11 field launcher discovers independent local AI redundancy over the Ollama HTTP contract', () => {
   assert.match(launcher, /\$tryLocalFallback = -not \[bool\]\$DisableLocalFallback/);
-  assert.match(launcher, /Get-Command ollama/);
+  assert.match(launcher, /Invoke-RestMethod[\s\S]*\/api\/tags/);
   assert.match(launcher, /TALOS_OLLAMA_FALLBACK_ENABLED = 'true'/);
+  assert.match(launcher, /TALOS_OLLAMA_FALLBACK_URL = \$chatEndpoint/);
   assert.match(launcher, /TALOS_OLLAMA_AUTOMATION_FALLBACK_ENABLED = 'true'/);
+  assert.match(launcher, /TALOS_OLLAMA_AUTOMATION_FALLBACK_URL = \$chatEndpoint/);
   assert.match(launcher, /Vision fallback/);
   assert.match(launcher, /Automation fallback/);
   assert.match(launcher, /AI redundancy/);
+  assert.doesNotMatch(launcher, /Get-Command ollama|ollama list|ollama pull/);
+});
+
+test('R1-11 Docker Compose field stack owns Temporal, Ollama and idempotent model initialization', () => {
+  assert.match(compose, /name:\s*talos-r1-field/);
+  assert.match(compose, /temporal:\s*[\s\S]*temporalio\/temporal:latest/);
+  assert.match(compose, /127\.0\.0\.1:17233:7233/);
+  assert.match(compose, /127\.0\.0\.1:18233:8233/);
+  assert.match(compose, /ollama:\s*[\s\S]*ollama\/ollama:latest/);
+  assert.match(compose, /127\.0\.0\.1:11434:11434/);
+  assert.match(compose, /talos_ollama_models:\/root\/\.ollama/);
+  assert.match(compose, /ollama-init:/);
+  assert.match(compose, /condition:\s*service_healthy/);
+  assert.match(compose, /qwen3-vl:4b-instruct/);
+  assert.match(compose, /ollama show/);
+  assert.match(compose, /ollama pull/);
+  assert.match(compose, /talos-r1-ollama-models/);
+});
+
+test('R1-11 field infra launcher waits for real Temporal and persisted Ollama model readiness', () => {
+  assert.match(infraUp, /docker compose -f \$composeFile up -d/);
+  assert.match(infraUp, /Wait-ForTcp '127\.0\.0\.1' 17233/);
+  assert.match(infraUp, /http:\/\/127\.0\.0\.1:11434/);
+  assert.match(infraUp, /api\/tags/);
+  assert.match(infraUp, /Talos R1 field infrastructure READY/);
+  assert.match(infraUp, /-RequireLocalFallback/);
+});
+
+test('R1-11 field infra shutdown preserves Ollama model volume unless explicitly deleted', () => {
+  assert.match(infraDown, /\[switch\]\$DeleteModelVolume/);
+  assert.match(infraDown, /docker compose -f \$composeFile down -v/);
+  assert.match(infraDown, /docker compose -f \$composeFile down/);
+  assert.match(infraDown, /model volume preserved/);
 });
 
 test('R1-11 missing local fallback degrades provider redundancy without killing Talos by default', () => {
@@ -31,6 +69,7 @@ test('R1-11 release evidence can require provider redundancy explicitly', () => 
   assert.match(launcher, /\[switch\]\$RequireLocalFallback/);
   assert.match(launcher, /\$strictLocalFallback = \[bool\]\(\$EnableLocalFallback -or \$RequireLocalFallback\)/);
   assert.match(launcher, /Local AI fallback is required/);
+  assert.match(launcher, /r1-field-infra-up\.ps1/);
 });
 
 test('R1-11 provider resilience does not weaken Temporal or authority gates', () => {
