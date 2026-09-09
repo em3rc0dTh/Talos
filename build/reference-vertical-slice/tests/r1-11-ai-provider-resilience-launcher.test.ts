@@ -48,6 +48,14 @@ test('R1-11 field infra launcher waits for real Temporal and persisted Ollama mo
   assert.match(infraUp, /-RequireLocalFallback/);
 });
 
+test('R1-11 field infra migrates the known legacy Temporal container without deleting it', () => {
+  assert.match(infraUp, /Stop-LegacyTemporalIfRunning/);
+  assert.match(infraUp, /name=\^\/talos-temporal\$/);
+  assert.match(infraUp, /docker stop talos-temporal/);
+  assert.match(infraUp, /Legacy container stopped and preserved \(not deleted\)/);
+  assert.doesNotMatch(infraUp, /docker rm[^\n]*talos-temporal/);
+});
+
 test('R1-11 field infra shutdown preserves Ollama model volume unless explicitly deleted', () => {
   assert.match(infraDown, /\[switch\]\$DeleteModelVolume/);
   assert.match(infraDown, /docker compose -f \$composeFile down -v/);
