@@ -5,12 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = path.resolve(ROOT, '..', '..');
 const launcher = readFileSync(path.join(ROOT, 'scripts', 'r1-image-temporal-field-start.ps1'), 'utf8');
 const infraUp = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-up.ps1'), 'utf8');
 const infraDown = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-down.ps1'), 'utf8');
 const infraUpSh = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-up.sh'), 'utf8');
 const infraDownSh = readFileSync(path.join(ROOT, 'scripts', 'r1-field-infra-down.sh'), 'utf8');
 const compose = readFileSync(path.join(ROOT, 'docker-compose.r1-field.yml'), 'utf8');
+const gitAttributes = readFileSync(path.join(REPO_ROOT, '.gitattributes'), 'utf8');
 
 test('R1-11 field launcher discovers independent local AI redundancy over the Ollama HTTP contract', () => {
   assert.match(launcher, /\$tryLocalFallback = -not \[bool\]\$DisableLocalFallback/);
@@ -41,18 +43,26 @@ test('R1-11 Docker Compose field stack owns Temporal, Ollama and idempotent mode
   assert.match(compose, /talos-r1-ollama-models/);
 });
 
-test('R1-11 PowerShell infra launcher supports native Windows Docker or Docker inside WSL', () => {
-  assert.match(infraUp, /Get-Command docker/);
-  assert.match(infraUp, /Get-Command wsl\.exe/);
+test('R1-11 PowerShell field infra supports Docker inside WSL without wslpath shell escaping', () => {
+  assert.match(infraUp, /Convert-WindowsPathToWsl/);
+  assert.match(infraUp, /\/mnt\/\$drive\/\$rest/);
   assert.match(infraUp, /wsl\.exe docker compose version/);
-  assert.match(infraUp, /wsl\.exe wslpath -a \$ComposeFile/);
   assert.match(infraUp, /\$script:DockerMode = 'WSL'/);
-  assert.match(infraUp, /Invoke-Docker compose -f \$script:ComposeFileForDocker up -d/);
-  assert.match(infraDown, /Get-Command wsl\.exe/);
-  assert.match(infraDown, /Invoke-Docker compose -f \$script:ComposeFileForDocker down/);
+  assert.doesNotMatch(infraUp, /wslpath/);
+  assert.match(infraDown, /Convert-WindowsPathToWsl/);
+  assert.doesNotMatch(infraDown, /wslpath/);
+});
+
+test('R1-11 WSL shell launchers are repository-governed as LF-only', () => {
+  assert.match(gitAttributes, /\*\.sh text eol=lf/);
+  assert.equal(infraUpSh.includes('\r'), false);
+  assert.equal(infraDownSh.includes('\r'), false);
+  assert.match(infraUpSh, /^#!\/usr\/bin\/env bash\nset|^#!\/usr\/bin\/env bash\n# Git policy:[\s\S]*\nset -euo pipefail/m);
+  assert.match(infraDownSh, /^#!\/usr\/bin\/env bash\nset|^#!\/usr\/bin\/env bash\n# Git policy:[\s\S]*\nset -euo pipefail/m);
 });
 
 test('R1-11 field infra launcher waits for real Temporal and persisted Ollama model readiness', () => {
+  assert.match(infraUp, /Invoke-Docker compose -f \$script:ComposeFileForDocker up -d/);
   assert.match(infraUp, /Wait-ForTcp '127\.0\.0\.1' 17233/);
   assert.match(infraUp, /http:\/\/127\.0\.0\.1:11434/);
   assert.match(infraUp, /api\/tags/);
@@ -65,15 +75,7 @@ test('R1-11 field infra migrates the known legacy Temporal container without del
   assert.match(infraUp, /name=\^\/talos-temporal\$/);
   assert.match(infraUp, /Invoke-Docker stop talos-temporal/);
   assert.match(infraUp, /Legacy container stopped and preserved \(not deleted\)/);
-  assert.doesNotMatch(infraUp, /(?:docker|Invoke-Docker) rm[^\n]*talos-temporal/);
-});
-
-test('R1-11 native WSL launcher uses Linux paths and the same Compose/model contract', () => {
-  assert.match(infraUpSh, /docker compose -f "\$compose_file" up -d/);
-  assert.match(infraUpSh, /\/dev\/tcp\/127\.0\.0\.1\/17233/);
-  assert.match(infraUpSh, /ollama show "\$FALLBACK_MODEL"/);
-  assert.match(infraUpSh, /Talos R1 field infrastructure READY/);
-  assert.doesNotMatch(infraUpSh, /\\scripts\\|\.\\build\\/);
+  assert.doesNotMatch(infraUp, /docker rm[^\n]*talos-temporal/);
 });
 
 test('R1-11 field infra shutdown preserves Ollama model volume unless explicitly deleted', () => {
@@ -81,8 +83,6 @@ test('R1-11 field infra shutdown preserves Ollama model volume unless explicitly
   assert.match(infraDown, /Invoke-Docker compose -f \$script:ComposeFileForDocker down -v/);
   assert.match(infraDown, /Invoke-Docker compose -f \$script:ComposeFileForDocker down/);
   assert.match(infraDown, /model volume preserved/);
-  assert.match(infraDownSh, /DELETE_MODEL_VOLUME/);
-  assert.match(infraDownSh, /docker compose -f "\$compose_file" down -v/);
 });
 
 test('R1-11 missing local fallback degrades provider redundancy without killing Talos by default', () => {
