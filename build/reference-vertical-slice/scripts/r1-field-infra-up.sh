@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Git policy: this launcher must remain LF-only for WSL/Linux execution.
 set -euo pipefail
 
 FALLBACK_MODEL="${TALOS_OLLAMA_MODEL:-qwen3-vl:4b-instruct}"
