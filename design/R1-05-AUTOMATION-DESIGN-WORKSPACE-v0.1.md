@@ -1,8 +1,10 @@
 # R1-05 — Automation Design Workspace v0.1
 
-Status: IMPLEMENTED / CI CERTIFICATION PENDING
+Status: CLOSED / CERTIFIED
 Date: 2026-09-14
 Prerequisite: R1-00 cumulative certification merged at `8aee78bf5c5c035eb70a7e0d697fc3d80c4c6647`
+Certified implementation head: `60dd47fbba5c0446e1a9e248a88733c91799791b`
+PR: #57
 
 ## Purpose
 
@@ -93,19 +95,21 @@ The backend workspace remains pinned to the exact CapabilityDesignRevision. Sugg
 
 The product always submits the exact active `workspaceId` returned by the backend.
 
-## Acceptance criteria
+## Certified acceptance criteria
 
-R1-05 is CLOSED only when all are true:
+1. R1-00 through R1-04 continue to pass — PASS.
+2. Product page exposes Automation Design only after explicit business confirmation — PASS.
+3. Opening design requires the exact confirmation record — PASS.
+4. Product reuses `/api/bpmn/automation-design-approval` rather than creating a parallel engine — PASS.
+5. Workspace truth visibly exposes non-binding state — PASS.
+6. Suggestion decisions use the existing append-only decision route — PASS.
+7. R1-05 exposes no capability-selection, ExecutionPlan-review, automation-approval, deployment, or execution action — PASS.
+8. Image Vertical Slice #724 — SUCCESS.
+9. B7–B9 Temporal reference runtime #939 — SUCCESS.
+10. B10 Restart safety #571 — SUCCESS.
 
-1. R1-00 through R1-04 continue to pass.
-2. Product page exposes Automation Design only after explicit business confirmation.
-3. Opening design requires the exact confirmation record.
-4. The product reuses `/api/bpmn/automation-design-approval` rather than creating a parallel engine.
-5. Workspace truth visibly exposes non-binding state.
-6. Suggestion decisions use the existing append-only decision route.
-7. The R1-05 extension exposes no capability-selection, ExecutionPlan-review, automation-approval, deployment, or execution action.
-8. Image Vertical Slice regression is green.
-9. B7–B9 Temporal reference runtime is green.
-10. B10 Restart safety is green.
+## Certification truth boundary
 
-Until criteria 8–10 pass on the final PR head, R1-05 remains certification-pending.
+This gate proves internal product and regression coherence for the bounded R1-05 stage. It does not certify production readiness, commercial readiness, multi-tenant isolation, external-customer validation, deployment authority, or workflow-execution authority.
+
+After this documentation seal, all three repository workflows must run once more on the exact final PR head before merge.
