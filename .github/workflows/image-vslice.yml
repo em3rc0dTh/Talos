@@ -45,6 +45,11 @@ on:
       - '.github/workflows/image-vslice.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   image-edge:
     runs-on: ubuntu-latest
@@ -102,6 +107,12 @@ jobs:
 
       - name: Run R1 product regression gates
         working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && '1' || '0' }}
+          R1_08_GITHUB_REPOSITORY: ${{ github.repository }}
+          R1_08_GITHUB_TOKEN: ${{ github.token }}
+          R1_08_GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          R1_08_GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
         run: node --experimental-strip-types --test ./tests/r1-*.test.ts
 
       - name: Run I5A-01 source-agnostic confirmation gate
