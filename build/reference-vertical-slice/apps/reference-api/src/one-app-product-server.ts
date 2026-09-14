@@ -74,6 +74,9 @@ async function proxy(
  * R1-04 injects the explicit business-process confirmation surface here. The
  * extension can only call the existing /api/bpmn/confirm authority boundary; it
  * does not create an alternate confirmation, freeze, deployment or execution path.
+ *
+ * R1-00 cumulative certification seal: this comment changes no behavior; it exists
+ * only to force Image, Temporal-runtime and restart-safety CI on the final PR head.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
