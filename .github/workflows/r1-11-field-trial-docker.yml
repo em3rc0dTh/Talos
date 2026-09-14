@@ -1,0 +1,81 @@
+name: R1-11 local field-trial Docker
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile.field-trial
+      - docker-compose.field-trial.yml
+      - .dockerignore
+      - FIELD-TRIAL-LOCAL.md
+      - build/reference-vertical-slice/apps/reference-api/src/field-trial-product-server.ts
+      - build/reference-vertical-slice/tests/r1-11-local-field-trial-docker.test.ts
+      - .github/workflows/r1-11-field-trial-docker.yml
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile.field-trial
+      - docker-compose.field-trial.yml
+      - .dockerignore
+      - FIELD-TRIAL-LOCAL.md
+      - build/reference-vertical-slice/apps/reference-api/src/field-trial-product-server.ts
+      - build/reference-vertical-slice/tests/r1-11-local-field-trial-docker.test.ts
+      - .github/workflows/r1-11-field-trial-docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docker-field-trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Compose contract
+        run: docker compose -f docker-compose.field-trial.yml config
+
+      - name: Build Talos field-trial image
+        run: docker compose -f docker-compose.field-trial.yml build talos
+
+      - name: Start Temporal and Talos
+        run: docker compose -f docker-compose.field-trial.yml up -d temporal talos
+
+      - name: Wait for Talos product
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:8787/api/status >/tmp/talos-status.json; then
+              cat /tmp/talos-status.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f docker-compose.field-trial.yml logs --no-color temporal talos
+          exit 1
+
+      - name: Verify trusted local executor wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const status = JSON.parse(fs.readFileSync('/tmp/talos-status.json', 'utf8'));
+          if (status.status !== 'READY') throw new Error(`Talos status is ${status.status}`);
+          if (status.deploymentAttemptExecutorConfigured !== true) throw new Error('Local deployment executor is not configured');
+          if (status.workflowExecutionExecutorConfigured !== true) throw new Error('Local workflow executor is not configured');
+          if (status.automaticDeploymentAttemptAuthorized !== false) throw new Error('Docker host must not auto-authorize deployment');
+          if (status.automaticWorkflowExecutionAuthorized !== false) throw new Error('Docker host must not auto-authorize workflow execution');
+          NODE
+          curl --fail --silent --show-error http://127.0.0.1:8787/ >/tmp/talos-product.html
+          grep -q 'TALOS' /tmp/talos-product.html
+
+      - name: Show stack logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.field-trial.yml logs --no-color temporal talos
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.field-trial.yml down -v --remove-orphans
