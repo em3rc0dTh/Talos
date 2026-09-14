@@ -10,6 +10,7 @@ import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
 import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authority-extension.ts';
+import { renderR110ProductShellPage } from './one-app-r1-10-product-shell-extension.ts';
 import {
   buildTalosProductRecoverySnapshot,
   ensureTalosProductRuntimeCompatibility,
@@ -90,6 +91,8 @@ async function proxy(
  * R1-09 adds a versioned product runtime contract and read-only durable recovery
  * reconstruction. Restart never resurrects consumed/in-memory authority implicitly;
  * recovery identifies the last durable gate and the next safe explicit action.
+ * R1-10 consolidates navigation, authority state, durable history and safe recovery
+ * guidance into the primary product surface. Raw JSON remains debug-only evidence.
  *
  * R1-07 is injected before the R1-06 script so it can observe the exact
  * ExecutionPlan-review response without adding a duplicate review/read path. Its UI
@@ -118,7 +121,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const withConfirmation = renderR104BusinessConfirmationPage(ONE_APP_PRODUCT_PAGE);
         const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
-        const productPage = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
+        const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
+        const productPage = renderR110ProductShellPage(withExecutionPlan);
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'content-length': Buffer.byteLength(productPage),
