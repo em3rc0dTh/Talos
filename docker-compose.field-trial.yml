@@ -1,0 +1,40 @@
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    ports:
+      - "17233:7233"
+      - "18233:8233"
+    restart: unless-stopped
+
+  talos:
+    build:
+      context: .
+      dockerfile: Dockerfile.field-trial
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8787
+      - TALOS_RUNTIME_DIR=/data/talos-runtime
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TALOS_IMAGE_PERCEPTION_PROVIDER_URL
+      - TALOS_IMAGE_PERCEPTION_PROVIDER_ID
+      - TALOS_IMAGE_PERCEPTION_PROVIDER_VERSION
+      - TALOS_IMAGE_PERCEPTION_MODEL_REF
+      - TALOS_IMAGE_PERCEPTION_MODEL_VERSION
+      - TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION
+      - TALOS_IMAGE_PERCEPTION_TIMEOUT_MS
+      - TALOS_IMAGE_PERCEPTION_BEARER_TOKEN
+      - TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS
+      - TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE
+    ports:
+      - "8787:8787"
+    depends_on:
+      - temporal
+    volumes:
+      - talos_field_trial_runtime:/data/talos-runtime
+      - ./evidence/field-trials:/workspace/evidence/field-trials
+    restart: unless-stopped
+
+volumes:
+  talos_field_trial_runtime:
