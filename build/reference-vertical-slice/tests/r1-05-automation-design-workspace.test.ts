@@ -51,14 +51,14 @@ test('R1-05 product shell exposes Automation Design but no downstream authority 
   assert.doesNotMatch(R1_05_AUTOMATION_DESIGN_EXTENSION, /\/api\/automation\/execution\/start/);
 });
 
-test('R1-05 product server serves confirmation followed by the Automation Design Workspace', async () => {
+test('R1-05 product server serves client-side confirmation followed by the Automation Design Workspace', async () => {
   const product = await startTalosOneAppProduct({ port: 0 });
   try {
     const response = await fetch(product.baseUrl);
     assert.equal(response.status, 200);
     const html = await response.text();
-    assert.match(html, /id="r104BusinessConfirmation"/);
-    assert.match(html, /id="r105AutomationDesign"/);
+    assert.match(html, /r104BusinessConfirmation/);
+    assert.match(html, /r105AutomationDesign/);
     assert.match(html, /Business-process confirmation required before automation design/);
     assert.match(html, /Binding: NO/);
     assert.match(html, /ExecutionPlan authority: NO/);
@@ -114,7 +114,7 @@ test('R1-05 backend opens design only from the exact confirmed process and creat
 
     const design = opened.body.automationDesign;
     assert.equal(design.workspace.revisionNumber, 1);
-    assert.equal(design.workspace.processRevisionRef, opened.body.handoff.processRevisionId);
+    assert.equal(design.workspace.processRevisionRef, confirmed.body.confirmation.canonicalProcessRevisionId);
     assert.equal(design.workspace.createsBinding, false);
     assert.equal(design.workspace.capabilitySelectionCreated, false);
     assert.equal(design.workspace.bindingAuthorized, false);
