@@ -10,19 +10,19 @@ TALOS is not a BPMN converter, OCR summarizer, n8n clone, Temporal UI, or generi
 
 ## Start here
 
-For the repository reading order and document authority model, read:
+Repository reading order and document authority:
 
 ```text
 DOCUMENTATION-MAP.md
 ```
 
-For current implementation/product progress, read:
+Current product progress:
 
 ```text
 plan/71-R1-CURRENT-STATUS-2026-09-14.md
 ```
 
-For the commercial audit track, read:
+Commercial audit track:
 
 ```text
 COMMERCIAL-AUDIT-START-HERE.md
@@ -85,81 +85,119 @@ PHASE 5 — TEMPORAL EXECUTION MODEL  ✅ CLOSED
 
 ## Reference Vertical Slice — proven bounded baseline
 
-The reference vertical slice remains a regression/proof spine under:
+The reference vertical slice remains the regression/proof spine under:
 
 ```text
 build/reference-vertical-slice/
 ```
 
-It proves the bounded chain from source/canonical review through ExecutionPlan and real local Temporal execution. Its historical B0–B9 closure and test receipts remain valid within their stated scope.
+It preserves the source/canonical/review/ExecutionPlan/Temporal proof chain and remains a bounded regression baseline rather than the product definition itself.
 
-The older `plan/00-TALOS-ROADMAP-v0.31.md` is a **2026-08-19 checkpoint**. Its statement `B10 — NEXT` is not the current repository-wide product gate after later R0/R1 work.
+The older `plan/00-TALOS-ROADMAP-v0.31.md` is a **2026-08-19 historical checkpoint**. Its `B10 — NEXT` statement is not current repository-wide product truth.
 
 ## R0 — Private Technical Preview baseline
 
-Commit history contains the certified Talos v0.1 Private Technical Preview milestone:
+Certified historical baseline:
 
 ```text
 009b266bbfc7d82218ba613bedf1ef14af0159fc
+Talos v0.1 Private Technical Preview
 ```
 
-R0 is a technical-preview/release baseline, not a claim that Talos 1.0 or a commercial product is complete.
+R0 remains a technical-preview baseline, not a Talos 1.0 commercial-readiness claim.
 
 ## R1 — Talos 1.0 Product Completion
 
-The current product program is defined by:
+Gate definition:
 
 ```text
 plan/70-R1-TALOS-1.0-PRODUCT-COMPLETION-PLAN-v0.1.md
 ```
 
-Current reconciled status:
+Latest merged product-completion milestone:
 
 ```text
-R1-01 Truthful source/perception UX                 PARTIAL / ADVANCED
-R1-02 Real arbitrary-input image path in One-App    ✅ CLOSED BY COMMIT EVIDENCE
-R1-03 Process review/correction workspace            ✅ CLOSED BY COMMIT EVIDENCE*
-R1-04 Business-process confirmation                  🟢 NEXT OPEN PRODUCT GATE
-R1-05 Automation Design Workspace                    ⚪ OPEN
-R1-06 ExecutionPlan review + automation approval     ⚪ OPEN
-R1-07 Runtime/deployment/execution authority          ⚪ OPEN
-R1-08 Real capability effect from full product path  ⚪ OPEN
-R1-09 Durability/restart/upgrade behavior             ⚪ OPEN
-R1-10 Product UX consolidation                       ⚪ OPEN
-R1-11 Real field trials                              ⚪ OPEN
-R1-12 Talos 1.0 exact-SHA certification              ⚪ OPEN
+19057ff91f1661cd2bc4f62e86587ab05b41b859
+R1-06→R1-10 — Talos 1.0 product completion
 ```
 
-Evidence anchors:
+The merge follows a green PR-head/merge-state envelope for Image, B7–B9, B10 and the R0 release regressions. R1-08 also executed the complete One-App → Temporal → real GitHub external-effect path and proved fresh-Worker deduplication rather than duplicate effect creation.
+
+Current R1 truth:
 
 ```text
-R1-02  81a62d395d2c6857924df543b99ecd60c1f42114
-R1-03  b37f754033c6252e6041d1ca25a299419320cd07
+R1-00 Prerequisite/product baseline                     ✅ CERTIFIED
+R1-01 Truthful source/perception UX                    ✅ CERTIFIED IN R1 BASELINE
+R1-02 Real arbitrary-input image path in One-App       ✅ CLOSED
+R1-03 Process review/correction workspace               ✅ CLOSED
+R1-04 Business-process confirmation                     ✅ CLOSED
+R1-05 Automation Design Workspace                       ✅ CLOSED
+R1-06 ExecutionPlan review + automation approval        ✅ CLOSED / MERGED
+R1-07 Runtime/deployment/execution authority             ✅ CLOSED / MERGED
+R1-08 Real capability effect from full product path     ✅ CLOSED / REAL EFFECT PROVEN
+R1-09 Durability/restart/upgrade behavior                ✅ CLOSED / MERGED
+R1-10 Product UX consolidation                          ✅ CLOSED / MERGED
+R1-11 Real field trials                                 ⛔ EXTERNAL EVIDENCE REQUIRED
+R1-12 Talos 1.0 exact-SHA certification                 ⛔ BLOCKED BY R1-11
 ```
 
-`*` R1-03's commit explicitly records a hosted-Actions caveat on the final head. The repository does **not** silently convert that caveat into a fresh green-CI claim. See `plan/71-R1-CURRENT-STATUS-2026-09-14.md`.
-
-# What exists in the product path today
-
-Current repository evidence supports an emerging One-App path with:
+The remaining Talos 1.0 blocker is no longer an unimplemented product path. It is the evidence requirement defined by:
 
 ```text
-real process image intake
+plan/72-R1-11-FIELD-TRIAL-PROTOCOL-v0.1.md
+evidence/field-trials/README.md
+```
+
+R1-11 requires two qualifying field trials across two distinct real processes with a participant external to the Talos implementation team for each trial. Fixtures, quarries, CI, developer smoke tests and LLM-authored substitutes do not count.
+
+The final release gate is prepared by:
+
+```text
+plan/73-R1-12-TALOS-1.0-RELEASE-CERTIFICATION-v0.1.md
+.github/workflows/r1-12-talos-1-release-certification.yml
+```
+
+R1-12 refuses to certify unless the checked-out SHA is exactly the current merged `main` SHA and R1-11 already reports PASS.
+
+# Product path now implemented
+
+The One-App product path now reaches the complete governed execution chain:
+
+```text
+real source input
 → exact source preservation
-→ configured perception/evidence path
-→ inferred process candidate
-→ validation/questions
-→ end-user review
-→ governed correction/new revision
+→ source-aware perception / parsing
+→ common evidence
+→ inferred Canonical process
+→ validation / uncertainty
+→ human review / correction
+→ explicit business-process confirmation
+→ automation-design handoff
+→ capability/integration decisions
+→ explicit selection + binding
+→ ExecutionPlan review
+→ explicit automation approval
+→ Temporal mapping
+→ explicit RuntimePolicy
+→ deployment design
+→ environment realization
+→ explicit deployment approval
+→ deployment attempt
+→ explicit workflow execution approval
+→ Temporal execution
+→ real external effect
+→ durable execution evidence
+→ restart/recovery history
 ```
 
-The downstream Talos 1.0 product path remains gated by explicit confirmation, automation approval, deployment authority and execution authority. No earlier approval substitutes for a later one.
+No earlier authority substitutes for a later one. Restart recovery reconstructs durable evidence but does not resurrect consumed or memory-only authority automatically.
 
 # What is not yet allowed to claim
 
+Until R1-11 and R1-12 close:
+
 ```text
 Talos 1.0 PRODUCT READY                 NO
-complete end-user source→execution UX   NO
 design-partner ready                    NOT CERTIFIED
 paid-pilot ready                        NOT CERTIFIED
 multi-customer repeatability            NOT PROVEN
@@ -167,11 +205,9 @@ commercial product-market fit           NOT PROVEN
 scale readiness                         NOT EVALUATED
 ```
 
-Production/customer boundaries such as complete IAM/authorization, customer isolation, production secrets/deployment, broader provider coverage and field-trial evidence must be closed by the relevant R1/commercial gates rather than assumed from the reference slice.
+The product-completion proof also does not automatically certify complete enterprise IAM, all customer-isolation models, every production secret/deployment topology, every provider, or every possible external integration. Those claims require their own evidence.
 
-# Reference version quick run
-
-The bounded reference slice can still be run locally:
+# Run locally
 
 ```bash
 cd build/reference-vertical-slice
@@ -185,7 +221,7 @@ Then open:
 http://127.0.0.1:8787
 ```
 
-Reference requirements and detailed behavior remain documented in:
+Reference behavior remains documented in:
 
 ```text
 build/reference-vertical-slice/TRY-ME.md
@@ -193,13 +229,14 @@ build/reference-vertical-slice/TRY-ME.md
 
 # Evidence discipline
 
-Talos documentation uses the following non-equivalences:
+Talos documentation uses these non-equivalences:
 
 ```text
 PLAN != IMPLEMENTATION
 IMPLEMENTATION != CERTIFICATION
 TECHNICAL PROOF != CUSTOMER VALUE PROOF
-INTERNAL TEST != WILLINGNESS TO PAY
+INTERNAL TEST != FIELD TRIAL
+FIELD TRIAL != PRODUCT-MARKET FIT
 ONE REFERENCE VERTICAL != MARKET REPEATABILITY
 ONE CUSTOMER != PRODUCT-MARKET FIT
 ```
@@ -213,6 +250,8 @@ Historical sources remain preserved; they do not silently override newer reposit
 ```text
 plan/70-R1-TALOS-1.0-PRODUCT-COMPLETION-PLAN-v0.1.md
 plan/71-R1-CURRENT-STATUS-2026-09-14.md
+plan/72-R1-11-FIELD-TRIAL-PROTOCOL-v0.1.md
+plan/73-R1-12-TALOS-1.0-RELEASE-CERTIFICATION-v0.1.md
 ```
 
 ## Commercial audit
