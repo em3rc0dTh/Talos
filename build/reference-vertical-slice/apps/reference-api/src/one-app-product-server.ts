@@ -6,6 +6,7 @@ import {
   type TalosOneAppOptions,
 } from './one-app-server.ts';
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
+import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
 
 export interface TalosOneAppProductOptions {
   port?: number;
@@ -69,6 +70,10 @@ async function proxy(
  * Canonical review state and all later authority transitions continue to live in
  * startTalosOneApp. Keeping the browser shell outside that authority service
  * prevents UI convenience code from becoming an alternate execution path.
+ *
+ * R1-04 injects the explicit business-process confirmation surface here. The
+ * extension can only call the existing /api/bpmn/confirm authority boundary; it
+ * does not create an alternate confirmation, freeze, deployment or execution path.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
@@ -82,13 +87,14 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
     try {
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
       if (req.method === 'GET' && url.pathname === '/') {
+        const productPage = renderR104BusinessConfirmationPage(ONE_APP_PRODUCT_PAGE);
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
-          'content-length': Buffer.byteLength(ONE_APP_PRODUCT_PAGE),
+          'content-length': Buffer.byteLength(productPage),
           'cache-control': 'no-store',
           'x-content-type-options': 'nosniff',
         });
-        res.end(ONE_APP_PRODUCT_PAGE);
+        res.end(productPage);
         return;
       }
       if (url.pathname.startsWith('/api/')) {
