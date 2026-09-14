@@ -88,7 +88,7 @@ test('R1-04 confirmation pins the exact BPMN and Canonical revisions and grants 
       confirmedBy: 'r1-04-business-owner',
       authorityRef: 'authority:r1-04:mismatch-must-fail',
     });
-    assert.equal(mismatchedResponse.status, 400);
+    assert.equal(mismatchedResponse.status, 409, 'canonical revision mismatch is an authority/version conflict');
 
     const confirmationResponse = await post(app.baseUrl, '/api/bpmn/confirm', {
       revisionId,
