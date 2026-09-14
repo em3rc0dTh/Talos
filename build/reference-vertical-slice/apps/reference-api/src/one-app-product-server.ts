@@ -10,6 +10,10 @@ import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
 import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authority-extension.ts';
+import {
+  buildTalosProductRecoverySnapshot,
+  ensureTalosProductRuntimeCompatibility,
+} from './product-runtime-recovery.ts';
 
 export interface TalosOneAppProductOptions {
   port?: number;
@@ -83,6 +87,9 @@ async function proxy(
  * Temporal mapping -> explicit RuntimePolicy -> deployment design -> environment
  * realization -> deployment approval -> deployment attempt -> workflow execution
  * approval -> one workflow start.
+ * R1-09 adds a versioned product runtime contract and read-only durable recovery
+ * reconstruction. Restart never resurrects consumed/in-memory authority implicitly;
+ * recovery identifies the last durable gate and the next safe explicit action.
  *
  * R1-07 is injected before the R1-06 script so it can observe the exact
  * ExecutionPlan-review response without adding a duplicate review/read path. Its UI
@@ -91,11 +98,18 @@ async function proxy(
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
+  if (options.oneApp?.runtimeDir) ensureTalosProductRuntimeCompatibility(options.oneApp.runtimeDir);
   const inner = await startTalosOneApp({
     ...(options.oneApp ?? {}),
     host: '127.0.0.1',
     port: 0,
   });
+  try {
+    ensureTalosProductRuntimeCompatibility(inner.runtimeDir);
+  } catch (error) {
+    await inner.close();
+    throw error;
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -112,6 +126,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
           'x-content-type-options': 'nosniff',
         });
         res.end(productPage);
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/product/recovery') {
+        json(res, 200, buildTalosProductRecoverySnapshot(inner.runtimeDir));
         return;
       }
       if (url.pathname.startsWith('/api/')) {
