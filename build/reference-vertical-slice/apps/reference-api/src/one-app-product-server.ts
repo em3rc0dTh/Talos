@@ -77,6 +77,9 @@ async function proxy(
  * plus append-only suggestion decisions. R1-05 deliberately does not expose
  * capability selection, ExecutionPlan review, automation approval, deployment, or
  * workflow-execution actions.
+ *
+ * R1-05 final-head certification seal: this comment changes no behavior; it exists
+ * only to force Image, Temporal-runtime and restart-safety CI on the exact PR head.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
