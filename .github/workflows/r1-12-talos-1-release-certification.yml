@@ -1,0 +1,128 @@
+name: R1-12 Talos 1.0 exact-SHA certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact merged-main SHA to certify
+        required: true
+        type: string
+      external_effect_issue_number:
+        description: GitHub issue used as the real external-effect evidence sink
+        required: true
+        default: '59'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: talos-r1-12-${{ inputs.expected_sha }}
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: exact-SHA product certification
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact requested SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 1
+
+      - name: Verify exact SHA is current merged main
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          HEAD_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          EXPECTED_SHA='${{ inputs.expected_sha }}'
+          test "$HEAD_SHA" = "$EXPECTED_SHA"
+          test "$HEAD_SHA" = "$MAIN_SHA"
+          echo "exact_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "Certified candidate: $HEAD_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Clean install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+
+      - name: Gate R1-11 real field trials
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types ./scripts/r1-11-field-trial-gate.ts ../../evidence/field-trials
+
+      - name: Verify architecture and frozen invariants
+        working-directory: build/reference-vertical-slice
+        run: |
+          npm run architecture:verify
+          npm run b0:verify
+
+      - name: Run full B1-B9 semantic/runtime verification
+        working-directory: build/reference-vertical-slice
+        run: npm run b9:verify
+
+      - name: Run B10 same-build restart verification
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
+
+      - name: Run complete image/source verification chain
+        working-directory: build/reference-vertical-slice
+        run: |
+          npm run image:i7c06:verify
+          npm run image:edge:test
+
+      - name: Run R1 product suite with real external effect
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: '1'
+          R1_08_GITHUB_REPOSITORY: ${{ github.repository }}
+          R1_08_GITHUB_TOKEN: ${{ github.token }}
+          R1_08_GITHUB_HEAD_SHA: ${{ steps.sha.outputs.exact_sha }}
+          R1_08_GITHUB_PR_NUMBER: ${{ inputs.external_effect_issue_number }}
+        run: node --experimental-strip-types --test ./tests/r1-*.test.ts
+
+      - name: Generate immutable R1-12 release receipt
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_12_EXACT_SHA: ${{ steps.sha.outputs.exact_sha }}
+          R1_12_MAIN_SHA: ${{ steps.sha.outputs.main_sha }}
+          R1_12_EXTERNAL_EFFECT_ISSUE_NUMBER: ${{ inputs.external_effect_issue_number }}
+          R1_12_RECEIPT_PATH: ${{ runner.temp }}/talos-r1-12-release-receipt.json
+          R1_11_FIELD_TRIAL_DIRECTORY: ${{ github.workspace }}/evidence/field-trials
+        run: node --experimental-strip-types ./scripts/r1-12-release-receipt.ts
+
+      - name: Publish exact-SHA receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-r1-12-release-receipt-${{ steps.sha.outputs.exact_sha }}
+          path: ${{ runner.temp }}/talos-r1-12-release-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Record certification summary
+        shell: bash
+        run: |
+          {
+            echo '## Talos 1.0 R1-12 exact-SHA certification'
+            echo
+            echo '- Status: **PASS**'
+            echo '- Exact merged-main SHA: `${{ steps.sha.outputs.exact_sha }}`'
+            echo '- R1-11: **PASS required and verified before certification**'
+            echo '- External-effect sink: issue #${{ inputs.external_effect_issue_number }}'
+            echo '- Receipt: uploaded as a workflow artifact'
+            echo
+            echo 'This authorizes the Talos 1.0 PRODUCT READY claim for the exact certified SHA only; it does not prove product-market fit or scale readiness.'
+          } >> "$GITHUB_STEP_SUMMARY"
