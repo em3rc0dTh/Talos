@@ -9,6 +9,7 @@ import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
+import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authority-extension.ts';
 
 export interface TalosOneAppProductOptions {
   port?: number;
@@ -77,8 +78,16 @@ async function proxy(
  * R1-05 consumes the exact confirmation and exposes Automation Design only.
  * R1-06 consumes the exact Automation Design workspace, records explicit capability
  * selection/binding, renders the resulting ExecutionPlan, and permits one explicit
- * automation approval pinned to the exact plan. R1-06 authorizes Temporal design
- * only; RuntimePolicy, deployment and workflow execution remain separate gates.
+ * automation approval pinned to the exact plan.
+ * R1-07 exposes every later authority transition as a separate operator action:
+ * Temporal mapping -> explicit RuntimePolicy -> deployment design -> environment
+ * realization -> deployment approval -> deployment attempt -> workflow execution
+ * approval -> one workflow start.
+ *
+ * R1-07 is injected before the R1-06 script so it can observe the exact
+ * ExecutionPlan-review response without adding a duplicate review/read path. Its UI
+ * installs on the next event-loop turn, after R1-06, so product order remains R1-06
+ * then R1-07 for the operator.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
@@ -94,7 +103,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       if (req.method === 'GET' && url.pathname === '/') {
         const withConfirmation = renderR104BusinessConfirmationPage(ONE_APP_PRODUCT_PAGE);
         const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
-        const productPage = renderR106ExecutionPlanPage(withAutomationDesign);
+        const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
+        const productPage = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'content-length': Buffer.byteLength(productPage),
