@@ -1,12 +1,15 @@
 # R1-04 — Business-Process Confirmation v0.1
 
-Status: IMPLEMENTED / CI CERTIFICATION PENDING
+Status: CLOSED / CI CERTIFIED
+Certified implementation head: `23d69fc0cde0505354dd9baf0558077d43932a0f`
+Certification date: 2026-09-14
+PR: #55
 
 ## Purpose
 
 R1-04 turns the reviewed process produced by R1-03 into an explicit human-confirmed business-process revision without granting any later automation, deployment, or execution authority.
 
-The product must preserve the authority chain:
+The product preserves the authority chain:
 
 `SOURCE → PERCEPTION / IMPORT → REVIEWED MEANING → BUSINESS CONFIRMATION → later independent authorities`
 
@@ -30,7 +33,7 @@ R1-04 does not introduce a second confirmation engine. The product shell calls t
 
 `POST /api/bpmn/confirm`
 
-That backend already requires:
+That backend requires:
 
 - an exact BPMN revision;
 - an exact reconciled Canonical ProcessRevision;
@@ -46,9 +49,11 @@ For native BPMN, the confirmation record is append-only and the BPMN payload rem
 
 ## Stale-safety boundary
 
-R1-03 already owns corrected-review stale safety. When a correction creates a new review head, the previous active binding is retired. The old revision remains inspectable as history but cannot be edited or confirmed through the One-App active authority path.
+R1-03 owns corrected-review stale safety. When a correction creates a new review head, the previous active binding is retired. The old revision remains inspectable as history but cannot be edited or confirmed through the One-App active authority path.
 
-R1-04 must preserve that contract and must not create a bypass.
+R1-04 preserves that contract and creates no bypass.
+
+A mismatched Canonical ProcessRevision is rejected as HTTP `409 Conflict`, which is the certified authority/version-conflict behavior.
 
 ## Product surface
 
@@ -76,16 +81,22 @@ After a successful confirmation the product session locks BPMN correction contro
 
 R1-04 does not implement R1-05 Automation Design Workspace. It does not create capability selections, ExecutionPlans, Temporal policies, deployments, workers or workflow starts.
 
-## Acceptance criteria
+## Acceptance criteria — CLOSED
 
-R1-04 is CLOSED only when all of the following are true:
+1. The One-App product page visibly exposes explicit business-process confirmation. ✅
+2. Confirmation calls the existing `/api/bpmn/confirm` authority boundary. ✅
+3. A mismatched Canonical ProcessRevision is rejected with `409 Conflict`. ✅
+4. A confirmed native BPMN revision cannot be confirmed a second time. ✅
+5. Confirmation returns a `BusinessProcessConfirmationRecord` pinned to the exact BPMN and Canonical revisions. ✅
+6. The response keeps `automaticAutomationDesignAuthorized=false` and `automaticExecutionAuthorized=false`. ✅
+7. The R1 regression suite passes in repository CI. ✅
 
-1. The One-App product page visibly exposes explicit business-process confirmation.
-2. Confirmation calls the existing `/api/bpmn/confirm` authority boundary.
-3. A mismatched Canonical ProcessRevision is rejected.
-4. A confirmed native BPMN revision cannot be confirmed a second time.
-5. Confirmation returns a `BusinessProcessConfirmationRecord` pinned to the exact BPMN and Canonical revisions.
-6. The response keeps `automaticAutomationDesignAuthorized=false` and `automaticExecutionAuthorized=false`.
-7. The R1 regression suite passes in repository CI.
+## Certification evidence
 
-Until criterion 7 is verified, implementation is present but the R1-04 gate remains certification-pending.
+The exact implementation head `23d69fc0cde0505354dd9baf0558077d43932a0f` passed:
+
+- Image vertical slice #712 — SUCCESS, including R1 product regression and the complete B2/B3/B4 + I0–I7C/current-image chain;
+- B7–B9 Temporal reference runtime #921 — SUCCESS;
+- B10 Restart safety #563 — SUCCESS.
+
+R1-04 is therefore closed. The next product gate is R1-05 — Automation Design Workspace, which remains a separate authority and product stage.
