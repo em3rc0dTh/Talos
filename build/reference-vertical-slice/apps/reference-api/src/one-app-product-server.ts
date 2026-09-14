@@ -47,6 +47,24 @@ function json(res: http.ServerResponse, status: number, payload: unknown): void 
   res.end(body);
 }
 
+function normalizeProductApiResponse(pathname: string, contentType: string, bytes: Buffer): Buffer {
+  if (!contentType.includes('application/json')) return bytes;
+  if (pathname !== '/api/automation/deployment/approve' && pathname !== '/api/automation/execution/approve') return bytes;
+  try {
+    const parsed = JSON.parse(bytes.toString('utf8')) as Record<string, any>;
+    if (pathname === '/api/automation/deployment/approve' && parsed.deploymentApproval) {
+      parsed.authorizedAttemptCount = parsed.deploymentApproval.authorizedAttemptCount;
+    }
+    if (pathname === '/api/automation/execution/approve' && parsed.workflowExecutionApproval) {
+      parsed.workflowExecutionAuthorized = parsed.workflowExecutionApproval.createsWorkflowExecutionAuthority === true;
+      parsed.authorizedWorkflowStartCount = parsed.workflowExecutionApproval.authorizedWorkflowStartCount;
+    }
+    return Buffer.from(JSON.stringify(parsed));
+  } catch {
+    return bytes;
+  }
+}
+
 async function proxy(
   innerBaseUrl: string,
   req: http.IncomingMessage,
@@ -62,9 +80,11 @@ async function proxy(
     headers,
     ...(body === undefined ? {} : { body }),
   });
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const responseContentType = response.headers.get('content-type') ?? 'application/json; charset=utf-8';
+  let bytes = Buffer.from(await response.arrayBuffer());
+  if (response.ok) bytes = normalizeProductApiResponse(url.pathname, responseContentType, bytes);
   res.writeHead(response.status, {
-    'content-type': response.headers.get('content-type') ?? 'application/json; charset=utf-8',
+    'content-type': responseContentType,
     'content-length': bytes.byteLength,
     'cache-control': 'no-store',
   });
@@ -78,6 +98,10 @@ async function proxy(
  * Canonical review state and all later authority transitions continue to live in
  * startTalosOneApp. Keeping the browser shell outside that authority service
  * prevents UI convenience code from becoming an alternate execution path.
+ *
+ * Product-only proxy aliases expose single-use authority counts at the top level for
+ * the browser stepper while preserving the canonical nested approval records from
+ * the One-App authority service unchanged.
  *
  * R1-04 injects explicit business-process confirmation.
  * R1-05 consumes the exact confirmation and exposes Automation Design only.
