@@ -102,8 +102,8 @@ test('R1-06 product surface exposes explicit capability selection, ExecutionPlan
   const app = await startTalosOneAppProduct({ port: 0, oneApp: { imagePerceptionEnv: {} } });
   try {
     const html = await fetch(app.baseUrl).then((response) => response.text());
-    assert.match(html, /id="r105AutomationDesign"/);
-    assert.match(html, /id="r106ExecutionPlan"/);
+    assert.match(html, /box\.id='r105AutomationDesign'/);
+    assert.match(html, /panel\.id='r106ExecutionPlan'/);
     assert.match(html, /Select & bind capabilities/);
     assert.match(html, /Review ExecutionPlan/);
     assert.match(html, /Approve exact ExecutionPlan/);
