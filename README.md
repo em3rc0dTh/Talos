@@ -6,7 +6,27 @@ TALOS is a source-aware process-intelligence and durable-execution system. Its r
 
 > **TALOS is the semantic guard between heterogeneous business-process expression and durable machine execution.**
 
-TALOS is not a BPMN converter, OCR summarizer, n8n clone, Temporal UI, or low-code diagrammer.
+TALOS is not a BPMN converter, OCR summarizer, n8n clone, Temporal UI, or generic low-code diagrammer.
+
+## Start here
+
+For the repository reading order and document authority model, read:
+
+```text
+DOCUMENTATION-MAP.md
+```
+
+For current implementation/product progress, read:
+
+```text
+plan/71-R1-CURRENT-STATUS-2026-09-14.md
+```
+
+For the commercial audit track, read:
+
+```text
+COMMERCIAL-AUDIT-START-HERE.md
+```
 
 # Architecture
 
@@ -51,7 +71,9 @@ Temporal retry != idempotency guarantee
 DeploymentRevision != Attempt != Observation != WorkflowExecution
 ```
 
-# Design / architecture status
+# Current technical status — 2026-09-14
+
+## Architecture foundation
 
 ```text
 PHASE 1 — CANONICAL SEMANTICS       ✅ CLOSED
@@ -61,52 +83,97 @@ PHASE 4 — CAPABILITY MODEL          ✅ CLOSED
 PHASE 5 — TEMPORAL EXECUTION MODEL  ✅ CLOSED
 ```
 
-# Phase 6 — Reference Vertical Slice
+## Reference Vertical Slice — proven bounded baseline
 
-Bounded BUILD authorization applies only to:
+The reference vertical slice remains a regression/proof spine under:
 
 ```text
 build/reference-vertical-slice/
 ```
 
-Broad product BUILD remains closed.
+It proves the bounded chain from source/canonical review through ExecutionPlan and real local Temporal execution. Its historical B0–B9 closure and test receipts remain valid within their stated scope.
 
-## Current BUILD state
+The older `plan/00-TALOS-ROADMAP-v0.31.md` is a **2026-08-19 checkpoint**. Its statement `B10 — NEXT` is not the current repository-wide product gate after later R0/R1 work.
 
-```text
-B0 Contract manifest / boundaries                 ✅ CLOSED
-B1 IDs / deterministic JSON / SQLite              ✅ CLOSED
-B2 Canvas / Source / Intake                       ✅ CLOSED — 25/25
-B3 Canonical / Provenance / Validation            ✅ CLOSED — 27/27
-B4 Explanation / Review / Correction / Freeze     ✅ CLOSED — 13/13
-B5 Capability / Human / Form / Binding             ✅ CLOSED — 12/12
-B6 Execution / Mapping / Policy / Deployment      ✅ CLOSED — 14/14
-B7 Temporal Worker / Reference Provider            ✅ CLOSED
-B8 Minimal Reference API / Browser UI              ✅ CLOSED
-B9 Actual Temporal E2E / Server Evidence           ✅ CLOSED
-B10 Failure / Restart / Full Lineage Hardening     🟢 NEXT
-```
+## R0 — Private Technical Preview baseline
 
-Prior B2→B5 regression remains:
+Commit history contains the certified Talos v0.1 Private Technical Preview milestone:
 
 ```text
-77 / 77 PASS
+009b266bbfc7d82218ba613bedf1ef14af0159fc
 ```
 
-# First tryable version
+R0 is a technical-preview/release baseline, not a claim that Talos 1.0 or a commercial product is complete.
 
-> **TALOS Reference Vertical Slice v0.1 is now tryable.**
+## R1 — Talos 1.0 Product Completion
 
-Run guide:
+The current product program is defined by:
 
 ```text
-build/reference-vertical-slice/TRY-ME.md
+plan/70-R1-TALOS-1.0-PRODUCT-COMPLETION-PLAN-v0.1.md
 ```
 
-Quick start:
+Current reconciled status:
+
+```text
+R1-01 Truthful source/perception UX                 PARTIAL / ADVANCED
+R1-02 Real arbitrary-input image path in One-App    ✅ CLOSED BY COMMIT EVIDENCE
+R1-03 Process review/correction workspace            ✅ CLOSED BY COMMIT EVIDENCE*
+R1-04 Business-process confirmation                  🟢 NEXT OPEN PRODUCT GATE
+R1-05 Automation Design Workspace                    ⚪ OPEN
+R1-06 ExecutionPlan review + automation approval     ⚪ OPEN
+R1-07 Runtime/deployment/execution authority          ⚪ OPEN
+R1-08 Real capability effect from full product path  ⚪ OPEN
+R1-09 Durability/restart/upgrade behavior             ⚪ OPEN
+R1-10 Product UX consolidation                       ⚪ OPEN
+R1-11 Real field trials                              ⚪ OPEN
+R1-12 Talos 1.0 exact-SHA certification              ⚪ OPEN
+```
+
+Evidence anchors:
+
+```text
+R1-02  81a62d395d2c6857924df543b99ecd60c1f42114
+R1-03  b37f754033c6252e6041d1ca25a299419320cd07
+```
+
+`*` R1-03's commit explicitly records a hosted-Actions caveat on the final head. The repository does **not** silently convert that caveat into a fresh green-CI claim. See `plan/71-R1-CURRENT-STATUS-2026-09-14.md`.
+
+# What exists in the product path today
+
+Current repository evidence supports an emerging One-App path with:
+
+```text
+real process image intake
+→ exact source preservation
+→ configured perception/evidence path
+→ inferred process candidate
+→ validation/questions
+→ end-user review
+→ governed correction/new revision
+```
+
+The downstream Talos 1.0 product path remains gated by explicit confirmation, automation approval, deployment authority and execution authority. No earlier approval substitutes for a later one.
+
+# What is not yet allowed to claim
+
+```text
+Talos 1.0 PRODUCT READY                 NO
+complete end-user source→execution UX   NO
+design-partner ready                    NOT CERTIFIED
+paid-pilot ready                        NOT CERTIFIED
+multi-customer repeatability            NOT PROVEN
+commercial product-market fit           NOT PROVEN
+scale readiness                         NOT EVALUATED
+```
+
+Production/customer boundaries such as complete IAM/authorization, customer isolation, production secrets/deployment, broader provider coverage and field-trial evidence must be closed by the relevant R1/commercial gates rather than assumed from the reference slice.
+
+# Reference version quick run
+
+The bounded reference slice can still be run locally:
 
 ```bash
-git pull
 cd build/reference-vertical-slice
 npm ci
 npm run demo
@@ -118,174 +185,44 @@ Then open:
 http://127.0.0.1:8787
 ```
 
-Requirements:
-
-- Node.js `>=22.16.0 <23`
-- npm 10.x recommended
-- Internet access on first setup/start so the local Temporal test server can be obtained if not already cached
-
-Docker and Temporal Cloud credentials are not required for this reference version.
-
-# What v0.1 actually runs
-
-Reference source:
+Reference requirements and detailed behavior remain documented in:
 
 ```text
-Request submitted
-        ↓
-Review request [actor = UNKNOWN]
-        ↓
-Approved?
-   ├── YES → Send confirmation email → Completed
-   └── NO  → Rejected
+build/reference-vertical-slice/TRY-ME.md
 ```
 
-The runtime does not begin from a repaired hard-coded process. The app first exercises the Talos semantic chain:
+# Evidence discipline
+
+Talos documentation uses the following non-equivalences:
 
 ```text
-native Canvas actor=UNKNOWN
-→ preserve / adapt
-→ canonical / provenance / validation
-→ SV-ACT-001 + INSUFFICIENT_DETAIL
-→ explicit review correction actor=Manager
-→ new source/canonical/validation history
-→ AUTOMATION_DESIGN_HANDOFF freeze
-→ capability / form / provider binding
-→ ExecutionPlan
-→ TemporalMapping
-→ RuntimePolicy
-→ Deployment design
-→ compiled immutable runtime program
-→ real local Temporal server + Worker
-```
-
-Human review is a real tracked Workflow Update:
-
-```text
-submitReferenceReviewDecision
-```
-
-Current state is exposed through a read-only Workflow Query:
-
-```text
-getReferenceApprovalState
-```
-
-The approved path executes the real reference Activity:
-
-```text
-sendReferenceConfirmation
-```
-
-with the frozen reference policy:
-
-```text
-initialInterval      250ms
-backoffCoefficient   2.0
-maximumInterval      1000ms
-maximumAttempts      3
-startToClose         5000ms
-scheduleToClose      10000ms
-INVALID_REFERENCE_REQUEST = non-retryable
-```
-
-Idempotency:
-
-```text
-sha256(referenceRequestId + ":" + capabilityUseOccurrenceId)
-```
-
-The approved demo intentionally injects one transient provider failure so Temporal must retry while the provider still records exactly one logical effect.
-
-The rejected path schedules no email Activity.
-
-No real email is sent: `REFERENCE_EMAIL_SINK` is TEST_ONLY.
-
-# Exact Temporal runtime
-
-```text
-@temporalio/common    1.22.0
-@temporalio/client    1.22.0
-@temporalio/worker    1.22.0
-@temporalio/workflow  1.22.0
-@temporalio/activity  1.22.0
-@temporalio/testing   1.22.0
-```
-
-The committed npm lock contains real registry resolution and integrity metadata.
-
-# Current evidence
-
-```text
-test/103-B7-B9-TEMPORAL-RUNTIME-CI-RESULT.md                 PASS
-test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md          PASS
-test/105-B7-B8-B9-TRYABLE-REFERENCE-GATE-CLOSURE-v0.1.md    CLOSED
-```
-
-The integrated gate proves:
-
-```text
-npm ci                         ✅
-Temporal lock                  ✅
-architecture boundaries        ✅
-real SDK Activity boundary     ✅
-tryable HTTP/browser app        ✅
-real local Temporal E2E        ✅
-```
-
-# Local persistence
-
-Two physically separate databases are used:
-
-```text
-build/reference-vertical-slice/.runtime/talos-state.sqlite
-build/reference-vertical-slice/.runtime/reference-email-sink.sqlite
-```
-
-The runtime directory is git-ignored.
-
-# Still not authorized
-
-```text
-production BPMN/image/language/n8n adapter implementation
-real Gmail / Drive / SaaS provider integration
-production IAM / credential handling
-production Temporal deployment
-multi-user collaboration expansion
-broad provider/source expansion
-full product visual polish
-```
-
-# Active planning
-
-```text
-plan/00-TALOS-ROADMAP-v0.31.md
-plan/09-REFERENCE-VERTICAL-SLICE-IMPLEMENTATION-PLAN-v0.3.md
-plan/10-REFERENCE-VERTICAL-SLICE-BUILD-AUTHORIZATION-v0.2.md
-```
-
-## Next gate
-
-```text
-B10 — FAILURE / RESTART / FULL LINEAGE HARDENING
-```
-
-But B10 is **not required before the first hands-on run**. The intended next action is to try v0.1, capture what actually happens in use, and then harden the spine from evidence rather than adding more product breadth.
-
-# Commercial audit
-
-The commercial-audit documentation is indexed from:
-
-```text
-COMMERCIAL-AUDIT-START-HERE.md
-```
-
-It preserves the 2026-09-14 audit source, separates repository facts from commercial hypotheses, defines the commercial validation/pilot gates, and tracks the gap between `Framework Works` and a repeatable commercial product.
-
-Commercial documentation must preserve this boundary:
-
-```text
+PLAN != IMPLEMENTATION
+IMPLEMENTATION != CERTIFICATION
 TECHNICAL PROOF != CUSTOMER VALUE PROOF
 INTERNAL TEST != WILLINGNESS TO PAY
 ONE REFERENCE VERTICAL != MARKET REPEATABILITY
+ONE CUSTOMER != PRODUCT-MARKET FIT
 ```
+
+Historical sources remain preserved; they do not silently override newer repository truth.
+
+# Active documentation tracks
+
+## Product completion
+
+```text
+plan/70-R1-TALOS-1.0-PRODUCT-COMPLETION-PLAN-v0.1.md
+plan/71-R1-CURRENT-STATUS-2026-09-14.md
+```
+
+## Commercial audit
+
+```text
+COMMERCIAL-AUDIT-START-HERE.md
+brainstorming/45-BRAINSTORMING-AUDITORIA-ANALISIS-COMERCIAL-TALOS-v0.1.md
+evidence/commercial/01-CURRENT-COMMERCIAL-REPO-RECONCILIATION-2026-09-14.md
+plan/12-COMMERCIAL-VALIDATION-AND-PILOT-PLAN-v0.1.md
+test/106-COMMERCIAL-READINESS-AUDIT-MATRIX-v0.1.md
+```
+
+The commercial track must never weaken the technical truth boundary, and the technical track must never manufacture market evidence.
