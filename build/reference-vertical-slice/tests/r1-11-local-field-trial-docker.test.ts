@@ -10,7 +10,8 @@ const dockerfile = read('Dockerfile.field-trial');
 const compose = read('docker-compose.field-trial.yml');
 const runbook = read('FIELD-TRIAL-LOCAL.md');
 const host = read('build/reference-vertical-slice/apps/reference-api/src/field-trial-product-server.ts');
-const combined = [dockerfile, compose, runbook, host].join('\n');
+const workerRuntime = read('build/reference-vertical-slice/workers/reference-temporal-worker/src/generic-worker-runtime.ts');
+const combined = [dockerfile, compose, runbook, host, workerRuntime].join('\n');
 
 test('R1-11 Docker image serves the dedicated field-trial product host with durable runtime state', () => {
   assert.match(dockerfile, /FROM node:22-/);
@@ -27,15 +28,17 @@ test('R1-11 local stack exposes Temporal on the Windows-safe host ports already 
   assert.match(compose, /17233:7233/);
   assert.match(compose, /18233:8233/);
   assert.match(compose, /TEMPORAL_ADDRESS=temporal:7233/);
-  assert.match(host, /NativeConnection\.connect\(\{ address: temporalAddress \}\)/);
   assert.match(host, /Connection\.connect\(\{ address: temporalAddress \}\)/);
+  assert.match(host, /connectGenericTemporalWorker\(/);
+  assert.doesNotMatch(host, /@temporalio\/worker/);
+  assert.match(workerRuntime, /NativeConnection\.connect\(\{address:options\.address\}\)/);
 });
 
 test('R1-11 field-trial host configures trusted local deployment and workflow executors without bypassing authority gates', () => {
   assert.match(host, /deploymentAttemptExecutor:/);
   assert.match(host, /workflowExecutionExecutor:/);
   assert.match(host, /compileGenericRuntimeProgram/);
-  assert.match(host, /createGenericTemporalWorker/);
+  assert.match(host, /connectGenericTemporalWorker/);
   assert.match(host, /temporalClient\.workflow\.start\(TalosGenericWorkflow/);
   assert.match(host, /does not invent wait durations/);
   assert.doesNotMatch(host, /automaticDeploymentAttemptAuthorized\s*:\s*true/);
