@@ -8,6 +8,7 @@ import {
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
+import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
 
 export interface TalosOneAppProductOptions {
   port?: number;
@@ -72,14 +73,12 @@ async function proxy(
  * startTalosOneApp. Keeping the browser shell outside that authority service
  * prevents UI convenience code from becoming an alternate execution path.
  *
- * R1-04 injects explicit business-process confirmation. R1-05 then consumes the
- * exact confirmation context and exposes the existing Automation Design Workspace
- * plus append-only suggestion decisions. R1-05 deliberately does not expose
- * capability selection, ExecutionPlan review, automation approval, deployment, or
- * workflow-execution actions.
- *
- * R1-05 final-head certification seal: this comment changes no behavior; it exists
- * only to force Image, Temporal-runtime and restart-safety CI on the exact PR head.
+ * R1-04 injects explicit business-process confirmation.
+ * R1-05 consumes the exact confirmation and exposes Automation Design only.
+ * R1-06 consumes the exact Automation Design workspace, records explicit capability
+ * selection/binding, renders the resulting ExecutionPlan, and permits one explicit
+ * automation approval pinned to the exact plan. R1-06 authorizes Temporal design
+ * only; RuntimePolicy, deployment and workflow execution remain separate gates.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
@@ -94,7 +93,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
       if (req.method === 'GET' && url.pathname === '/') {
         const withConfirmation = renderR104BusinessConfirmationPage(ONE_APP_PRODUCT_PAGE);
-        const productPage = renderR105AutomationDesignPage(withConfirmation);
+        const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
+        const productPage = renderR106ExecutionPlanPage(withAutomationDesign);
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'content-length': Buffer.byteLength(productPage),
