@@ -22,9 +22,24 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   function authority(kind){return 'authority:talos-product:r1-05-'+kind+':'+Date.now()}
   function setState(message,kind){var node=byId('r105State');if(!node)return;node.textContent=message;node.className='r105State'+(kind?' '+kind:'')}
   function clearNode(node){while(node&&node.firstChild)node.removeChild(node.firstChild)}
-  function reset(message){confirmation=null;bundle=null;opening=false;var host=byId('r105Workspace');clearNode(host);var open=byId('r105Open');if(open)open.disabled=true;setState(message||'Business-process confirmation required before automation design.','blocked')}
+  function publishInvalidated(reason){window.dispatchEvent(new CustomEvent('talos:r1-05-automation-design-invalidated',{detail:{reason:reason||'Automation Design context invalidated.'}}))}
+  function reset(message){confirmation=null;bundle=null;opening=false;var host=byId('r105Workspace');clearNode(host);var open=byId('r105Open');if(open)open.disabled=true;setState(message||'Business-process confirmation required before automation design.','blocked');publishInvalidated(message)}
   function label(value){return value==null?'—':String(value).replaceAll('_',' ')}
   function pill(text){var node=document.createElement('span');node.className='r105Pill';node.textContent=text;return node}
+
+  function publishWorkspace(next){
+    var workspace=next&&next.workspace;if(!workspace||!workspace.id)return;
+    window.dispatchEvent(new CustomEvent('talos:r1-05-automation-design-updated',{detail:{
+      workspaceId:workspace.id,
+      workspaceRevisionNumber:workspace.revisionNumber,
+      workspaceState:workspace.state,
+      processRevisionRef:workspace.processRevisionRef,
+      capabilityDesignRevisionRef:workspace.capabilityDesignRevisionRef,
+      requirements:Array.isArray(workspace.requirements)?workspace.requirements:[],
+      suggestions:Array.isArray(next.suggestions)?next.suggestions:[],
+      decisions:Array.isArray(next.decisions)?next.decisions:[]
+    }}));
+  }
 
   function renderWorkspace(next){
     bundle=next;
@@ -60,6 +75,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
     });
     var kind=workspace.state==='READY_FOR_EXPLICIT_SELECTION'?'good':'blocked';
     setState(label(workspace.state)+' · no capability binding, ExecutionPlan, deployment or execution authority created.',kind);
+    publishWorkspace(next);
   }
 
   async function openDesign(){

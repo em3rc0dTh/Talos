@@ -93,6 +93,21 @@ export class SqliteDocumentStore implements ImmutableDocumentRepository {
     return rows.map((row) => this.#toDocument<T>(row));
   }
 
+  /**
+   * Read-only recovery/inspection view across every immutable document.
+   *
+   * This does not add a mutable projection table and does not change repository
+   * authority semantics. It exists so the product can reconstruct durable history
+   * after process restart without treating in-memory sessions as truth.
+   */
+  listAll<T = unknown>(): readonly ImmutableDocument<T>[] {
+    const rows = this.#db.prepare(`
+      SELECT id, aggregate_kind, schema_version, payload_json, parent_id, created_at
+      FROM immutable_documents ORDER BY created_at, id
+    `).all() as Record<string, unknown>[];
+    return rows.map((row) => this.#toDocument<T>(row));
+  }
+
   tableNames(): string[] {
     const rows = this.#db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`).all() as Array<{name: string}>;
     return rows.map((row) => row.name);
