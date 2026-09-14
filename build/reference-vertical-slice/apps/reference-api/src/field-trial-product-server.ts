@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 import { Connection, Client } from '@temporalio/client';
-import { NativeConnection } from '@temporalio/worker';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
 import { compileGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-compile-runtime-program.ts';
 import type { CompiledGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
-import { createGenericTemporalWorker } from '../../../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
+import { connectGenericTemporalWorker } from '../../../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
 import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
 
@@ -13,7 +12,7 @@ interface DeployedFieldTrialRuntime {
   namespace: string;
   taskQueue: string;
   program: CompiledGenericRuntimeProgram;
-  workerRuntime: Awaited<ReturnType<typeof createGenericTemporalWorker>>;
+  workerRuntime: Awaited<ReturnType<typeof connectGenericTemporalWorker>>;
   workerRun: Promise<void>;
 }
 
@@ -36,10 +35,6 @@ async function connectWithRetry<T>(label: string, connect: () => Promise<T>): Pr
   throw new Error(`${label} was not reachable after 30 attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
-const workerConnection = await connectWithRetry(
-  `Temporal Worker endpoint ${temporalAddress}`,
-  () => NativeConnection.connect({ address: temporalAddress }),
-);
 const clientConnection = await connectWithRetry(
   `Temporal Client endpoint ${temporalAddress}`,
   () => Connection.connect({ address: temporalAddress }),
@@ -90,8 +85,8 @@ const product = await startTalosOneAppProduct({
       if (deployed.has(deploymentRevisionId)) {
         throw new TypeError('R1-11 local deployment revision already has a running Worker');
       }
-      const workerRuntime = await createGenericTemporalWorker({
-        connection: workerConnection,
+      const workerRuntime = await connectGenericTemporalWorker({
+        address: temporalAddress,
         namespace: temporalNamespace,
         taskQueue,
         identity: `talos-r1-11-${createHash('sha256').update(deploymentRevisionId).digest('hex').slice(0, 12)}`,
@@ -101,7 +96,10 @@ const product = await startTalosOneAppProduct({
         workerRun.then(() => 'STOPPED' as const),
         new Promise<'RUNNING'>((resolve) => setTimeout(() => resolve('RUNNING'), 250)),
       ]);
-      if (startup !== 'RUNNING') throw new TypeError('R1-11 local Temporal Worker stopped during startup');
+      if (startup !== 'RUNNING') {
+        await workerRuntime.connection.close();
+        throw new TypeError('R1-11 local Temporal Worker stopped during startup');
+      }
       deployed.set(deploymentRevisionId, {
         deploymentRevisionId,
         namespace: temporalNamespace,
@@ -176,8 +174,8 @@ async function stop(): Promise<void> {
   await product.close();
   for (const runtime of deployed.values()) runtime.workerRuntime.worker.shutdown();
   await Promise.allSettled([...deployed.values()].map((runtime) => runtime.workerRun));
+  await Promise.allSettled([...deployed.values()].map((runtime) => runtime.workerRuntime.connection.close()));
   await Promise.resolve(clientConnection.close());
-  await Promise.resolve(workerConnection.close());
 }
 
 const onSignal = () => {
