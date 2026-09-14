@@ -14,7 +14,6 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
   var confirmed=false;
 
   function byId(id){return document.getElementById(id)}
-  function text(value){return value==null?'—':String(value)}
   function authority(){return 'authority:talos-product:r1-04-business-process-confirmation:'+Date.now()}
   function state(message,kind){var node=byId('r104ConfirmationState');if(!node)return;node.textContent=message;node.className='r104State'+(kind?' '+kind:'')}
   function truthStep(index,kind,message){var steps=document.querySelectorAll('.truth .truthStep');var node=steps[index];if(!node)return;node.className='truthStep '+kind;var tail=node.childNodes[node.childNodes.length-1];if(tail)tail.textContent=message}
@@ -27,6 +26,14 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
     confirmed=body.revision.state==='CONFIRMED';
     setLocked(confirmed);
     refresh();
+  }
+  function publishConfirmation(body){
+    if(!body||!body.revision||!body.confirmation)return;
+    window.dispatchEvent(new CustomEvent('talos:r1-04-business-process-confirmed',{detail:{
+      revisionId:body.revision.id,
+      canonicalProcessRevisionId:body.confirmation.canonicalProcessRevisionId,
+      confirmationId:body.confirmation.id
+    }}));
   }
   function install(){
     var review=byId('review');
@@ -54,6 +61,7 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
       truthStep(4,'blocked','Separate authority still required');
       state('CONFIRMED · this exact process is locked in this product session. Automation design remains unauthorized.','good');
       var evidence=byId('json');if(evidence)evidence.textContent=JSON.stringify({businessProcessConfirmation:body},null,2);
+      publishConfirmation(body);
     }catch(error){
       confirmed=false;state(error instanceof Error?error.message:String(error),'bad');refresh();
     }
