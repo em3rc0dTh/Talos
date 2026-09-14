@@ -249,7 +249,7 @@ The runtime directory is git-ignored.
 ```text
 production BPMN/image/language/n8n adapter implementation
 real Gmail / Drive / SaaS provider integration
-production IAM / secrets
+production IAM / credential handling
 production Temporal deployment
 multi-user collaboration expansion
 broad provider/source expansion
@@ -271,3 +271,21 @@ B10 — FAILURE / RESTART / FULL LINEAGE HARDENING
 ```
 
 But B10 is **not required before the first hands-on run**. The intended next action is to try v0.1, capture what actually happens in use, and then harden the spine from evidence rather than adding more product breadth.
+
+# Commercial audit
+
+The commercial-audit documentation is indexed from:
+
+```text
+COMMERCIAL-AUDIT-START-HERE.md
+```
+
+It preserves the 2026-09-14 audit source, separates repository facts from commercial hypotheses, defines the commercial validation/pilot gates, and tracks the gap between `Framework Works` and a repeatable commercial product.
+
+Commercial documentation must preserve this boundary:
+
+```text
+TECHNICAL PROOF != CUSTOMER VALUE PROOF
+INTERNAL TEST != WILLINGNESS TO PAY
+ONE REFERENCE VERTICAL != MARKET REPEATABILITY
+```
