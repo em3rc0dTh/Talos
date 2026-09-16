@@ -143,7 +143,7 @@ jobs:
             PORT=8790 \
             OLLAMA_BASE_URL=http://127.0.0.1:11434 \
             OLLAMA_MODEL=qwen2.5vl:7b \
-            OLLAMA_TIMEOUT_MS=90000 \
+            OLLAMA_TIMEOUT_MS=300000 \
             OLLAMA_MAX_ATTEMPTS=1 \
             GEMINI_API_KEY='' \
             node --experimental-strip-types ./apps/reference-api/src/ollama-gemini-perception-gateway.ts \
@@ -182,7 +182,7 @@ jobs:
             TALOS_IMAGE_PERCEPTION_MODEL_REF=router:ollama-primary-gemini-fallback \
             TALOS_IMAGE_PERCEPTION_MODEL_VERSION=r1-11-v1 \
             TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION=talos-r1-11-local-vision-v0.1 \
-            TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=120000 \
+            TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=330000 \
             TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS=MODEL_PROVIDER \
             TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE=MODEL_INFERENCE \
             node --experimental-strip-types ./apps/reference-api/src/one-app-product-server.ts \
