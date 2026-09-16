@@ -71,7 +71,7 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';
     var method=String((init&&init.method)||'GET').toUpperCase();
-    var reviewResult=(path.indexOf('/api/input/image')!==-1&&method==='POST')||(path.indexOf('/api/bpmn/edit')!==-1&&method==='POST')||(path.indexOf('/api/process-review')!==-1&&method==='GET');
+    var reviewResult=(path.indexOf('/api/input/image')!==-1&&method==='POST')||(path.indexOf('/api/input/bpmn')!==-1&&method==='POST')||(path.indexOf('/api/bpmn/edit')!==-1&&method==='POST')||(path.indexOf('/api/process-review')!==-1&&method==='GET');
     return nativeFetch(input,init).then(function(response){
       if(reviewResult&&response.ok){response.clone().json().then(function(body){
         var normalized=body;
