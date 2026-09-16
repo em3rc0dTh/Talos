@@ -75,7 +75,18 @@ A field trial that reaches one of these truthful boundaries is still useful evid
 
 ## BPMN versus image input
 
-Native BPMN works without an external perception provider.
+Native BPMN works without an external perception provider and is available directly in the One-App browser surface:
+
+```text
+Choose BPMN
+→ select a real .bpmn/.xml source
+→ Preserve BPMN
+→ Canonical reconciliation
+→ Process review
+→ explicit business confirmation
+```
+
+For native BPMN, Talos records perception as **not required for structured source**. It does not claim that image perception ran. The BPMN source still enters the same immutable review/correction/confirmation chain used by the rest of One-App.
 
 Image input remains fail-closed unless the existing real image-perception provider environment is configured. The compose file can pass through these host variables when they are present:
 
