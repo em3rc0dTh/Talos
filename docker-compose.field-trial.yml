@@ -7,30 +7,94 @@ services:
       - "18233:8233"
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - talos_ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "qwen2.5vl:7b"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  perception:
+    build:
+      context: .
+      dockerfile: Dockerfile.field-trial
+    command:
+      - node
+      - --experimental-strip-types
+      - ./apps/reference-api/src/ollama-gemini-perception-gateway.ts
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8790"
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5vl:7b
+      OLLAMA_TIMEOUT_MS: "45000"
+      OLLAMA_MAX_ATTEMPTS: "2"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_TIMEOUT_MS: "18000"
+      TALOS_GATEWAY_PROVIDER_ID: TALOS_OLLAMA_GEMINI_GATEWAY
+      TALOS_GATEWAY_PROVIDER_VERSION: 1.0.0
+      TALOS_GATEWAY_MODEL_REF: router:ollama-primary-gemini-fallback
+      TALOS_GATEWAY_MODEL_VERSION: r1-11-v1
+      TALOS_GATEWAY_PIPELINE_VERSION: talos-r1-11-local-vision-v0.1
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8790/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 6s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
   talos:
     build:
       context: .
       dockerfile: Dockerfile.field-trial
     environment:
-      - HOST=0.0.0.0
-      - PORT=8787
-      - TALOS_RUNTIME_DIR=/data/talos-runtime
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_NAMESPACE=default
-      - TALOS_IMAGE_PERCEPTION_PROVIDER_URL
-      - TALOS_IMAGE_PERCEPTION_PROVIDER_ID
-      - TALOS_IMAGE_PERCEPTION_PROVIDER_VERSION
-      - TALOS_IMAGE_PERCEPTION_MODEL_REF
-      - TALOS_IMAGE_PERCEPTION_MODEL_VERSION
-      - TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION
-      - TALOS_IMAGE_PERCEPTION_TIMEOUT_MS
-      - TALOS_IMAGE_PERCEPTION_BEARER_TOKEN
-      - TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS
-      - TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE
+      HOST: 0.0.0.0
+      PORT: "8787"
+      TALOS_RUNTIME_DIR: /data/talos-runtime
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TALOS_IMAGE_PERCEPTION_PROVIDER_URL: http://perception:8790/perceive
+      TALOS_IMAGE_PERCEPTION_PROVIDER_ID: TALOS_OLLAMA_GEMINI_GATEWAY
+      TALOS_IMAGE_PERCEPTION_PROVIDER_VERSION: 1.0.0
+      TALOS_IMAGE_PERCEPTION_MODEL_REF: router:ollama-primary-gemini-fallback
+      TALOS_IMAGE_PERCEPTION_MODEL_VERSION: r1-11-v1
+      TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION: talos-r1-11-local-vision-v0.1
+      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: "120000"
+      TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS: MODEL_PROVIDER
+      TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE: MODEL_INFERENCE
     ports:
       - "8787:8787"
     depends_on:
-      - temporal
+      temporal:
+        condition: service_started
+      perception:
+        condition: service_healthy
     volumes:
       - talos_field_trial_runtime:/data/talos-runtime
       - ./evidence/field-trials:/workspace/evidence/field-trials
@@ -38,3 +102,4 @@ services:
 
 volumes:
   talos_field_trial_runtime:
+  talos_ollama_models:
