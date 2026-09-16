@@ -303,7 +303,7 @@ function correlatedPayload(
 }
 
 function prompt(envelope: AsyncImagePerceptionTransportEnvelope): string {
-  return `${SYSTEM_PROMPT}\n\nImage dimensions: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}.\nJSON schema:\n${JSON.stringify(MODEL_OUTPUT_SCHEMA)}`;
+  return `${SYSTEM_PROMPT}\n\nImage dimensions: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}. The response format schema is enforced by the Ollama structured-output request; do not restate it.`;
 }
 
 async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
