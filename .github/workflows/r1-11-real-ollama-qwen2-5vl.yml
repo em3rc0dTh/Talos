@@ -7,6 +7,7 @@ on:
       - '.github/workflows/r1-11-real-ollama-qwen2-5vl.yml'
       - 'build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
       - 'build/reference-vertical-slice/packages/image-perception/**'
 
 permissions:
@@ -128,7 +129,13 @@ jobs:
           for attempt in $(seq 1 90); do
             if curl --fail --silent http://127.0.0.1:8790/health > /tmp/perception-health.json; then
               cat /tmp/perception-health.json
-              grep -q '"ready": true' /tmp/perception-health.json || grep -q '"ready":true' /tmp/perception-health.json
+              node - <<'NODE'
+          const fs=require('node:fs');
+          const h=JSON.parse(fs.readFileSync('/tmp/perception-health.json','utf8'));
+          if (h.status !== 'READY') throw new Error(`gateway status=${h.status}`);
+          if (h.primary?.provider !== 'OLLAMA' || h.primary?.model !== 'qwen2.5vl:7b' || h.primary?.ready !== true) throw new Error('real Ollama qwen2.5vl primary is not ready');
+          if (h.fallback?.configured !== false) throw new Error('this certification must not use Gemini fallback');
+          NODE
               exit 0
             fi
             sleep 1
@@ -136,7 +143,7 @@ jobs:
           cat "$RUNNER_TEMP/perception-gateway.log"
           exit 1
 
-      - name: Start Talos One-App with real gateway
+      - name: Start executable Talos One-App product host with real gateway
         shell: bash
         run: |
           set -euo pipefail
@@ -155,7 +162,7 @@ jobs:
             TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=120000 \
             TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS=MODEL_PROVIDER \
             TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE=MODEL_INFERENCE \
-            node --experimental-strip-types ./apps/reference-api/src/one-app-server.ts \
+            node --experimental-strip-types ./apps/reference-api/src/one-app-product-server.ts \
             > "$RUNNER_TEMP/one-app.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/one-app.pid"
           for attempt in $(seq 1 90); do
@@ -176,7 +183,7 @@ jobs:
           cat "$RUNNER_TEMP/one-app.log"
           exit 1
 
-      - name: Certify real PNG through One-App to real Qwen and Talos review
+      - name: Certify real PNG through product host to real Qwen and Talos review
         shell: bash
         run: |
           set -euo pipefail
@@ -193,6 +200,7 @@ jobs:
             http://127.0.0.1:8787/api/input/image)"
           echo "HTTP=$HTTP_CODE"
           cat /tmp/talos-image-response.json
+          [[ "$HTTP_CODE" == "201" ]] || { echo "Expected HTTP 201 from real image review path"; exit 1; }
           node - <<'NODE'
           const fs=require('node:fs');
           const r=JSON.parse(fs.readFileSync('/tmp/talos-image-response.json','utf8'));
@@ -203,7 +211,6 @@ jobs:
           if (r.automaticExecutionAuthorized !== false) throw new Error('image perception must not auto-authorize execution');
           fs.writeFileSync('/tmp/talos-real-revision-id.txt', String(r.revision.id));
           NODE
-          grep -q 'UPSTREAM_PROVIDER_SELECTED' "$RUNNER_TEMP/perception-gateway.log" || true
 
       - name: Fetch exact Process Review candidate
         shell: bash
@@ -215,7 +222,9 @@ jobs:
           const fs=require('node:fs');
           const r=JSON.parse(fs.readFileSync('/tmp/talos-process-review.json','utf8'));
           if (r.status !== 'PROCESS_REVIEW_REQUIRED') throw new Error(`review status=${r.status}`);
-          if (!r.processRevision?.id && !r.canonicalProcessRevisionId) throw new Error('review is not pinned to a canonical revision');
+          if (r.state !== 'ACTIVE') throw new Error(`review state=${r.state}`);
+          if (!r.reconciliation?.processRevision?.id) throw new Error('review is not pinned to a canonical process revision');
+          if (r.automaticConfirmationAuthorized !== false || r.automaticExecutionAuthorized !== false) throw new Error('review authority boundary changed');
           NODE
 
       - name: Surface diagnostic logs on failure
@@ -226,8 +235,10 @@ jobs:
           cat "$RUNNER_TEMP/ollama.log" || true
           echo '--- GATEWAY ---'
           cat "$RUNNER_TEMP/perception-gateway.log" || true
-          echo '--- ONE APP ---'
+          echo '--- ONE APP PRODUCT ---'
           cat "$RUNNER_TEMP/one-app.log" || true
+          echo '--- IMAGE RESPONSE ---'
+          cat /tmp/talos-image-response.json || true
           echo '--- RESOURCES ---'
           free -h || true
           df -h / || true
