@@ -7,8 +7,11 @@ on:
       - docker-compose.field-trial.yml
       - .dockerignore
       - FIELD-TRIAL-LOCAL.md
+      - .env.field-trial.example
       - build/reference-vertical-slice/apps/reference-api/src/field-trial-product-server.ts
+      - build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts
       - build/reference-vertical-slice/tests/r1-11-local-field-trial-docker.test.ts
+      - build/reference-vertical-slice/tests/r1-11-ollama-gemini-perception-gateway.test.ts
       - .github/workflows/r1-11-field-trial-docker.yml
   push:
     branches:
@@ -18,8 +21,11 @@ on:
       - docker-compose.field-trial.yml
       - .dockerignore
       - FIELD-TRIAL-LOCAL.md
+      - .env.field-trial.example
       - build/reference-vertical-slice/apps/reference-api/src/field-trial-product-server.ts
+      - build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts
       - build/reference-vertical-slice/tests/r1-11-local-field-trial-docker.test.ts
+      - build/reference-vertical-slice/tests/r1-11-ollama-gemini-perception-gateway.test.ts
       - .github/workflows/r1-11-field-trial-docker.yml
 
 permissions:
@@ -37,10 +43,10 @@ jobs:
         run: docker compose -f docker-compose.field-trial.yml config
 
       - name: Build Talos field-trial image
-        run: docker compose -f docker-compose.field-trial.yml build talos
+        run: docker compose -f docker-compose.field-trial.yml build talos perception
 
-      - name: Start Temporal and Talos
-        run: docker compose -f docker-compose.field-trial.yml up -d temporal talos
+      - name: Start Temporal and Talos without downloading the 6GB local vision model
+        run: docker compose -f docker-compose.field-trial.yml up -d --no-deps temporal talos
 
       - name: Wait for Talos product
         shell: bash
@@ -68,13 +74,14 @@ jobs:
           if (status.workflowExecutionExecutorConfigured !== true) throw new Error('Local workflow executor is not configured');
           if (status.automaticDeploymentAttemptAuthorized !== false) throw new Error('Docker host must not auto-authorize deployment');
           if (status.automaticWorkflowExecutionAuthorized !== false) throw new Error('Docker host must not auto-authorize workflow execution');
+          if (status.image.liveVisionInterpretation !== true) throw new Error('Field-trial Talos must expose the configured perception gateway');
           NODE
           curl --fail --silent --show-error http://127.0.0.1:8787/ >/tmp/talos-product.html
           grep -q 'TALOS' /tmp/talos-product.html
 
       - name: Show stack logs on failure
         if: failure()
-        run: docker compose -f docker-compose.field-trial.yml logs --no-color temporal talos
+        run: docker compose -f docker-compose.field-trial.yml logs --no-color temporal talos perception ollama ollama-init
 
       - name: Stop stack
         if: always()
