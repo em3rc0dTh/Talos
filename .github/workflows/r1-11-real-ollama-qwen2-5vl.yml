@@ -75,6 +75,29 @@ jobs:
           free -h
           df -h /
 
+      - name: Warm exact Qwen model and keep it resident
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/ollama-warm.json <<'JSON'
+          {
+            "model": "qwen2.5vl:7b",
+            "messages": [{"role": "user", "content": "Reply with exactly OK."}],
+            "stream": false,
+            "keep_alive": "30m",
+            "options": {"temperature": 0, "num_predict": 2}
+          }
+          JSON
+          curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/ollama-warm.json \
+            http://127.0.0.1:11434/api/chat | tee /tmp/ollama-warm-response.json
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/ollama-warm-response.json','utf8'));
+          if (!r?.message?.content) throw new Error('Qwen warm-up did not return a model response');
+          NODE
+
       - name: Render deterministic process PNG
         shell: bash
         run: |
