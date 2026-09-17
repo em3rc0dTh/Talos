@@ -26,13 +26,15 @@ function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
 }
 
-test('R1-11 Gemini chain advances to the next model and preserves Talos correlation', async () => {
+test('R1-11 Gemini chain advances to the next model, uses the real API path, and preserves Talos correlation', async () => {
   const geminiModels: string[] = [];
+  const geminiUrls: string[] = [];
   const upstreamFetch: typeof fetch = (async (input) => {
     const url = String(input);
     if (url.startsWith('http://127.0.0.1:1')) return jsonResponse({ error: 'local-disabled' }, 503);
-    const match = url.match(/models\/([^:]+):generateContent/);
+    const match = url.match(/\/v1beta\/models\/([^:]+):generateContent$/);
     if (match) {
+      geminiUrls.push(url);
       const model = decodeURIComponent(match[1]);
       geminiModels.push(model);
       if (model === 'model-one') return jsonResponse({ error: { code: 429, message: 'quota' } }, 429);
@@ -46,7 +48,7 @@ test('R1-11 Gemini chain advances to the next model and preserves Talos correlat
     env: {
       GEMINI_API_KEY: 'test-only-secret',
       GEMINI_MODEL_CHAIN: 'model-one,model-two,model-three',
-      GEMINI_BASE_URL: 'http://gemini.test/v1beta',
+      GEMINI_BASE_URL: 'http://gemini.test',
       GEMINI_TIMEOUT_MS: '2000',
     },
     childFetchImpl: upstreamFetch,
@@ -58,6 +60,11 @@ test('R1-11 Gemini chain advances to the next model and preserves Talos correlat
     const body = await response.json() as any;
     assert.equal(response.status, 200);
     assert.deepEqual(geminiModels, ['model-one', 'model-two']);
+    assert.deepEqual(geminiUrls, [
+      'http://gemini.test/v1beta/models/model-one:generateContent',
+      'http://gemini.test/v1beta/models/model-two:generateContent',
+    ]);
+    assert.equal(geminiUrls.some((url) => url.includes('/v1beta/v1beta/')), false);
     assert.equal(response.headers.get('x-talos-gemini-model'), 'model-two');
     assert.equal(response.headers.get('x-talos-gemini-attempt'), '2');
     assert.equal(body.requestCorrelation.sourceRepresentationId, envelope.sourceRepresentationId);
@@ -78,7 +85,7 @@ test('R1-11 Gemini chain fails closed after exhausting configured models', async
   }) as typeof fetch;
   const gateway = await startGeminiChainPerceptionGateway({
     port: 0,
-    env: { GEMINI_API_KEY: 'test-only-secret', GEMINI_MODEL_CHAIN: 'a,b', GEMINI_BASE_URL: 'http://gemini.test/v1beta', GEMINI_TIMEOUT_MS: '2000' },
+    env: { GEMINI_API_KEY: 'test-only-secret', GEMINI_MODEL_CHAIN: 'a,b', GEMINI_BASE_URL: 'http://gemini.test', GEMINI_TIMEOUT_MS: '2000' },
     childFetchImpl: upstreamFetch,
   });
   try {
