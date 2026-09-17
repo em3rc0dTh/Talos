@@ -18,6 +18,15 @@ export type SubprocessBoundaryMeaning =
   | 'EXTERNAL_ORCHESTRATION'
   | 'HUMAN_MANAGED';
 
+export type GuidedWaitKind =
+  | 'DURATION'
+  | 'SCHEDULE'
+  | 'DEADLINE'
+  | 'MESSAGE'
+  | 'EXTERNAL_EVENT'
+  | 'HUMAN_RESPONSE'
+  | 'CONDITION';
+
 export type GuidedResolutionAnswer =
   | {
       kind: 'BRANCH_CONDITION';
@@ -33,6 +42,24 @@ export type GuidedResolutionAnswer =
       targetRef: string;
       boundaryMeaning: SubprocessBoundaryMeaning;
       completionMeaning: string;
+    }
+  | {
+      kind: 'WAIT_SEMANTICS';
+      questionRef: string;
+      findingRef: string;
+      targetRef: string;
+      waitKind: GuidedWaitKind;
+      expression?: string;
+      timezone?: string;
+      resumeSemantics?: string;
+    }
+  | {
+      kind: 'MATERIAL_INFERENCE';
+      questionRef: string;
+      findingRef: string;
+      targetRef: string;
+      claimRef: string;
+      confirmation: 'ACCEPT_INFERRED_MEANING';
     };
 
 export interface GuidedResolutionAuthority {
@@ -89,6 +116,11 @@ function required(value: string, field: string): string {
   return normalized;
 }
 
+function optional(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
 function findingById(validation: ValidationBundle): Map<string, ValidationFinding> {
   return new Map(validation.findings.map((finding) => [finding.id, finding]));
 }
@@ -97,8 +129,23 @@ function questionById(validation: ValidationBundle): Map<string, ClarificationQu
   return new Map(validation.questions.map((question) => [question.id, question]));
 }
 
+function validateWaitAnswer(answer: Extract<GuidedResolutionAnswer, { kind: 'WAIT_SEMANTICS' }>): void {
+  required(answer.waitKind, 'waitKind');
+  if (answer.waitKind === 'DURATION') {
+    required(answer.expression ?? '', 'expression');
+    return;
+  }
+  if (answer.waitKind === 'SCHEDULE' || answer.waitKind === 'DEADLINE') {
+    required(answer.expression ?? '', 'expression');
+    required(answer.timezone ?? '', 'timezone');
+    return;
+  }
+  required(answer.resumeSemantics ?? '', 'resumeSemantics');
+}
+
 function validateAnswer(
   answer: GuidedResolutionAnswer,
+  processRevision: ProcessRevision,
   validation: ValidationBundle,
   findings: Map<string, ValidationFinding>,
   questions: Map<string, ClarificationQuestion>,
@@ -115,13 +162,43 @@ function validateAnswer(
   if (finding.assessmentId !== validation.assessment.id || question.assessmentId !== validation.assessment.id) {
     throw new TypeError('GUIDED_RESOLUTION_ASSESSMENT_MISMATCH');
   }
+
   if (answer.kind === 'BRANCH_CONDITION') {
     if (finding.code !== 'SV-CFL-001') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
     required(answer.condition, 'condition');
     return;
   }
-  if (finding.code !== 'SV-SUB-002') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
-  required(answer.completionMeaning, 'completionMeaning');
+
+  if (answer.kind === 'SUBPROCESS_BOUNDARY') {
+    if (finding.code !== 'SV-SUB-002') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+    required(answer.completionMeaning, 'completionMeaning');
+    return;
+  }
+
+  if (answer.kind === 'WAIT_SEMANTICS') {
+    if (!['SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code)) {
+      throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+    }
+    const node = processRevision.nodes.find((candidate) => candidate.id === answer.targetRef);
+    if (!node || node.kind !== 'WAIT') throw new TypeError('GUIDED_RESOLUTION_WAIT_TARGET_NOT_FOUND');
+    validateWaitAnswer(answer);
+    return;
+  }
+
+  if (finding.code !== 'SV-SRC-001') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+  if (answer.confirmation !== 'ACCEPT_INFERRED_MEANING') {
+    throw new TypeError('GUIDED_RESOLUTION_INFERENCE_CONFIRMATION_REQUIRED');
+  }
+  const claim = processRevision.semanticClaims.find((candidate) => candidate.id === answer.claimRef);
+  if (!claim || claim.subjectRef !== answer.targetRef) {
+    throw new TypeError('GUIDED_RESOLUTION_INFERRED_CLAIM_NOT_FOUND');
+  }
+  if (claim.truthClass !== 'INFERRED' || claim.perspective !== 'BUSINESS_INTENT') {
+    throw new TypeError('GUIDED_RESOLUTION_CLAIM_NOT_MATERIAL_INFERENCE');
+  }
+  if (!finding.targetRefs.includes(answer.claimRef)) {
+    throw new TypeError('GUIDED_RESOLUTION_CLAIM_FINDING_MISMATCH');
+  }
 }
 
 export function proposeGuidedSemanticResolution(input: {
@@ -142,7 +219,7 @@ export function proposeGuidedSemanticResolution(input: {
   const questions = questionById(input.validation);
   const seen = new Set<string>();
   for (const answer of input.answers) {
-    validateAnswer(answer, input.validation, findings, questions);
+    validateAnswer(answer, input.processRevision, input.validation, findings, questions);
     if (seen.has(answer.findingRef)) throw new TypeError('GUIDED_RESOLUTION_DUPLICATE_FINDING_ANSWER');
     seen.add(answer.findingRef);
   }
@@ -168,6 +245,9 @@ function confirmedClaim(input: {
   authority: GuidedResolutionAuthority;
   propertyPath: string;
   value: unknown;
+  evidenceFragmentRefs?: SemanticClaim['evidenceFragmentRefs'];
+  provenanceLinkRefs?: SemanticClaim['provenanceLinkRefs'];
+  supersedesClaimRefs?: SemanticClaim['supersedesClaimRefs'];
 }): SemanticClaim {
   return {
     id: createOpaqueId('provenance', `guided-resolution-claim:${input.revisionId}:${input.answer.findingRef}:${input.propertyPath}`),
@@ -176,12 +256,13 @@ function confirmedClaim(input: {
     value: input.value,
     perspective: 'BUSINESS_INTENT',
     truthClass: 'CONFIRMED',
-    evidenceFragmentRefs: [],
-    provenanceLinkRefs: [],
+    evidenceFragmentRefs: [...(input.evidenceFragmentRefs ?? [])],
+    provenanceLinkRefs: [...(input.provenanceLinkRefs ?? [])],
     assertedBy: input.authority.answeredBy,
     createdAt: input.authority.answeredAt,
     interpretationMethod: 'GUIDED_USER_RESOLUTION',
     interpreterVersion: GUIDED_SEMANTIC_RESOLUTION_VERSION,
+    ...(input.supersedesClaimRefs?.length ? { supersedesClaimRefs: [...input.supersedesClaimRefs] } : {}),
   };
 }
 
@@ -241,7 +322,12 @@ export function decideGuidedSemanticResolution(input: {
     unresolvedTerms: [...rule.unresolvedTerms],
     provenanceRefs: [...rule.provenanceRefs],
   }));
-  const claims: SemanticClaim[] = [...input.processRevision.semanticClaims];
+  const claims: SemanticClaim[] = input.processRevision.semanticClaims.map((claim) => ({
+    ...claim,
+    evidenceFragmentRefs: [...claim.evidenceFragmentRefs],
+    provenanceLinkRefs: [...claim.provenanceLinkRefs],
+    ...(claim.supersedesClaimRefs ? { supersedesClaimRefs: [...claim.supersedesClaimRefs] } : {}),
+  }));
 
   for (const answer of input.proposal.answers) {
     if (answer.kind === 'BRANCH_CONDITION') {
@@ -268,7 +354,10 @@ export function decideGuidedSemanticResolution(input: {
         propertyPath: 'conditionRule',
         value: { ruleRef: ruleId, naturalLanguage: condition },
       }));
-    } else {
+      continue;
+    }
+
+    if (answer.kind === 'SUBPROCESS_BOUNDARY') {
       const node = nodes.find((candidate) => candidate.id === answer.targetRef);
       if (!node || node.kind !== 'SUBPROCESS') throw new TypeError('GUIDED_RESOLUTION_SUBPROCESS_TARGET_NOT_FOUND');
       node.details = {
@@ -286,7 +375,55 @@ export function decideGuidedSemanticResolution(input: {
           completionMeaning: answer.completionMeaning,
         },
       }));
+      continue;
     }
+
+    if (answer.kind === 'WAIT_SEMANTICS') {
+      const node = nodes.find((candidate) => candidate.id === answer.targetRef);
+      if (!node || node.kind !== 'WAIT') throw new TypeError('GUIDED_RESOLUTION_WAIT_TARGET_NOT_FOUND');
+      validateWaitAnswer(answer);
+      const details = { ...(node.details ?? {}) };
+      delete details.waitKind;
+      delete details.expression;
+      delete details.timezone;
+      delete details.resumeSemantics;
+      details.waitKind = answer.waitKind;
+      const expression = optional(answer.expression);
+      const timezone = optional(answer.timezone);
+      const resumeSemantics = optional(answer.resumeSemantics);
+      if (expression) details.expression = expression;
+      if (timezone) details.timezone = timezone;
+      if (resumeSemantics) details.resumeSemantics = resumeSemantics;
+      node.details = details;
+      claims.push(confirmedClaim({
+        revisionId: nextId,
+        answer,
+        authority: input.proposal.authority,
+        propertyPath: 'details.waitSemantics',
+        value: {
+          waitKind: answer.waitKind,
+          ...(expression ? { expression } : {}),
+          ...(timezone ? { timezone } : {}),
+          ...(resumeSemantics ? { resumeSemantics } : {}),
+        },
+      }));
+      continue;
+    }
+
+    const inferred = claims.find((candidate) => candidate.id === answer.claimRef);
+    if (!inferred || inferred.truthClass !== 'INFERRED' || inferred.perspective !== 'BUSINESS_INTENT') {
+      throw new TypeError('GUIDED_RESOLUTION_INFERRED_CLAIM_NOT_FOUND');
+    }
+    claims.push(confirmedClaim({
+      revisionId: nextId,
+      answer,
+      authority: input.proposal.authority,
+      propertyPath: inferred.propertyPath,
+      value: inferred.value,
+      evidenceFragmentRefs: inferred.evidenceFragmentRefs,
+      provenanceLinkRefs: inferred.provenanceLinkRefs,
+      supersedesClaimRefs: [inferred.id],
+    }));
   }
 
   const resolvedRevision: ProcessRevision = {
