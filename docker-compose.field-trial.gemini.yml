@@ -21,7 +21,9 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env.field-trial.gemini}
       GEMINI_MODEL_CHAIN: ${GEMINI_MODEL_CHAIN:-gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash}
       GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-15000}
-      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      # The child gateway appends /v1beta/models/<model>:generateContent.
+      # Keep this at the API host root to avoid /v1beta/v1beta/... requests.
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
     healthcheck:
       test:
         - CMD
