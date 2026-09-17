@@ -9,6 +9,7 @@ import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { renderR111NativeBpmnSourcePage } from './one-app-r1-11-native-bpmn-source-extension.ts';
 import { renderR111ProcessingUxPage } from './one-app-r1-11-processing-ux-extension.ts';
 import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
+import { renderR111cGuidedResolutionUxPage } from './one-app-r1-11c-guided-resolution-ux-extension.ts';
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
 import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authority-extension.ts';
@@ -110,6 +111,11 @@ async function proxy(
  * reconciliation and process-review routes, then reaches R1-04 through the same
  * exact-revision confirmation boundary as image-derived BPMN. The processing UX is
  * presentation-only: it reports elapsed perception time and never creates authority.
+ * R1-11C connects the existing guided semantic-resolution contract to One-App and
+ * makes the primary review surface business-user friendly. Guided answers remain
+ * proposal-only until explicit acceptance; accepted meaning creates a new revision
+ * and requires process reconfirmation. Technical evidence remains available through
+ * the optional advanced view.
  * R1-04 injects explicit business-process confirmation.
  * R1-05 consumes the exact confirmation and exposes Automation Design only.
  * R1-06 consumes the exact Automation Design workspace, records explicit capability
@@ -126,10 +132,11 @@ async function proxy(
  * guidance into the primary product surface. Raw JSON remains debug-only evidence.
  *
  * Source-input extensions are composed before R1-04 so confirmation observes the
- * exact review candidate through the existing fetch boundary. R1-07 is injected
- * before the R1-06 script so it can observe the exact ExecutionPlan-review response
- * without adding a duplicate review/read path. Its UI installs on the next event-loop
- * turn, after R1-06, so product order remains R1-06 then R1-07 for the operator.
+ * exact review candidate through the existing fetch boundary. R1-11C is composed
+ * after R1-04 and before R1-05 so its semantic-review fetch wrapper can feed the
+ * exact new revision back into business confirmation while downstream authority is
+ * still invalidated. R1-07 is injected before the R1-06 script so it can observe the
+ * exact ExecutionPlan-review response without adding a duplicate review/read path.
  */
 export async function startTalosOneAppProduct(options: TalosOneAppProductOptions = {}) {
   const host = options.host ?? '127.0.0.1';
@@ -153,7 +160,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const withNativeBpmnSource = renderR111NativeBpmnSourcePage(ONE_APP_PRODUCT_PAGE);
         const withProcessingUx = renderR111ProcessingUxPage(withNativeBpmnSource);
         const withConfirmation = renderR104BusinessConfirmationPage(withProcessingUx);
-        const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
+        const withGuidedResolution = renderR111cGuidedResolutionUxPage(withConfirmation);
+        const withAutomationDesign = renderR105AutomationDesignPage(withGuidedResolution);
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
         const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
         const productPage = renderR110ProductShellPage(withExecutionPlan);
@@ -224,11 +232,12 @@ async function main() {
     await product.close();
   };
   const onSignal = () => {
-    stop().then(() => process.exit(0), (error) => {
+    shutdown().then(() => process.exit(0), (error) => {
       console.error(error);
       process.exit(1);
     });
   };
+  const shutdown = stop;
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 }

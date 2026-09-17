@@ -23,7 +23,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   function setState(message,kind){var node=byId('r105State');if(!node)return;node.textContent=message;node.className='r105State'+(kind?' '+kind:'')}
   function clearNode(node){while(node&&node.firstChild)node.removeChild(node.firstChild)}
   function publishInvalidated(reason){window.dispatchEvent(new CustomEvent('talos:r1-05-automation-design-invalidated',{detail:{reason:reason||'Automation Design context invalidated.'}}))}
-  function reset(message){confirmation=null;bundle=null;opening=false;var host=byId('r105Workspace');clearNode(host);var open=byId('r105Open');if(open)open.disabled=true;setState(message||'Business-process confirmation required before automation design.','blocked');publishInvalidated(message)}
+  function reset(message){confirmation=null;bundle=null;opening=false;var host=byId('r105Workspace');clearNode(host);var open=byId('r105Open');if(open)open.disabled=true;setState(message||'Confirm this process before automation setup.','blocked');publishInvalidated(message)}
   function label(value){return value==null?'—':String(value).replaceAll('_',' ')}
   function pill(text){var node=document.createElement('span');node.className='r105Pill';node.textContent=text;return node}
 
@@ -44,7 +44,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   function renderWorkspace(next){
     bundle=next;
     var host=byId('r105Workspace');if(!host)return;clearNode(host);
-    var workspace=next&&next.workspace;if(!workspace){setState('Automation Design Workspace response is missing its workspace contract.','bad');return}
+    var workspace=next&&next.workspace;if(!workspace){setState('Talos could not open the automation setup for this process version.','bad');return}
     var meta=document.createElement('div');meta.className='r105Meta';
     meta.appendChild(pill('Workspace rev '+workspace.revisionNumber));
     meta.appendChild(pill(label(workspace.state)));
@@ -74,18 +74,18 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
       card.appendChild(list);host.appendChild(card);
     });
     var kind=workspace.state==='READY_FOR_EXPLICIT_SELECTION'?'good':'blocked';
-    setState(label(workspace.state)+' · no capability binding, ExecutionPlan, deployment or execution authority created.',kind);
+    setState(workspace.state==='READY_FOR_EXPLICIT_SELECTION'?'Automation setup is ready for your choices.':label(workspace.state),kind);
     publishWorkspace(next);
   }
 
   async function openDesign(){
     if(!confirmation||opening)return;opening=true;var button=byId('r105Open');if(button)button.disabled=true;
-    setState('Freezing the exact confirmed semantic baseline for Automation Design only…','');
+    setState('Checking that this process version has enough confirmed detail…','');
     try{
       var response=await nativeFetch('/api/bpmn/automation-design-approval',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:confirmation.revisionId,confirmationId:confirmation.confirmationId,approvedBy:'one-app-product-user',authorityRef:authority('automation-design-handoff')})});
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
       if(!response.ok)throw new Error(body.error||body.code||('HTTP '+response.status));
-      if(!body.automationDesignOpened||!body.automationDesign)throw new Error('Automation Design did not open for the exact confirmed process.');
+      if(!body.automationDesignOpened||!body.automationDesign){setState('Before we design the automation, confirm the missing process details above.','blocked');if(button)button.disabled=false;return}
       if(body.capabilitySelectionCreated!==false||body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('R1-05 authority boundary violation.');
       renderWorkspace(body.automationDesign);
     }catch(error){setState(error instanceof Error?error.message:String(error),'bad');if(button)button.disabled=false}
@@ -96,7 +96,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
     if(!bundle||!bundle.workspace)return;
     var payload={workspaceId:bundle.workspace.id,suggestionRef:suggestion.id,capabilityRequirementRef:requirement.capabilityRequirementRef,decision:decision,decidedBy:'one-app-product-user',authorityRef:authority('suggestion-decision'),rationale:'Explicit R1-05 product decision. This records a design direction only and creates no capability binding.'};
     if(decision==='REPLACE')payload.replacement={canonicalName:'Explicit replacement direction',implementationKind:'DIRECT_API',implementationRef:'user-defined:replacement'};
-    setState('Recording append-only Automation Design decision…','');
+    setState('Saving your automation-design choice…','');
     try{
       var response=await nativeFetch('/api/automation/suggestion/decide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
@@ -109,7 +109,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   function install(){
     var review=byId('review');if(!review||byId('r105AutomationDesign'))return;
     var box=document.createElement('section');box.id='r105AutomationDesign';box.className='r105Design';
-    box.innerHTML='<h3>Automation Design Workspace</h3><p>Explore how the confirmed business process could be automated. Suggestions are design directions, not capability bindings.</p><div class="r105Boundary"><strong>Authority boundary:</strong> opening this workspace freezes the exact confirmed semantic baseline for design only. Capability selection, ExecutionPlan review, automation approval, deployment and execution remain separate explicit gates.</div><div class="r105Actions"><button id="r105Open" disabled>Open automation design</button><span id="r105State" class="r105State blocked">Business-process confirmation required before automation design.</span></div><div id="r105Workspace" class="r105Workspace"></div>';
+    box.innerHTML='<h3>Set up the automation</h3><p>Once the process is confirmed and complete, Talos can help decide how each step should be handled.</p><div class="r105Boundary"><strong>Authority boundary:</strong> opening this workspace freezes the exact confirmed semantic baseline for design only. Capability selection, ExecutionPlan review, automation approval, deployment and execution remain separate explicit gates.</div><div class="r105Actions"><button id="r105Open" disabled>Continue to automation setup</button><span id="r105State" class="r105State blocked">Confirm this process before automation setup.</span></div><div id="r105Workspace" class="r105Workspace"></div>';
     review.appendChild(box);byId('r105Open').addEventListener('click',openDesign);
   }
 
@@ -118,13 +118,14 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
     var detail=event&&event.detail;if(!detail||!detail.revisionId||!detail.confirmationId)return;
     confirmation={revisionId:detail.revisionId,canonicalProcessRevisionId:detail.canonicalProcessRevisionId,confirmationId:detail.confirmationId};
     bundle=null;var host=byId('r105Workspace');clearNode(host);var open=byId('r105Open');if(open)open.disabled=false;
-    setState('CONFIRMED BASELINE READY · explicit Automation Design handoff is available.','good');
+    setState('Process confirmed. Continue when you are ready to design the automation.','good');
   });
+  window.addEventListener('talos:r1-11c-semantic-revision-created',function(){reset('Process details updated · confirm this version before automation setup.')});
 
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
     var invalidates=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/bpmn/edit')!==-1);
-    return nativeFetch(input,init).then(function(response){if(invalidates&&response.ok)reset('Process source/review changed · a new explicit business confirmation is required.');return response});
+    return nativeFetch(input,init).then(function(response){if(invalidates&&response.ok)reset('Review this process, then confirm it before automation setup.');return response});
   };
 })();
 </script>`;

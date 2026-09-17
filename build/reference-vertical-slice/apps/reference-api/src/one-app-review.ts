@@ -5,6 +5,10 @@ import {
   type BpmnCanonicalReconciliationResult,
 } from '../../../packages/application/src/bpmn-canonical-import.ts';
 import type { BpmnWorkspaceService } from '../../../packages/application/src/bpmn-workspace.ts';
+import {
+  createOneAppSemanticResolutionRouter,
+  projectOneAppFreezeBlockers,
+} from './one-app-r1-11c-semantic-resolution-router.ts';
 
 type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
 
@@ -69,16 +73,16 @@ function reviewAuthorityEnvelope() {
 /**
  * R1-03 review/correction routes over the same One-App repository and binding map.
  *
- * The router does not own a parallel semantic engine. Semantic BPMN corrections
- * are appended by BpmnWorkspaceService and immediately re-enter the certified
- * source-aware structured BPMN reconciler. When a correction succeeds, the old
- * review head is retired from the active binding map so stale confirmation cannot
- * bypass the corrected revision.
+ * R1-11C adds the existing guided semantic-resolution contract to this same router,
+ * so resolution cannot become a parallel semantic or authority path. Accepted
+ * answers create a new Canonical ProcessRevision, a new BPMN-aligned DRAFT and a
+ * fresh review baseline; they never restore confirmation or downstream authority.
  */
 export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDependencies) {
   const { repo, workspace, bindings } = dependencies;
   const structuredReconciler = new BpmnCanonicalReconciliationService(repo);
   const historyBindings = new Map<string, ReconciledBinding>();
+  const semanticResolution = createOneAppSemanticResolutionRouter({ repo, workspace, bindings });
 
   function retireActiveHead(revisionId: string, binding: ReconciledBinding): void {
     historyBindings.set(revisionId, binding);
@@ -105,8 +109,9 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
         questions: binding.validation.questions,
         findings: binding.validation.findings,
       },
+      freezeBlockers: projectOneAppFreezeBlockers(binding),
       allowedReviewActions: state === 'ACTIVE'
-        ? ['EDIT_BPMN', 'INSPECT_EVIDENCE', 'REQUEST_BUSINESS_CONFIRMATION']
+        ? ['EDIT_BPMN', 'GUIDED_SEMANTIC_RESOLUTION', 'INSPECT_EVIDENCE', 'REQUEST_BUSINESS_CONFIRMATION']
         : ['INSPECT_EVIDENCE'],
       requiresBusinessProcessConfirmation: true,
       ...reviewAuthorityEnvelope(),
@@ -115,6 +120,8 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
 
   return {
     async handle(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
+      if (await semanticResolution.handle(req, res, url)) return true;
+
       if (req.method === 'GET' && url.pathname === '/api/process-review') {
         const revisionId = text(url.searchParams.get('revisionId'), 'revisionId');
         const active = bindings.get(revisionId);
@@ -186,6 +193,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
             revision: reconciled.alignedBpmnRevision,
             changeClass: edited.changeClass,
             reconciliation: publicBinding(reconciled),
+            freezeBlockers: projectOneAppFreezeBlockers(reconciled),
             sourceTruthChanged: false,
             requiresBusinessProcessConfirmation: true,
             requiresProcessReconfirmation: true,
@@ -208,6 +216,7 @@ export function createOneAppReviewRouter(dependencies: OneAppReviewRouterDepende
           previousRevisionId: baseRevisionId,
           ...edited,
           reconciliation: publicBinding(nextBinding),
+          freezeBlockers: projectOneAppFreezeBlockers(nextBinding),
           sourceTruthChanged: false,
           requiresBusinessProcessConfirmation: true,
           requiresProcessReconfirmation: false,
