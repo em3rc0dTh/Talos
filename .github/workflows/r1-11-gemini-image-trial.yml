@@ -36,6 +36,14 @@ jobs:
         env:
           GEMINI_API_KEY: ci-placeholder-not-a-real-secret
         run: docker compose -f docker-compose.field-trial.gemini.yml config >/tmp/talos-gemini-compose.yml
+      - name: Enforce Talos perception timeout contract
+        run: |
+          set -euo pipefail
+          TALOS_TIMEOUT="$(awk '/TALOS_IMAGE_PERCEPTION_TIMEOUT_MS:/ {gsub(/"/, "", $2); print $2; exit}' /tmp/talos-gemini-compose.yml)"
+          test -n "$TALOS_TIMEOUT"
+          test "$TALOS_TIMEOUT" -ge 1000
+          test "$TALOS_TIMEOUT" -le 120000
+          test "$TALOS_TIMEOUT" -eq 120000
       - name: Guard authority boundary
         run: |
           set -euo pipefail
