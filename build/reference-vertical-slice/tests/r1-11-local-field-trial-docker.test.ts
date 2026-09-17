@@ -16,7 +16,12 @@ const combined = [dockerfile, compose, runbook, host, gateway, workerRuntime].jo
 
 test('R1-11 Docker image serves the dedicated field-trial product host with durable runtime state', () => {
   assert.match(dockerfile, /FROM node:22-/);
-  assert.match(dockerfile, /RUN npm ci/);
+  assert.match(dockerfile, /COPY build\/reference-vertical-slice\/package-lock\.json/);
+  assert.match(dockerfile, /npm ci --no-audit --no-fund/);
+  assert.match(dockerfile, /npm config set fetch-retries 5/);
+  assert.match(dockerfile, /npm config set fetch-retry-maxtimeout 120000/);
+  assert.match(dockerfile, /npm config set fetch-timeout 300000/);
+  assert.doesNotMatch(dockerfile, /npm install(?:\s|$)/, 'field-trial image must keep the exact lockfile install contract');
   assert.match(dockerfile, /field-trial-product-server\.ts/);
   assert.match(dockerfile, /TALOS_RUNTIME_DIR=\/data\/talos-runtime/);
   assert.match(compose, /8787:8787/);
