@@ -169,6 +169,13 @@ test('R1-11C One-App router creates a new draft and retires the stale binding', 
   const revision = unresolvedRevision();
   const validation = validateProcessRevision(revision);
   try {
+    repo.append({
+      id: revision.id as any,
+      aggregateKind: 'ProcessRevision',
+      schemaVersion: 'talos-r1-11c-test-v0.1',
+      payload: revision,
+      createdAt: revision.createdAt,
+    });
     const imported = await workspace.importNativeBpmn({ bpmnXml: BPMN, declaredName: 'r1-11c.bpmn', initiatedBy: 'r1-11c-test' });
     const aligned = workspace.realignToCanonical({ revisionId: imported.revision.id, canonicalProcessRevisionId: revision.id, alignedBy: 'r1-11c-test', authorityRef: 'authority:r1-11c-align', alignedAt: '2026-09-17T22:03:00.000Z' });
     const review = initializeReview(repo, revision, validation, { createdBy: 'r1-11c-test' });
@@ -198,11 +205,11 @@ test('R1-11C One-App router creates a new draft and retires the stale binding', 
     const baseUrl = `http://127.0.0.1:${address.port}`;
     try {
       const proposed = await post(baseUrl, '/api/semantic-resolution/propose', { revisionId: aligned.id, answers: answers(revision, validation), answeredBy: 'business-owner', authorityRef: 'authority:r1-11c-router-answers', rationale: 'Guided answers.' });
-      assert.equal(proposed.response.status, 201);
+      assert.equal(proposed.response.status, 201, JSON.stringify(proposed.body));
       assert.equal(proposed.body.createsCanonicalRevision, false);
       assert.equal(proposed.body.authorizesAutomationDesign, false);
       const decided = await post(baseUrl, '/api/semantic-resolution/decide', { revisionId: aligned.id, proposalId: proposed.body.proposal.id, decision: 'ACCEPT', decidedBy: 'business-owner', authorityRef: 'authority:r1-11c-router-accept', rationale: 'Accept guided answers.' });
-      assert.equal(decided.response.status, 201);
+      assert.equal(decided.response.status, 201, JSON.stringify(decided.body));
       assert.equal(decided.body.revision.state, 'DRAFT');
       assert.equal(decided.body.requiresProcessReconfirmation, true);
       assert.equal(decided.body.authorizesAutomationDesign, false);
