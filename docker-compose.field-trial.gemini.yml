@@ -20,7 +20,7 @@ services:
       PORT: "8790"
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env.field-trial.gemini}
       GEMINI_MODEL_CHAIN: ${GEMINI_MODEL_CHAIN:-gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash}
-      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-45000}
+      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-15000}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
     healthcheck:
       test:
@@ -50,7 +50,9 @@ services:
       TALOS_IMAGE_PERCEPTION_MODEL_REF: router:gemini-model-chain
       TALOS_IMAGE_PERCEPTION_MODEL_VERSION: r1-11-gemini-chain-v1
       TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION: talos-r1-11-gemini-chain-v0.1
-      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: ${TALOS_IMAGE_PERCEPTION_TIMEOUT_MS:-330000}
+      # Fixed at the maximum accepted by runtime-provider-config.ts. Keep this
+      # non-overridable here so stale local .env files cannot crash Talos.
+      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: "120000"
       TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS: MODEL_PROVIDER
       TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE: MODEL_INFERENCE
     ports:
