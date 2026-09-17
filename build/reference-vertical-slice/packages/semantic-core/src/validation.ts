@@ -35,7 +35,10 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       const timezone=node.details?.timezone??props.timezone??props['propertyValues.timezone'];
       const expression=node.details?.expression??props.expression??props['propertyValues.expression'];
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
-        out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+        out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a duration, schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }
+      if(waitKind==='DURATION'&&(expression===undefined||stateOf(expression)==='UNKNOWN')){
+        out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} does not yet identify the exact business duration.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
       if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
         out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
@@ -61,8 +64,9 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
   if(intent==='AUTOMATION_DESIGN_READINESS'&&revision.nodes.length>0&&!revision.nodes.some(n=>n.kind==='END')){
     out.push({code:'SV-CMP-001',family:'COMPLETION',title:'Success completion unproven',description:'The semantic scope has no explicit process outcome/end state; last visible work is not treated as success.',targetRefs:[revision.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true});
   }
-  const inferredMaterial=revision.semanticClaims.filter(c=>c.truthClass==='INFERRED'&&c.perspective==='BUSINESS_INTENT');
-  for(const claim of inferredMaterial)out.push({code:'SV-SRC-001',family:'SOURCE_UNCERTAINTY',title:'Material inferred meaning needs confirmation',description:`The business-intent interpretation for ${claim.propertyPath} is inferred and requires confirmation before automation design.`,targetRefs:[claim.subjectRef],evidenceRefs:claim.evidenceFragmentRefs,severity:'WARNING',blockerClass:'SOURCE_ACCEPTANCE',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:claim.provenanceLinkRefs});
+  const supersededClaims=new Set(revision.semanticClaims.flatMap(claim=>claim.truthClass==='CONFIRMED'?(claim.supersedesClaimRefs??[]):[]));
+  const inferredMaterial=revision.semanticClaims.filter(c=>c.truthClass==='INFERRED'&&c.perspective==='BUSINESS_INTENT'&&!supersededClaims.has(c.id));
+  for(const claim of inferredMaterial)out.push({code:'SV-SRC-001',family:'SOURCE_UNCERTAINTY',title:'Material inferred meaning needs confirmation',description:`The business-intent interpretation for ${claim.propertyPath} is inferred and requires confirmation before automation design.`,targetRefs:[claim.subjectRef,claim.id],evidenceRefs:claim.evidenceFragmentRefs,severity:'WARNING',blockerClass:'SOURCE_ACCEPTANCE',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:claim.provenanceLinkRefs});
   return out;
 }
 
@@ -87,10 +91,11 @@ function questionText(f:ValidationFinding):string{
     case'SV-CFL-002':return'What happens on this unresolved branch?';
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
     case'SV-EVT-001':return'What exact event, message, response, or condition resumes this wait?';
-    case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';
-    case'SV-EVT-003':return'What kind of wait is this: schedule, deadline, message, event, human response, or condition?';
+    case'SV-EVT-002':return'What exact duration or business time/timezone determines when this wait resumes?';
+    case'SV-EVT-003':return'What are we waiting for here: a duration, schedule, deadline, message, event, human response, or condition?';
     case'SV-CON-001':return'What synchronization rule determines when this join may continue?';
     case'SV-CMP-001':return'What explicit business outcome completes this process scope?';
+    case'SV-SRC-001':return'Talos inferred this business meaning from the source. Is that meaning correct?';
     default:return`Please clarify: ${f.title}.`;
   }
 }
