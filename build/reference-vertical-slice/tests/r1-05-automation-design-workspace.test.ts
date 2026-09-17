@@ -33,16 +33,16 @@ async function post(baseUrl: string, route: string, body: unknown) {
   return { response, body: text ? JSON.parse(text) : {} };
 }
 
-test('R1-05 product shell exposes Automation Design but no downstream authority actions', () => {
+test('R1-05 product shell exposes user-facing automation setup but no downstream authority actions', () => {
   const withConfirmation = renderR104BusinessConfirmationPage(ONE_APP_PRODUCT_PAGE);
   const rendered = renderR105AutomationDesignPage(withConfirmation);
 
-  assert.match(rendered, /Automation Design Workspace/);
-  assert.match(rendered, /Open automation design/);
+  assert.match(rendered, /Set up the automation/);
+  assert.match(rendered, /Continue to automation setup/);
   assert.match(rendered, /\/api\/bpmn\/automation-design-approval/);
   assert.match(rendered, /\/api\/automation\/suggestion\/decide/);
   assert.match(rendered, /Capability selection, ExecutionPlan review, automation approval, deployment and execution remain separate explicit gates/);
-  assert.match(rendered, /Suggestions are design directions, not capability bindings/);
+  assert.match(rendered, /proposal only · creates binding: NO/);
 
   assert.doesNotMatch(R1_05_AUTOMATION_DESIGN_EXTENSION, /\/api\/automation\/capability\/select/);
   assert.doesNotMatch(R1_05_AUTOMATION_DESIGN_EXTENSION, /\/api\/automation\/execution-plan\/review/);
@@ -51,7 +51,7 @@ test('R1-05 product shell exposes Automation Design but no downstream authority 
   assert.doesNotMatch(R1_05_AUTOMATION_DESIGN_EXTENSION, /\/api\/automation\/execution\/start/);
 });
 
-test('R1-05 product server serves client-side confirmation followed by the Automation Design Workspace', async () => {
+test('R1-05 product server serves client-side confirmation followed by user-facing automation setup', async () => {
   const product = await startTalosOneAppProduct({ port: 0 });
   try {
     const response = await fetch(product.baseUrl);
@@ -59,7 +59,7 @@ test('R1-05 product server serves client-side confirmation followed by the Autom
     const html = await response.text();
     assert.match(html, /r104BusinessConfirmation/);
     assert.match(html, /r105AutomationDesign/);
-    assert.match(html, /Business-process confirmation required before automation design/);
+    assert.match(html, /Confirm this process before automation setup/);
     assert.match(html, /Binding: NO/);
     assert.match(html, /ExecutionPlan authority: NO/);
   } finally {
