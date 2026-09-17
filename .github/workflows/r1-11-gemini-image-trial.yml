@@ -45,6 +45,11 @@ jobs:
           test "$TALOS_TIMEOUT" -ge 1000
           test "$TALOS_TIMEOUT" -le 120000
           test "$TALOS_TIMEOUT" -eq 120000
+      - name: Enforce Gemini API root contract
+        run: |
+          set -euo pipefail
+          grep -q 'GEMINI_BASE_URL: https://generativelanguage.googleapis.com$' /tmp/talos-gemini-compose.yml
+          ! grep -q 'GEMINI_BASE_URL: https://generativelanguage.googleapis.com/v1beta' /tmp/talos-gemini-compose.yml
       - name: Guard authority boundary
         run: |
           set -euo pipefail
