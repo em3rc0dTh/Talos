@@ -7,6 +7,7 @@ import {
 } from './one-app-server.ts';
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { renderR111NativeBpmnSourcePage } from './one-app-r1-11-native-bpmn-source-extension.ts';
+import { renderR111ImageProcessingProgressPage } from './one-app-r1-11-image-processing-progress-extension.ts';
 import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
@@ -108,6 +109,9 @@ async function proxy(
  * semantic or authority path. Structured BPMN enters the existing One-App intake,
  * reconciliation and process-review routes, then reaches R1-04 through the same
  * exact-revision confirmation boundary as image-derived BPMN.
+ * R1-11 also adds presentation-only progress for image perception. The progress
+ * surface observes the existing /api/input/image request and never creates an
+ * alternate source, semantic, confirmation or execution path.
  * R1-04 injects explicit business-process confirmation.
  * R1-05 consumes the exact confirmation and exposes Automation Design only.
  * R1-06 consumes the exact Automation Design workspace, records explicit capability
@@ -149,7 +153,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? host}`);
       if (req.method === 'GET' && url.pathname === '/') {
         const withNativeBpmnSource = renderR111NativeBpmnSourcePage(ONE_APP_PRODUCT_PAGE);
-        const withConfirmation = renderR104BusinessConfirmationPage(withNativeBpmnSource);
+        const withImageProgress = renderR111ImageProcessingProgressPage(withNativeBpmnSource);
+        const withConfirmation = renderR104BusinessConfirmationPage(withImageProgress);
         const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
         const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
