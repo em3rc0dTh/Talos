@@ -1,0 +1,69 @@
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    ports:
+      - "17233:7233"
+      - "18233:8233"
+    restart: unless-stopped
+
+  perception:
+    build:
+      context: .
+      dockerfile: Dockerfile.field-trial
+    command:
+      - node
+      - --experimental-strip-types
+      - ./apps/reference-api/src/gemini-chain-perception-gateway.ts
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8790"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env.field-trial.gemini}
+      GEMINI_MODEL_CHAIN: ${GEMINI_MODEL_CHAIN:-gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash}
+      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-45000}
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8790/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 4s
+      timeout: 6s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+
+  talos:
+    build:
+      context: .
+      dockerfile: Dockerfile.field-trial
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      TALOS_RUNTIME_DIR: /data/talos-runtime
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TALOS_IMAGE_PERCEPTION_PROVIDER_URL: http://perception:8790/perceive
+      TALOS_IMAGE_PERCEPTION_PROVIDER_ID: TALOS_GEMINI_MODEL_CHAIN
+      TALOS_IMAGE_PERCEPTION_PROVIDER_VERSION: 1.0.0
+      TALOS_IMAGE_PERCEPTION_MODEL_REF: router:gemini-model-chain
+      TALOS_IMAGE_PERCEPTION_MODEL_VERSION: r1-11-gemini-chain-v1
+      TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION: talos-r1-11-gemini-chain-v0.1
+      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: ${TALOS_IMAGE_PERCEPTION_TIMEOUT_MS:-330000}
+      TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS: MODEL_PROVIDER
+      TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE: MODEL_INFERENCE
+    ports:
+      - "8787:8787"
+    depends_on:
+      temporal:
+        condition: service_started
+      perception:
+        condition: service_healthy
+    volumes:
+      - talos_field_trial_runtime:/data/talos-runtime
+      - ./evidence/field-trials:/workspace/evidence/field-trials
+    restart: unless-stopped
+
+volumes:
+  talos_field_trial_runtime:

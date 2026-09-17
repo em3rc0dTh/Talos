@@ -1,0 +1,44 @@
+name: R1-11 Gemini image trial
+
+on:
+  pull_request:
+    paths:
+      - 'build/reference-vertical-slice/apps/reference-api/src/gemini-chain-perception-gateway.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11-processing-ux-extension.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
+      - 'build/reference-vertical-slice/tests/r1-11-gemini-chain-progress-ux.test.ts'
+      - 'docker-compose.field-trial.gemini.yml'
+      - '.env.field-trial.gemini.example'
+      - '.github/workflows/r1-11-gemini-image-trial.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gemini-image-trial-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+      - name: Certify ordered Gemini failover and visible progress UX
+        working-directory: build/reference-vertical-slice
+        run: node --experimental-strip-types --test ./tests/r1-11-gemini-chain-progress-ux.test.ts ./tests/r1-11-ollama-gemini-perception-gateway.test.ts ./tests/r1-02-one-app-product-intake.test.ts ./tests/r1-10-product-ux-consolidation.test.ts
+      - name: Validate Gemini-only field-trial Compose
+        env:
+          GEMINI_API_KEY: ci-placeholder-not-a-real-secret
+        run: docker compose -f docker-compose.field-trial.gemini.yml config >/tmp/talos-gemini-compose.yml
+      - name: Guard authority boundary
+        run: |
+          set -euo pipefail
+          ! grep -q 'automaticConfirmationAuthorized: true' /tmp/talos-gemini-compose.yml
+          ! grep -q 'automaticExecutionAuthorized: true' /tmp/talos-gemini-compose.yml
+          grep -q 'TALOS_GEMINI_MODEL_CHAIN' /tmp/talos-gemini-compose.yml
