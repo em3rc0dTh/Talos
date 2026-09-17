@@ -1,0 +1,67 @@
+name: R1-11C guided resolution UX
+
+on:
+  pull_request:
+    paths:
+      - 'build/reference-vertical-slice/packages/application/src/semantic-resolution.ts'
+      - 'build/reference-vertical-slice/packages/semantic-core/src/validation.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-review.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11c-semantic-resolution-router.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11c-guided-resolution-ux-extension.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-05-automation-design-extension.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
+      - 'build/reference-vertical-slice/tests/r1-11c-guided-resolution-ux.test.ts'
+      - '.github/workflows/r1-11c-guided-resolution-ux.yml'
+  push:
+    branches:
+      - main
+      - feat/r1-11c-guided-resolution-ux
+    paths:
+      - 'build/reference-vertical-slice/packages/application/src/semantic-resolution.ts'
+      - 'build/reference-vertical-slice/packages/semantic-core/src/validation.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-review.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11c-semantic-resolution-router.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11c-guided-resolution-ux-extension.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-05-automation-design-extension.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
+      - 'build/reference-vertical-slice/tests/r1-11c-guided-resolution-ux.test.ts'
+      - '.github/workflows/r1-11c-guided-resolution-ux.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r1-11c:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: build/reference-vertical-slice
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: R1-11C guided resolution and simple UX
+        run: node --experimental-strip-types --test ./tests/r1-11c-guided-resolution-ux.test.ts
+
+      - name: Existing guided semantic resolution regression
+        run: npm run image:i8-02:test
+
+      - name: R1 confirmation and automation-design authority regression
+        run: node --experimental-strip-types --test ./tests/r1-04-business-process-confirmation.test.ts ./tests/r1-05-automation-design-workspace.test.ts
+
+      - name: R1 product UX regression
+        run: node --experimental-strip-types --test ./tests/r1-10-product-ux-consolidation.test.ts
+
+      - name: One-App image authority-chain regression
+        run: node --experimental-strip-types --test ./tests/image-i9-02-one-app-image-e2e.test.ts
