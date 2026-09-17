@@ -7,6 +7,7 @@ on:
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-r1-11-processing-ux-extension.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
       - 'build/reference-vertical-slice/tests/r1-11-gemini-chain-progress-ux.test.ts'
+      - 'build/reference-vertical-slice/tests/r1-11-gemini-timeout-contract.test.ts'
       - 'docker-compose.field-trial.gemini.yml'
       - '.env.field-trial.gemini.example'
       - '.github/workflows/r1-11-gemini-image-trial.yml'
@@ -31,7 +32,7 @@ jobs:
         run: npm ci
       - name: Certify ordered Gemini failover and visible progress UX
         working-directory: build/reference-vertical-slice
-        run: node --experimental-strip-types --test ./tests/r1-11-gemini-chain-progress-ux.test.ts ./tests/r1-11-ollama-gemini-perception-gateway.test.ts ./tests/r1-02-one-app-product-intake.test.ts ./tests/r1-10-product-ux-consolidation.test.ts
+        run: node --experimental-strip-types --test ./tests/r1-11-gemini-chain-progress-ux.test.ts ./tests/r1-11-gemini-timeout-contract.test.ts ./tests/r1-11-ollama-gemini-perception-gateway.test.ts ./tests/r1-02-one-app-product-intake.test.ts ./tests/r1-10-product-ux-consolidation.test.ts
       - name: Validate Gemini-only field-trial Compose
         env:
           GEMINI_API_KEY: ci-placeholder-not-a-real-secret
