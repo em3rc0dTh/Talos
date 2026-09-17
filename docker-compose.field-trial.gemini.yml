@@ -50,7 +50,9 @@ services:
       TALOS_IMAGE_PERCEPTION_MODEL_REF: router:gemini-model-chain
       TALOS_IMAGE_PERCEPTION_MODEL_VERSION: r1-11-gemini-chain-v1
       TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION: talos-r1-11-gemini-chain-v0.1
-      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: ${TALOS_IMAGE_PERCEPTION_TIMEOUT_MS:-120000}
+      # Fixed at the maximum accepted by runtime-provider-config.ts. Keep this
+      # non-overridable here so stale local .env files cannot crash Talos.
+      TALOS_IMAGE_PERCEPTION_TIMEOUT_MS: "120000"
       TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS: MODEL_PROVIDER
       TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE: MODEL_INFERENCE
     ports:
