@@ -12,18 +12,22 @@ import {
   assertOneAppWorkflowExecutionInputApproved,
   buildImageBpmnReviewCandidate,
   confirmImageInterpretedBusinessProcess,
+  decideGuidedSemanticResolution,
   decideOneAppAutomationSuggestion,
   designOneAppDeployment,
   designOneAppExplicitRuntimePolicy,
   initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
+  proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
   recordOneAppAuthorizedWorkflowExecution,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
+  type GuidedResolutionAnswer,
+  type GuidedResolutionProposal,
   type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
@@ -142,6 +146,35 @@ function publicReconciliation(result: BpmnCanonicalReconciliationResult): unknow
   };
 }
 
+function publicFreezeBlockers(binding: ReconciledBinding) {
+  const questionsByFinding = new Map<string, string>();
+  for (const question of binding.validation.questions) {
+    for (const findingRef of question.findingRefs) questionsByFinding.set(findingRef, question.questionText);
+  }
+  const blockers = binding.validation.findings
+    .filter((finding) => finding.blockerClass !== 'NONE')
+    .map((finding) => ({
+      id: finding.id,
+      code: finding.code,
+      title: finding.title,
+      description: finding.description,
+      targetRefs: finding.targetRefs,
+      blockerClass: finding.blockerClass,
+      resolutionRoute: finding.resolutionRoute,
+      question: questionsByFinding.get(finding.id) ?? null,
+      guidedResolutionSupported: ['SV-CFL-001', 'SV-SUB-002', 'SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code),
+    }));
+  return {
+    readiness: binding.validation.assessment.executionReadiness,
+    blockers,
+    guidedResolutionAvailable: blockers.some((item) => item.guidedResolutionSupported),
+    nextAction: blockers.some((item) => item.guidedResolutionSupported)
+      ? 'ANSWER_PROCESS_CLARIFICATIONS'
+      : 'REVIEW_PROCESS_DETAILS',
+    automaticAuthorityGranted: false,
+  };
+}
+
 export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const host = options.host ?? '127.0.0.1';
   const runtimeDir = options.runtimeDir ?? mkdtempSync(path.join(os.tmpdir(), 'talos-one-app-'));
@@ -152,6 +185,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
   const imageRuntime = resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env);
   const bindings = new Map<string, ReconciledBinding>();
+  const guidedResolutionProposals = new Map<string, GuidedResolutionProposal>();
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
@@ -404,6 +438,120 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/semantic-resolution/propose') {
+        const input = await jsonBody(req);
+        const revisionId = text(input.revisionId, 'revisionId');
+        const binding = bindings.get(revisionId);
+        if (!binding) throw new TypeError('one-app semantic resolution requires the exact current review revision');
+        if (!Array.isArray(input.answers)) throw new TypeError('answers must be an array');
+        const answeredBy = typeof input.answeredBy === 'string' ? input.answeredBy : 'one-app-user';
+        const proposal = proposeGuidedSemanticResolution({
+          processRevision: binding.processRevision,
+          validation: binding.validation,
+          answers: input.answers as GuidedResolutionAnswer[],
+          authority: {
+            answeredBy,
+            authorityRef: text(input.authorityRef, 'authorityRef'),
+            rationale: text(input.rationale, 'rationale'),
+            answeredAt: new Date().toISOString(),
+          },
+        });
+        guidedResolutionProposals.set(proposal.id, proposal);
+        json(res, 201, {
+          proposal,
+          questions: binding.validation.questions,
+          createsCanonicalRevision: false,
+          confirmsProcess: false,
+          authorizesAutomationDesign: false,
+          authorizesExecution: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/semantic-resolution/decide') {
+        const input = await jsonBody(req);
+        const revisionId = text(input.revisionId, 'revisionId');
+        const proposalId = text(input.proposalId, 'proposalId');
+        const binding = bindings.get(revisionId);
+        if (!binding) throw new TypeError('one-app semantic resolution requires the exact current review revision');
+        const proposal = guidedResolutionProposals.get(proposalId);
+        if (!proposal) throw new TypeError('one-app guided semantic-resolution proposal not found');
+        const decision = text(input.decision, 'decision');
+        if (decision !== 'ACCEPT' && decision !== 'REJECT') throw new TypeError('decision must be ACCEPT or REJECT');
+        const decidedBy = typeof input.decidedBy === 'string' ? input.decidedBy : 'one-app-user';
+        const decidedAt = new Date().toISOString();
+        const authorityRef = text(input.authorityRef, 'authorityRef');
+        const result = decideGuidedSemanticResolution({
+          proposal,
+          processRevision: binding.processRevision,
+          validation: binding.validation,
+          decision,
+          decidedBy,
+          authorityRef,
+          rationale: text(input.rationale, 'rationale'),
+          decidedAt,
+        });
+        guidedResolutionProposals.delete(proposalId);
+
+        if (result.decision === 'REJECT') {
+          json(res, 200, {
+            decision: result,
+            createsCanonicalRevision: false,
+            currentRevisionId: revisionId,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
+
+        repo.append({
+          id: result.resolvedRevision.id as OpaqueId,
+          aggregateKind: 'ProcessRevision',
+          schemaVersion: 'talos-guided-semantic-resolution-v0.1',
+          payload: result.resolvedRevision,
+          parentId: binding.processRevision.id as OpaqueId,
+          createdAt: result.resolvedRevision.createdAt,
+        });
+        repo.append({
+          id: result.validation.assessment.id as OpaqueId,
+          aggregateKind: 'ValidationAssessment',
+          schemaVersion: 'talos-guided-semantic-resolution-v0.1',
+          payload: result.validation.assessment,
+          parentId: result.resolvedRevision.id as OpaqueId,
+          createdAt: result.validation.assessment.assessedAt,
+        });
+        const alignedRevision = workspace.realignToCanonical({
+          revisionId,
+          canonicalProcessRevisionId: result.resolvedRevision.id,
+          alignedBy: decidedBy,
+          authorityRef,
+          alignedAt: decidedAt,
+        });
+        const review = initializeReview(repo, result.resolvedRevision, result.validation, {
+          createdBy: decidedBy,
+        });
+        const resolvedBinding: ReconciledBinding = {
+          ...binding,
+          sourceBpmnRevision: binding.alignedBpmnRevision,
+          alignedBpmnRevision: alignedRevision,
+          processRevision: result.resolvedRevision,
+          validation: result.validation,
+          review,
+        };
+        bindings.set(alignedRevision.id, resolvedBinding);
+        json(res, 201, {
+          decision: result,
+          revision: alignedRevision,
+          reconciliation: publicReconciliation(resolvedBinding),
+          freezeBlockers: publicFreezeBlockers(resolvedBinding),
+          requiresProcessReconfirmation: true,
+          confirmation: null,
+          authorizesAutomationDesign: false,
+          authorizesExecution: false,
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/bpmn/automation-design-approval') {
         const input = await jsonBody(req);
         const revisionId = text(input.revisionId, 'revisionId');
@@ -467,6 +615,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           json(res, 200, {
             ...result,
             automationDesignOpened: false,
+            freezeBlockers: publicFreezeBlockers(binding),
+            userMessage: 'Talos needs a few process details before it can prepare the automation.',
             deploymentAuthorized: false,
             executionAuthorized: false,
           });
