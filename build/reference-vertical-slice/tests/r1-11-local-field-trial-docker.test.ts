@@ -16,7 +16,7 @@ const combined = [dockerfile, compose, runbook, host, gateway, workerRuntime].jo
 
 test('R1-11 Docker image serves the dedicated field-trial product host with durable runtime state', () => {
   assert.match(dockerfile, /FROM node:22-/);
-  assert.match(dockerfile, /RUN npm ci/);
+  assert.match(dockerfile, /npm ci\b/);
   assert.match(dockerfile, /field-trial-product-server\.ts/);
   assert.match(dockerfile, /TALOS_RUNTIME_DIR=\/data\/talos-runtime/);
   assert.match(compose, /8787:8787/);

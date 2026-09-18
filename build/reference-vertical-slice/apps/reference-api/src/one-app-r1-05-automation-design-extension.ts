@@ -85,7 +85,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
       var response=await nativeFetch('/api/bpmn/automation-design-approval',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:confirmation.revisionId,confirmationId:confirmation.confirmationId,approvedBy:'one-app-product-user',authorityRef:authority('automation-design-handoff')})});
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
       if(!response.ok)throw new Error(body.error||body.code||('HTTP '+response.status));
-      if(!body.automationDesignOpened||!body.automationDesign)throw new Error('Automation Design did not open for the exact confirmed process.');
+      if(!body.automationDesignOpened||!body.automationDesign){setState(body.userMessage||'Talos needs a few process details before it can prepare the automation.','blocked');window.dispatchEvent(new CustomEvent('talos:r1-11c-freeze-blocked',{detail:body}));return;}
       if(body.capabilitySelectionCreated!==false||body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('R1-05 authority boundary violation.');
       renderWorkspace(body.automationDesign);
     }catch(error){setState(error instanceof Error?error.message:String(error),'bad');if(button)button.disabled=false}
@@ -123,8 +123,8 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
 
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
-    var invalidates=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/bpmn/edit')!==-1);
-    return nativeFetch(input,init).then(function(response){if(invalidates&&response.ok)reset('Process source/review changed · a new explicit business confirmation is required.');return response});
+    var semanticResolution=path.indexOf('/api/semantic-resolution/decide')!==-1;var invalidates=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/bpmn/edit')!==-1||semanticResolution);
+    return nativeFetch(input,init).then(function(response){if(invalidates&&response.ok)reset(semanticResolution?'Clarifications updated the process · review and confirm it again.':'Process changed · review and confirm it again.');return response});
   };
 })();
 </script>`;

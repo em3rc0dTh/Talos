@@ -18,6 +18,15 @@ export type SubprocessBoundaryMeaning =
   | 'EXTERNAL_ORCHESTRATION'
   | 'HUMAN_MANAGED';
 
+export type GuidedWaitKind =
+  | 'DURATION'
+  | 'SCHEDULE'
+  | 'DEADLINE'
+  | 'MESSAGE'
+  | 'EXTERNAL_EVENT'
+  | 'HUMAN_RESPONSE'
+  | 'CONDITION';
+
 export type GuidedResolutionAnswer =
   | {
       kind: 'BRANCH_CONDITION';
@@ -33,6 +42,16 @@ export type GuidedResolutionAnswer =
       targetRef: string;
       boundaryMeaning: SubprocessBoundaryMeaning;
       completionMeaning: string;
+    }
+  | {
+      kind: 'WAIT_SEMANTICS';
+      questionRef: string;
+      findingRef: string;
+      targetRef: string;
+      waitKind: GuidedWaitKind;
+      expression?: string;
+      timezone?: string;
+      resumeSemantics?: string;
     };
 
 export interface GuidedResolutionAuthority {
@@ -120,8 +139,24 @@ function validateAnswer(
     required(answer.condition, 'condition');
     return;
   }
-  if (finding.code !== 'SV-SUB-002') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
-  required(answer.completionMeaning, 'completionMeaning');
+  if (answer.kind === 'SUBPROCESS_BOUNDARY') {
+    if (finding.code !== 'SV-SUB-002') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+    required(answer.completionMeaning, 'completionMeaning');
+    return;
+  }
+  if (!['SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code)) {
+    throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+  }
+  if (answer.waitKind === 'DURATION') {
+    required(answer.expression ?? '', 'expression');
+    return;
+  }
+  if (answer.waitKind === 'SCHEDULE' || answer.waitKind === 'DEADLINE') {
+    required(answer.expression ?? '', 'expression');
+    required(answer.timezone ?? '', 'timezone');
+    return;
+  }
+  required(answer.resumeSemantics ?? '', 'resumeSemantics');
 }
 
 export function proposeGuidedSemanticResolution(input: {
@@ -268,7 +303,7 @@ export function decideGuidedSemanticResolution(input: {
         propertyPath: 'conditionRule',
         value: { ruleRef: ruleId, naturalLanguage: condition },
       }));
-    } else {
+    } else if (answer.kind === 'SUBPROCESS_BOUNDARY') {
       const node = nodes.find((candidate) => candidate.id === answer.targetRef);
       if (!node || node.kind !== 'SUBPROCESS') throw new TypeError('GUIDED_RESOLUTION_SUBPROCESS_TARGET_NOT_FOUND');
       node.details = {
@@ -284,6 +319,26 @@ export function decideGuidedSemanticResolution(input: {
         value: {
           boundaryMeaning: answer.boundaryMeaning,
           completionMeaning: answer.completionMeaning,
+        },
+      }));
+    } else {
+      const node = nodes.find((candidate) => candidate.id === answer.targetRef);
+      if (!node || node.kind !== 'WAIT') throw new TypeError('GUIDED_RESOLUTION_WAIT_TARGET_NOT_FOUND');
+      const nextDetails: Record<string, unknown> = { ...(node.details ?? {}), waitKind: answer.waitKind };
+      if (answer.expression?.trim()) nextDetails.expression = answer.expression.trim();
+      if (answer.timezone?.trim()) nextDetails.timezone = answer.timezone.trim();
+      if (answer.resumeSemantics?.trim()) nextDetails.resumeSemantics = answer.resumeSemantics.trim();
+      node.details = nextDetails;
+      claims.push(confirmedClaim({
+        revisionId: nextId,
+        answer,
+        authority: input.proposal.authority,
+        propertyPath: 'details.waitSemantics',
+        value: {
+          waitKind: answer.waitKind,
+          ...(answer.expression?.trim() ? { expression: answer.expression.trim() } : {}),
+          ...(answer.timezone?.trim() ? { timezone: answer.timezone.trim() } : {}),
+          ...(answer.resumeSemantics?.trim() ? { resumeSemantics: answer.resumeSemantics.trim() } : {}),
         },
       }));
     }
