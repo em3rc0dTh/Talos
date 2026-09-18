@@ -37,7 +37,10 @@ function collectFindings(revision:ProcessRevision,intent:AssessmentIntent):Findi
       if(!waitKind||waitKind==='UNKNOWN'||waitKind==='SOURCE_DEFINED'){
         out.push({code:'SV-EVT-003',family:'EVENT_WAIT',title:'Wait kind unresolved',description:`${node.name??'WAIT'} does not establish whether Talos is waiting for a schedule, deadline, message, event, human response, or condition.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
-      if(waitKind==='DURATION'&&(expression===undefined||stateOf(expression)==='UNKNOWN')){\n        out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} does not yet identify a complete duration.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});\n      }\n      if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
+      if(waitKind==='DURATION'&&(expression===undefined||stateOf(expression)==='UNKNOWN')){
+        out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait duration incomplete',description:`${node.name??'WAIT'} does not yet identify a complete duration.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
+      }
+      if((waitKind==='SCHEDULE'||waitKind==='DEADLINE')&&(stateOf(timezone)==='UNKNOWN'||timezone===undefined||expression===undefined||stateOf(expression)==='UNKNOWN')){
         out.push({code:'SV-EVT-002',family:'EVENT_WAIT',title:'Wait time expression incomplete',description:`${node.name??'WAIT'} does not yet identify a complete business time instant/timezone.`,targetRefs:[node.id],severity:'ERROR',blockerClass:'AUTOMATION_DESIGN',resolutionRoute:'USER_CONFIRMATION',questionCandidate:true,provenanceRefs:node.provenanceRefs});
       }
       if((waitKind==='EXTERNAL_EVENT'||waitKind==='MESSAGE'||waitKind==='HUMAN_RESPONSE'||waitKind==='CONDITION')&&!node.details?.resumeSemantics){
