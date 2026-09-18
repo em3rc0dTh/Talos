@@ -8,6 +8,7 @@ import {
 import { ONE_APP_PRODUCT_PAGE } from './one-app-product-page.ts';
 import { renderR111NativeBpmnSourcePage } from './one-app-r1-11-native-bpmn-source-extension.ts';
 import { renderR111ProcessingUxPage } from './one-app-r1-11-processing-ux-extension.ts';
+import { renderR111CGuidedResolutionUxPage } from './one-app-r1-11c-guided-resolution-ux-extension.ts';
 import { renderR104BusinessConfirmationPage } from './one-app-r1-04-confirmation-extension.ts';
 import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-design-extension.ts';
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
@@ -153,7 +154,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const withNativeBpmnSource = renderR111NativeBpmnSourcePage(ONE_APP_PRODUCT_PAGE);
         const withProcessingUx = renderR111ProcessingUxPage(withNativeBpmnSource);
         const withConfirmation = renderR104BusinessConfirmationPage(withProcessingUx);
-        const withAutomationDesign = renderR105AutomationDesignPage(withConfirmation);
+        const withGuidedResolution = renderR111CGuidedResolutionUxPage(withConfirmation);
+        const withAutomationDesign = renderR105AutomationDesignPage(withGuidedResolution);
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
         const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
         const productPage = renderR110ProductShellPage(withExecutionPlan);
