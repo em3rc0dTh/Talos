@@ -90,8 +90,8 @@ function questionText(f:ValidationFinding):string{
     case'SV-CFL-002':return'What happens on this unresolved branch?';
     case'SV-ACT-001':return'Who is responsible for this work or human interaction?';
     case'SV-EVT-001':return'What exact event, message, response, or condition resumes this wait?';
-    case'SV-EVT-002':return'What exact business time/timezone determines when this wait resumes?';
-    case'SV-EVT-003':return'What kind of wait is this: schedule, deadline, message, event, human response, or condition?';
+    case'SV-EVT-002':return'What exact duration or business time determines when this wait resumes?';
+    case'SV-EVT-003':return'What kind of wait is this: fixed duration, schedule, deadline, message, event, human response, or condition?';
     case'SV-CON-001':return'What synchronization rule determines when this join may continue?';
     case'SV-CMP-001':return'What explicit business outcome completes this process scope?';
     default:return`Please clarify: ${f.title}.`;
