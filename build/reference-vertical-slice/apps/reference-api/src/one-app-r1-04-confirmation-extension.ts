@@ -71,13 +71,13 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';
     var method=String((init&&init.method)||'GET').toUpperCase();
-    var reviewResult=(path.indexOf('/api/input/image')!==-1&&method==='POST')||(path.indexOf('/api/input/bpmn')!==-1&&method==='POST')||(path.indexOf('/api/bpmn/edit')!==-1&&method==='POST')||(path.indexOf('/api/process-review')!==-1&&method==='GET');
+    var semanticResolution=path.indexOf('/api/semantic-resolution/decide')!==-1&&method==='POST';var reviewResult=(path.indexOf('/api/input/image')!==-1&&method==='POST')||(path.indexOf('/api/input/bpmn')!==-1&&method==='POST')||(path.indexOf('/api/bpmn/edit')!==-1&&method==='POST')||semanticResolution||(path.indexOf('/api/process-review')!==-1&&method==='GET');
     return nativeFetch(input,init).then(function(response){
       if(reviewResult&&response.ok){response.clone().json().then(function(body){
         var normalized=body;
         if(body&&body.status==='PROCESS_REVIEW_REQUIRED')normalized={revision:body.revision,reconciliation:body.reconciliation};
         capture(normalized);
-        if(path.indexOf('/api/bpmn/edit')!==-1&&body&&body.status!=='CORRECTION_BLOCKED'){confirmed=false;setLocked(false);refresh();truthStep(3,'','Not confirmed');}
+        if((path.indexOf('/api/bpmn/edit')!==-1||semanticResolution)&&body&&body.status!=='CORRECTION_BLOCKED'){confirmed=false;setLocked(false);refresh();truthStep(3,'','Review updated process');}
       }).catch(function(){});}
       return response;
     });
