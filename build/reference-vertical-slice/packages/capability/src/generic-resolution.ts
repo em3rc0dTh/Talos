@@ -28,6 +28,7 @@ export interface GenericHumanDesignResolution {
   interactionKind: HumanInteractionDesignRevision['interactionKind'];
   responsibilityKind: ParticipantRequirement['responsibilityKind'];
   roleRefs: CanonicalId[];
+  participantLabel?: string;
   assignmentCardinality?: ParticipantRequirement['assignmentCardinality'];
   outcomes: Array<{ code: string; businessMeaning: string; terminal?: boolean }>;
 }
@@ -88,6 +89,7 @@ function normalizedResolution(spec: GenericRequirementResolution) {
         interactionKind: spec.human.interactionKind,
         responsibilityKind: spec.human.responsibilityKind,
         roleRefs: spec.human.roleRefs,
+        ...(spec.human.participantLabel ? { participantLabel: spec.human.participantLabel } : {}),
         assignmentCardinality: spec.human.assignmentCardinality ?? 'EXACTLY_ONE',
         outcomes: spec.human.outcomes.map((outcome) => ({
           code: outcome.code,
@@ -119,7 +121,9 @@ function validateResolution(base: CapabilityDesignBundle, specs: GenericRequirem
     }
     if (spec.family === 'HUMAN_INTERACTION') {
       if (!spec.human) throw new TypeError(`HUMAN_INTERACTION resolution requires human design for ${requirement.id}`);
-      if (spec.human.roleRefs.length === 0) throw new TypeError(`human design requires at least one participant role for ${requirement.id}`);
+      if (spec.human.roleRefs.length === 0 && !spec.human.participantLabel?.trim()) {
+        throw new TypeError(`human design requires a participant role reference or business responsibility label for ${requirement.id}`);
+      }
       if (spec.human.outcomes.length === 0) throw new TypeError(`human design requires at least one outcome for ${requirement.id}`);
       for (const outcome of spec.human.outcomes) {
         requireNonEmpty(outcome.code, 'human outcome code');
@@ -353,6 +357,7 @@ export function resolveGenericCapabilities(
         interactionKind: human.interactionKind,
         responsibilityKind: human.responsibilityKind,
         roleRefs: human.roleRefs,
+        participantLabel: human.participantLabel ?? null,
         assignmentCardinality: human.assignmentCardinality ?? 'EXACTLY_ONE',
         outcomes: outcomes.map((outcome) => ({ code: outcome.outcomeCode, meaning: outcome.businessMeaning, terminal: outcome.terminalForInteraction ?? false })),
         authorityRef: spec.authorityRef,
@@ -384,7 +389,9 @@ export function resolveGenericCapabilities(
         humanInteractionDesignRevisionId: humanDesignId,
         responsibilityKind: human.responsibilityKind,
         roleRefs: human.roleRefs,
-        actorTypeConstraints: [],
+        actorTypeConstraints: human.participantLabel?.trim()
+          ? [`BUSINESS_RESPONSIBILITY:${human.participantLabel.trim()}`]
+          : [],
         organizationalConstraintRefs: [],
         eligibilityRuleRefs: [],
         assignmentCardinality: human.assignmentCardinality ?? 'EXACTLY_ONE',
