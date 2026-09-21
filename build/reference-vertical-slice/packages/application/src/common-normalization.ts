@@ -45,6 +45,12 @@ export interface CommonNormalizationProfile {
   evidenceType?: string;
   nodeFragmentKind?: EvidenceFragment['fragmentKind'];
   mapRelationshipRole?: (candidateRole?: string, sourceAssertedRole?: string) => ProcessEdge['kind'] | undefined;
+  resolveNode?: (input: {
+    candidateSemanticType?: string;
+    sourceAssertedType?: string;
+    literalLabel?: string;
+    properties: Record<string, unknown>;
+  }) => { kind: ProcessNodeKind; details?: Record<string, unknown> } | undefined;
 }
 
 export interface CommonNormalizeOptions { normalizedAt?: string; }
@@ -234,16 +240,25 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
 
     const props = propertiesFor(descriptor);
     const baseLink = makeLink(canonicalId, fragment, sourceOccurrenceId);
-    makeClaim(canonicalId, 'kind', descriptor.candidateSemanticType ?? descriptor.sourceAssertedType ?? descriptor.occurrenceKind, fragment, baseLink);
     if (descriptor.literalLabel !== undefined) makeClaim(canonicalId, 'name', descriptor.literalLabel, fragment, makeLink(canonicalId, fragment, sourceOccurrenceId, 'name'));
 
     if (descriptor.candidateSemanticType === 'ACTOR') { actors.push({ id: canonicalId, kind: actorKind(props), name: descriptor.literalLabel ?? 'Unknown actor', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] }); continue; }
     if (descriptor.candidateSemanticType === 'DATA_OBJECT') { dataObjects.push({ id: canonicalId, name: descriptor.literalLabel ?? 'Unnamed data object', sourceReferences: [descriptor.nativeSourceId ?? String(descriptor.sourceOccurrenceId)], provenanceRefs: [baseLink.id] }); continue; }
     if (descriptor.candidateSemanticType === 'BUSINESS_RULE') { rules.push({ id: canonicalId, naturalLanguage: descriptor.literalLabel ?? '', inputs: [], truthClass: profile.defaultTruthClass, unresolvedTerms: [], provenanceRefs: [baseLink.id] }); continue; }
 
-    const kind = nodeKind(descriptor.candidateSemanticType);
-    if (!kind) continue;
-    const details = buildNodeDetails(kind, props);
+    const resolvedNode = profile.resolveNode?.({
+      candidateSemanticType: descriptor.candidateSemanticType,
+      sourceAssertedType: descriptor.sourceAssertedType,
+      literalLabel: descriptor.literalLabel,
+      properties: props,
+    });
+    const kind = resolvedNode?.kind ?? nodeKind(descriptor.candidateSemanticType);
+    if (!kind) {
+      makeClaim(canonicalId, 'kind', descriptor.candidateSemanticType ?? descriptor.sourceAssertedType ?? descriptor.occurrenceKind, fragment, baseLink);
+      continue;
+    }
+    makeClaim(canonicalId, 'kind', kind, fragment, baseLink);
+    const details = { ...buildNodeDetails(kind, props), ...(resolvedNode?.details ?? {}) };
     nodes.push({ id: canonicalId, kind, ...(descriptor.literalLabel ? { name: descriptor.literalLabel } : {}), actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], ...(Object.keys(details).length ? { details } : {}), truthClass: profile.defaultTruthClass, provenanceRefs: [baseLink.id], sourceExtensionRefs: [] });
     for (const [path, value] of Object.entries(props)) {
       const propertyPath = path.startsWith('propertyValues.') ? `details.${path.slice('propertyValues.'.length)}` : path;
