@@ -75,6 +75,29 @@ export interface OneAppWorkflowExecutionExecutorResult {
   evidenceRefs: string[];
 }
 
+export interface OneAppWorkflowRuntimeState {
+  executionId: string;
+  currentElementRef: string | null;
+  currentHumanTaskRef: string | null;
+  visitedElementRefs: string[];
+  completedHumanTaskRefs: string[];
+}
+
+export interface OneAppWorkflowRuntimeReadResult {
+  executionStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  state: OneAppWorkflowRuntimeState;
+}
+
+export interface OneAppWorkflowRuntimeExecutorInput {
+  context: OneAppAutomationContext;
+  workflowIdRef: string;
+  runIdRef: string;
+}
+
+export interface OneAppHumanTaskExecutorInput extends OneAppWorkflowRuntimeExecutorInput {
+  executionElementRef: string;
+}
+
 export interface TalosOneAppOptions {
   port?: number;
   host?: string;
@@ -87,6 +110,12 @@ export interface TalosOneAppOptions {
   workflowExecutionExecutor?: (
     input: OneAppWorkflowExecutionExecutorInput,
   ) => Promise<OneAppWorkflowExecutionExecutorResult>;
+  workflowRuntimeStateReader?: (
+    input: OneAppWorkflowRuntimeExecutorInput,
+  ) => Promise<OneAppWorkflowRuntimeReadResult>;
+  humanTaskExecutor?: (
+    input: OneAppHumanTaskExecutorInput,
+  ) => Promise<OneAppWorkflowRuntimeReadResult>;
 }
 
 type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
