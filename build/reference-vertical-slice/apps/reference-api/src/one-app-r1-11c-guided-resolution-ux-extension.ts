@@ -134,7 +134,7 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
     return nativeFetch(input,init).then(function(response){
-      var relevant=response.ok&&((method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/bpmn/edit')!==-1||path.indexOf('/api/bpmn/confirm')!==-1||path.indexOf('/api/semantic-resolution/decide')!==-1))||(method==='GET'&&path.indexOf('/api/process-review')!==-1));
+      var relevant=response.ok&&((method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1||path.indexOf('/api/bpmn/edit')!==-1||path.indexOf('/api/bpmn/confirm')!==-1||path.indexOf('/api/semantic-resolution/decide')!==-1))||(method==='GET'&&path.indexOf('/api/process-review')!==-1));
       if(relevant)response.clone().json().then(capture).catch(function(){});
       return response;
     });
