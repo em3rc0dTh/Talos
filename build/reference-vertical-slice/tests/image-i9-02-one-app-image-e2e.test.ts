@@ -122,7 +122,7 @@ test('I9-02 one app runs image perception through confirmed canonical truth and 
     assert.equal(statusResponse.status, 200);
     const status = await statusResponse.json() as any;
     assert.equal(status.releaseGate, 'I9-02_ONE_APP_IMAGE_BPMN_E2E');
-    assert.deepEqual(status.inputRoutes, ['IMAGE_PNG', 'NATIVE_BPMN']);
+    assert.deepEqual(status.inputRoutes, ['IMAGE_PNG', 'NATIVE_BPMN', 'TALOS_CANVAS']);
     assert.equal(status.imageInputIntegratedIntoOneApp, true);
     assert.equal(status.image.liveVisionInterpretation, true);
     assert.equal(status.image.provider.providerId, 'I9_02_ONE_APP_MODEL');
@@ -255,7 +255,7 @@ test('I9-02 preserves image bytes without inventing interpretation when live vis
   try {
     const status = await (await fetch(`${app.baseUrl}/api/status`)).json() as any;
     assert.equal(status.releaseGate, 'I9-01_ONE_APP_NATIVE_BPMN_E2E');
-    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN']);
+    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN', 'TALOS_CANVAS']);
     assert.equal(status.imageInputIntegratedIntoOneApp, false);
     assert.equal(status.image.liveVisionInterpretation, false);
 
