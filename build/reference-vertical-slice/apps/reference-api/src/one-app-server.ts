@@ -176,6 +176,25 @@ function publicFreezeBlockers(binding: ReconciledBinding) {
   };
 }
 
+function publicAutomationWorkspace(context: OneAppAutomationContext) {
+  const bundle = context.workspace;
+  return {
+    ...bundle,
+    workspace: {
+      ...bundle.workspace,
+      requirements: bundle.workspace.requirements.map((requirement) => {
+        const subject = context.process.nodes.find((node) => requirement.semanticSubjectRefs.includes(node.id));
+        return {
+          ...requirement,
+          businessStepName: subject?.name ?? null,
+          businessStepKind: subject?.kind ?? null,
+        };
+      }),
+    },
+  };
+}
+
+
 export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const host = options.host ?? '127.0.0.1';
   const runtimeDir = options.runtimeDir ?? mkdtempSync(path.join(os.tmpdir(), 'talos-one-app-'));
@@ -785,7 +804,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         json(res, 201, {
           ...result,
           automationDesignOpened: true,
-          automationDesign: automation.workspace,
+          automationDesign: publicAutomationWorkspace(automation),
           capabilitySelectionCreated: false,
           deploymentAuthorized: false,
           executionAuthorized: false,
@@ -813,7 +832,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           decidedAt: new Date().toISOString(),
         });
         json(res, 201, {
-          ...session.automation.workspace,
+          ...publicAutomationWorkspace(session.automation),
           capabilitySelectionCreated: false,
           executionPlanAuthorized: false,
         });
