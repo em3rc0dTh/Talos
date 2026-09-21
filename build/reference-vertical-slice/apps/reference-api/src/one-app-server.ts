@@ -492,7 +492,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         }
 
         const normalized = normalizeAdapterResult(repo, attempt.result.id, { normalizedAt: now });
-        const validation = validateProcessRevision(normalized.processRevision, now);
+        const validation = validateProcessRevision(normalized.processRevision, 'AUTOMATION_DESIGN_READINESS', { assessedAt: now });
         persistValidationBundle(repo, validation);
         const projection = projectCanonicalProcessToBpmn({
           processRevision: normalized.processRevision,
