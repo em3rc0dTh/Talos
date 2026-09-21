@@ -250,7 +250,8 @@ test('I9-07C One App exposes exact live human work and completes only the curren
       automationApprovalId:automationApproval.body.id,
       executionElementRef:'execution:wrong-human-task',
     });
-    assert.equal(stale.response.status,409);
+    assert.equal(stale.response.status,400);
+    assert.match(String(stale.body.error),/exact Update-backed HUMAN_COORDINATION element/);
     assert.equal(humanUpdateCalls,0);
 
     const completed=await post(app.baseUrl,'/api/automation/execution/human-task/complete',{
