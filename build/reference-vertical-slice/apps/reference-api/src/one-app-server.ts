@@ -501,6 +501,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           automaticWorkflowExecutionAuthorized: false,
           deploymentAttemptExecutorConfigured: Boolean(options.deploymentAttemptExecutor),
           workflowExecutionExecutorConfigured: Boolean(options.workflowExecutionExecutor),
+          workflowRuntimeStateReaderConfigured: Boolean(options.workflowRuntimeStateReader),
+          humanTaskExecutorConfigured: Boolean(options.humanTaskExecutor),
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
