@@ -1529,7 +1529,10 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const executionElementRef = text(input.executionElementRef, 'executionElementRef');
         const execution = session.automation.executionReview?.execution;
         const element = execution?.elements.find((candidate) => candidate.id === executionElementRef);
-        if (!element || element.kind !== 'HUMAN_COORDINATION' || !element.constructKinds.includes('UPDATE_HANDLER')) {
+        const updateMapping = session.automation.mapping?.units.find(
+          (unit) => unit.constructKind === 'UPDATE_HANDLER' && unit.executionSubjectRefs.includes(executionElementRef),
+        );
+        if (!element || element.kind !== 'HUMAN_COORDINATION' || !updateMapping) {
           throw new TypeError('one-app human task completion must target an exact Update-backed HUMAN_COORDINATION element');
         }
         const runtime = await options.humanTaskExecutor({
