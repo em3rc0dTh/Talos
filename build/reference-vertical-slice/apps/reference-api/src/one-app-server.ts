@@ -67,11 +67,11 @@ export interface OneAppWorkflowExecutionExecutorInput {
 }
 
 export interface OneAppWorkflowExecutionExecutorResult {
-  completedAt: string;
+  completedAt?: string;
   workflowExecutionRef: string;
   workflowIdRef: string;
   runIdRef: string;
-  executionStatus: 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  executionStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   evidenceRefs: string[];
 }
 
