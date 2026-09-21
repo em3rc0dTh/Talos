@@ -195,6 +195,51 @@ function publicAutomationWorkspace(context: OneAppAutomationContext) {
 }
 
 
+
+const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
+
+function recommendedProductTemporalResolutions(
+  session: OneAppSession,
+  input: { decidedBy: string; authorityRef: string; rationale: string },
+) {
+  const execution = session.automation.executionReview?.execution;
+  if (!execution) throw new TypeError('recommended Temporal mapping requires an existing reviewed ExecutionPlan');
+  const process = session.binding.processRevision;
+  const waits = execution.elements
+    .filter((element) => element.kind === 'WAIT_COORDINATION')
+    .map((element) => {
+      const subjectRef = element.semanticSubjectRefs[0];
+      const node = process.nodes.find((candidate) => candidate.id === subjectRef);
+      if (!node || node.kind !== 'WAIT') throw new TypeError('recommended Temporal mapping could not resolve the exact WAIT semantic subject');
+      const waitKind = typeof node.details?.waitKind === 'string' ? node.details.waitKind : '';
+      let constructKind: 'DURABLE_TIMER' | 'WORKFLOW_CONDITION';
+      if (['DURATION', 'SCHEDULE', 'DEADLINE'].includes(waitKind)) constructKind = 'DURABLE_TIMER';
+      else if (waitKind === 'CONDITION') constructKind = 'WORKFLOW_CONDITION';
+      else {
+        throw new TypeError(
+          `RECOMMENDED_TEMPORAL_MAPPING_NEEDS_EXPLICIT_WAIT_DECISION:${node.name ?? node.id}:${waitKind || 'UNSPECIFIED'}`,
+        );
+      }
+      return {
+        executionElementRef: element.id,
+        constructKind,
+        authorityRef: input.authorityRef,
+        decidedBy: input.decidedBy,
+        rationale: `${input.rationale} Product policy ${PRODUCT_TEMPORAL_RECOMMENDATION_VERSION} maps confirmed ${waitKind} waits to ${constructKind}; business wait semantics remain unchanged.`,
+      };
+    });
+  const humans = execution.elements
+    .filter((element) => element.kind === 'HUMAN_COORDINATION')
+    .map((element) => ({
+      executionElementRef: element.id,
+      messageKind: 'UPDATE_HANDLER' as const,
+      authorityRef: input.authorityRef,
+      decidedBy: input.decidedBy,
+      rationale: `${input.rationale} Product policy ${PRODUCT_TEMPORAL_RECOMMENDATION_VERSION} uses a tracked Temporal Update for the already-approved human interaction; participant/business meaning remains pinned upstream.`,
+    }));
+  return { waits, humans };
+}
+
 export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const host = options.host ?? '127.0.0.1';
   const runtimeDir = options.runtimeDir ?? mkdtempSync(path.join(os.tmpdir(), 'talos-one-app-'));
@@ -896,19 +941,31 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const approvalId = text(input.approvalId, 'approvalId');
         const session = approvalSessions.get(approvalId);
         if (!session) throw new TypeError('one-app Temporal mapping requires an explicit I8-06 automation approval');
+        const useRecommendedMapping = input.useRecommendedMapping === true;
+        const resolutions = useRecommendedMapping
+          ? recommendedProductTemporalResolutions(session, {
+              decidedBy: typeof input.decidedBy === 'string' ? input.decidedBy : 'one-app-product-user',
+              authorityRef: text(input.authorityRef, 'authorityRef'),
+              rationale: text(input.rationale, 'rationale'),
+            })
+          : {
+              waits: Array.isArray(input.waits) ? input.waits as any : [],
+              humans: Array.isArray(input.humans) ? input.humans as any : [],
+            };
         session.automation = mapOneAppApprovedTemporalDesign(
           repo,
           session.automation,
-          {
-            waits: Array.isArray(input.waits) ? input.waits as any : [],
-            humans: Array.isArray(input.humans) ? input.humans as any : [],
-          },
+          resolutions,
           new Date().toISOString(),
         );
         const mapping = session.automation.mapping;
         if (!mapping) throw new TypeError('one-app approved Temporal mapping was not created');
         json(res, 201, {
           mapping,
+          recommendedMappingApplied: useRecommendedMapping,
+          recommendationVersion: useRecommendedMapping ? PRODUCT_TEMPORAL_RECOMMENDATION_VERSION : null,
+          recommendedWaitResolutionCount: useRecommendedMapping ? resolutions.waits.length : 0,
+          recommendedHumanResolutionCount: useRecommendedMapping ? resolutions.humans.length : 0,
           runtimePolicyAuthorized: false,
           automaticRuntimePolicyDefaultsAuthorized: false,
           deploymentAuthorized: false,
