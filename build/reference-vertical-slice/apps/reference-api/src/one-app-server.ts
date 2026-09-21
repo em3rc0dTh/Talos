@@ -1219,6 +1219,23 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (deploymentRevisionId !== deploymentRealization.revision.id) {
           throw new TypeError('one-app deployment approval must pin the exact realized DeploymentRevision');
         }
+        const existingApproval = session.automation.deploymentApproval;
+        if (existingApproval) {
+          if (existingApproval.deploymentRevisionRef !== deploymentRevisionId) {
+            throw new TypeError('one-app existing deployment approval does not match the exact realized DeploymentRevision');
+          }
+          const existingAttempt = session.automation.deploymentAttempt;
+          if (!existingAttempt) deploymentApprovalSessions.set(existingApproval.id, session);
+          json(res, 200, {
+            deploymentApproval: existingApproval,
+            idempotentReplay: true,
+            deploymentAttemptAuthorized: !existingAttempt,
+            authorizedAttemptCount: existingAttempt ? 0 : 1,
+            deploymentAuthorized: false,
+            executionAuthorized: false,
+          });
+          return;
+        }
         session.automation = approveOneAppDeploymentAttempt(repo, session.automation, {
           authorityRef: text(input.authorityRef, 'authorityRef'),
           approvedBy: typeof input.approvedBy === 'string' ? text(input.approvedBy, 'approvedBy') : 'one-app-user',
@@ -1230,6 +1247,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         deploymentApprovalSessions.set(deploymentApproval.id, session);
         json(res, 201, {
           deploymentApproval,
+          idempotentReplay: false,
           deploymentAttemptAuthorized: true,
           authorizedAttemptCount: 1,
           deploymentAuthorized: false,
