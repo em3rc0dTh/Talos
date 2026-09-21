@@ -37,8 +37,12 @@ function assertRealizedDeployment(deployment:ReferenceDeploymentBundle):void{
   if(deployment.namespaceResolution.resolutionState!=='RESOLVED')throw new TypeError('deployment approval requires a resolved Temporal namespace');
   if(deployment.namingIntent.bindingState!=='REALIZED')throw new TypeError('deployment approval requires realized deployment naming');
   if(deployment.environmentRealizations.length===0)throw new TypeError('deployment approval requires exact environment binding realization lineage');
-  if(deployment.taskQueueBindings.length===0||deployment.workflowTypeBindings.length===0||deployment.activityTypeBindings.length===0||deployment.workerArtifactBindings.length===0){
-    throw new TypeError('deployment approval requires concrete Task Queue, Workflow, Activity and Worker artifact bindings');
+  const typeRequirement=deployment.requirements.find(item=>item.requirementKind==='TYPE_REGISTRATION');
+  const requiresActivityBinding=Boolean(typeRequirement&&typeRequirement.subjectRefs.length>1);
+  if(deployment.taskQueueBindings.length===0||deployment.workflowTypeBindings.length===0||deployment.workerArtifactBindings.length===0||(requiresActivityBinding&&deployment.activityTypeBindings.length===0)){
+    throw new TypeError(requiresActivityBinding
+      ? 'deployment approval requires concrete Task Queue, Workflow, Activity and Worker artifact bindings'
+      : 'deployment approval requires concrete Task Queue, Workflow and Worker artifact bindings');
   }
   if(deployment.requirements.some(item=>item.state!=='RESOLVED'))throw new TypeError('deployment approval requires every material deployment requirement resolved');
   if(deployment.attempts.length>0)throw new TypeError('deployment approval cannot authorize a new first attempt after an attempt already exists');
