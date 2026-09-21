@@ -27,6 +27,7 @@ export interface DurableGuidedResolutionDecision {
   proposalId: string;
   decision: 'ACCEPT' | 'REJECT';
   response: Record<string, unknown>;
+  bindingSnapshot: ReconciledBinding;
   createdAt: string;
 }
 
@@ -81,6 +82,19 @@ export class DurableGuidedResolutionStore {
   getDecision(proposalId: string, decision: 'ACCEPT' | 'REJECT'): DurableGuidedResolutionDecision | undefined {
     const document = this.#repo.get<DurableGuidedResolutionDecision>(this.decisionId(proposalId, decision));
     return document?.aggregateKind === DECISION_KIND ? document.payload : undefined;
+  }
+
+  recoverBindings(): ReconciledBinding[] {
+    const byRevision = new Map<string, ReconciledBinding>();
+    for (const document of this.#repo.listByKind<DurableGuidedResolutionProposal>(PROPOSAL_KIND)) {
+      const binding = document.payload.bindingSnapshot;
+      byRevision.set(binding.alignedBpmnRevision.id, binding);
+    }
+    for (const document of this.#repo.listByKind<DurableGuidedResolutionDecision>(DECISION_KIND)) {
+      const binding = document.payload.bindingSnapshot;
+      byRevision.set(binding.alignedBpmnRevision.id, binding);
+    }
+    return [...byRevision.values()];
   }
 
   saveDecision(input: DurableGuidedResolutionDecision): void {
