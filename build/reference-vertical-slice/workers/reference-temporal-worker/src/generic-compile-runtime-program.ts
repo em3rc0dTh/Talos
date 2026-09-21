@@ -41,8 +41,10 @@ export function compileGenericRuntimeProgram(
   }
   const relations=execution.relations.map(r=>({id:r.id,sourceElementRef:r.sourceElementRef,targetElementRef:r.targetElementRef,relationKind:r.relationKind,...(r.conditionRef?{conditionRef:r.conditionRef}:{})}));
 
-  const activityPolicies=execution.capabilityUses.map(use=>{
-    const ap=policy.activityPolicies.find(x=>x.capabilityUseOccurrenceRef===use.id);if(!ap)throw new TypeError(`Activity policy missing for ${use.id}`);
+  const activityUnits=mapping.units.filter(unit=>unit.constructKind==='ACTIVITY');
+  const activityUses=execution.capabilityUses.filter(use=>activityUnits.some(unit=>unit.executionSubjectRefs.includes(use.id)));
+  const activityPolicies=activityUses.map(use=>{
+    const ap=policy.activityPolicies.find(x=>x.capabilityUseOccurrenceRef===use.id);if(!ap)throw new TypeError(`Activity policy missing for Activity-backed capability use ${use.id}`);
     const retry=policy.retryPolicies.find(x=>x.id===ap.retryPolicyRef),timeout=policy.timeoutPolicies.find(x=>x.id===ap.timeoutPolicyRef),idem=policy.idempotencyPolicies.find(x=>x.id===ap.idempotencyPolicyRef);
     if(!retry||!timeout||!idem||retry.initialIntervalMs===undefined||retry.backoffCoefficient===undefined||retry.maximumIntervalMs===undefined||retry.maximumAttempts===undefined||timeout.startToCloseMs===undefined||timeout.scheduleToCloseMs===undefined)throw new TypeError(`material Activity policy incomplete for ${use.id}`);
     return{capabilityUseOccurrenceRef:use.id,temporalMappingUnitRef:ap.temporalMappingUnitRef,retry:{initialIntervalMs:retry.initialIntervalMs,backoffCoefficient:retry.backoffCoefficient,maximumIntervalMs:retry.maximumIntervalMs,maximumAttempts:retry.maximumAttempts,nonRetryableErrorTypes:[...retry.nonRetryableFailureTypes]},timeout:{startToCloseMs:timeout.startToCloseMs,scheduleToCloseMs:timeout.scheduleToCloseMs},idempotency:{strategyKind:idem.strategyKind as 'IDEMPOTENCY_KEY'|'PROVIDER_GUARANTEE'|'NONE',...(idem.keyContract?{keyContract:idem.keyContract}:{}),...(idem.enforcementRef?{enforcementRef:idem.enforcementRef}:{})}};

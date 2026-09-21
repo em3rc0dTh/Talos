@@ -12,7 +12,7 @@ import type {
 } from './types.ts';
 
 const rpl=(seed:string)=>createOpaqueId('runtimePolicy',seed);
-const DESIGNER_VERSION='i6-generic-runtime-policy-v0.1';
+const DESIGNER_VERSION='i6-generic-runtime-policy-v0.2';
 
 type PolicyBasis=RetryPolicyDesign['policyBasis'];
 export interface GenericActivityRuntimePolicyResolution {
@@ -49,11 +49,19 @@ export function designGenericRuntimePolicy(
   nonEmpty(workflow.authorityRef,'workflow authorityRef');nonEmpty(workflow.decidedBy,'workflow decidedBy');nonEmpty(workflow.rationale,'workflow rationale');positive(workflow.maximumAttempts,'workflow maximumAttempts');
 
   const activityUnits=mapping.units.filter(u=>u.constructKind==='ACTIVITY');
+  const activityUses=execution.capabilityUses.filter(use=>activityUnits.some(unit=>unit.executionSubjectRefs.includes(use.id)));
+  const activityUseIds=new Set(activityUses.map(use=>use.id));
   const resolutionByUse=new Map(activities.map(x=>[x.capabilityUseOccurrenceRef,x]));
   if(resolutionByUse.size!==activities.length)throw new TypeError('duplicate Activity runtime policy resolution');
-  if(activityUnits.length!==execution.capabilityUses.length)throw new TypeError('generic runtime policy expects one Activity mapping per capability use in v0.1');
-  for(const use of execution.capabilityUses){
-    const spec=resolutionByUse.get(use.id);if(!spec)throw new TypeError(`runtime policy missing for capability use ${use.id}`);
+  for(const unit of activityUnits){
+    const mappedUses=activityUses.filter(use=>unit.executionSubjectRefs.includes(use.id));
+    if(mappedUses.length!==1)throw new TypeError(`generic runtime policy requires each Activity mapping to pin exactly one capability use; mapping ${unit.id} pins ${mappedUses.length}`);
+  }
+  if(activityUnits.length!==activityUses.length)throw new TypeError('generic runtime policy requires one Activity mapping per Activity-backed capability use');
+  for(const spec of activities)if(!activityUseIds.has(spec.capabilityUseOccurrenceRef))throw new TypeError(`Activity runtime policy targets non-Activity capability use ${spec.capabilityUseOccurrenceRef}`);
+  if(resolutionByUse.size!==activityUses.length)throw new TypeError('generic runtime policy requires one explicit policy per Activity-backed capability use');
+  for(const use of activityUses){
+    const spec=resolutionByUse.get(use.id);if(!spec)throw new TypeError(`runtime policy missing for Activity-backed capability use ${use.id}`);
     nonEmpty(spec.authorityRef,'activity authorityRef');nonEmpty(spec.decidedBy,'activity decidedBy');nonEmpty(spec.rationale,'activity rationale');
     positive(spec.retry.initialIntervalMs,'retry initialIntervalMs');positive(spec.retry.backoffCoefficient,'retry backoffCoefficient');positive(spec.retry.maximumIntervalMs,'retry maximumIntervalMs');positive(spec.retry.maximumAttempts,'retry maximumAttempts');
     positive(spec.timeout.startToCloseMs,'timeout startToCloseMs');positive(spec.timeout.scheduleToCloseMs,'timeout scheduleToCloseMs');
@@ -67,7 +75,7 @@ export function designGenericRuntimePolicy(
   const revisionId=rpl(`generic-runtime-policy:${mapping.revision.id}:${normalized}`);
   const retryPolicies:RetryPolicyDesign[]=[],timeoutPolicies:TimeoutPolicyDesign[]=[],idempotencyPolicies:IdempotencyPolicyDesign[]=[],failurePolicies:FailureClassificationPolicy[]=[],activityPolicies:any[]=[],facets:RuntimePolicyFacet[]=[];
 
-  for(const use of execution.capabilityUses){
+  for(const use of activityUses){
     const spec=resolutionByUse.get(use.id)!;
     const unit=activityUnits.find(u=>u.executionSubjectRefs.includes(use.id));if(!unit)throw new TypeError(`Activity mapping missing for capability use ${use.id}`);
     const retry:RetryPolicyDesign={id:rpl(`generic-retry:${revisionId}:${use.id}`),runtimePolicyRevisionId:revisionId,policySubjectRef:unit.id,retryMode:'EXPLICIT_CUSTOM',initialIntervalMs:spec.retry.initialIntervalMs,backoffCoefficient:spec.retry.backoffCoefficient,maximumIntervalMs:spec.retry.maximumIntervalMs,maximumAttempts:spec.retry.maximumAttempts,nonRetryableFailureTypes:[...spec.retry.nonRetryableFailureTypes],policyBasis:spec.policyBasis};

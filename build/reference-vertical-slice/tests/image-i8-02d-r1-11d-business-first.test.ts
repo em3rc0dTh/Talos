@@ -438,6 +438,26 @@ test('R1-11E recommended Temporal mapping reuses confirmed wait and approved hum
     assert.equal(replay.body.mapping.revision.id,mapping.body.mapping.revision.id);
     assert.equal(replay.body.deploymentAuthorized,false);
     assert.equal(replay.body.executionAuthorized,false);
+
+    const runtimePolicy=await post(app.baseUrl,'/api/automation/runtime-policy',{
+      approvalId:approval.body.id,
+      temporalMappingRevisionId:mapping.body.mapping.revision.id,
+      activities:[],
+      workflow:{
+        authorityRef:'authority:r1-11g:test:human-runtime-policy',
+        decidedBy:'field-trial-user',
+        rationale:'Human Update handlers do not execute through Activities; accept only the explicit Workflow retry policy.',
+        maximumAttempts:1,
+        policyBasis:'USER_EXPLICIT_DESIGN',
+      },
+    });
+    assert.equal(runtimePolicy.response.status,201);
+    assert.equal(runtimePolicy.body.runtimePolicy.assessment.readiness,'READY_FOR_DEPLOYMENT_DESIGN');
+    assert.equal(runtimePolicy.body.runtimePolicy.activityPolicies.length,0);
+    assert.equal(runtimePolicy.body.runtimePolicy.timeoutPolicies.length,0);
+    assert.equal(runtimePolicy.body.runtimePolicy.idempotencyPolicies.length,0);
+    assert.equal(runtimePolicy.body.deploymentAuthorized,false);
+    assert.equal(runtimePolicy.body.executionAuthorized,false);
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
