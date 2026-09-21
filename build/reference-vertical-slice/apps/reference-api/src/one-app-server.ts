@@ -187,6 +187,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const imageRuntime = resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env);
   const bindings = new Map<string, ReconciledBinding>();
   const guidedResolutionStore = new DurableGuidedResolutionStore(repo);
+  for (const recoveredBinding of guidedResolutionStore.recoverBindings()) bindings.set(recoveredBinding.alignedBpmnRevision.id, recoveredBinding);
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
@@ -211,7 +212,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           environmentRealizationStage: 'I9-05_ENVIRONMENT_REALIZATION',
           deploymentAttemptStage: 'I9-06_EXPLICIT_DEPLOYMENT_APPROVAL_ATTEMPT',
           workflowExecutionStage: 'I9-07_EXPLICIT_WORKFLOW_EXECUTION_AUTHORITY',
-          inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
+          inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN', 'TALOS_CANVAS'] : ['NATIVE_BPMN', 'TALOS_CANVAS'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
             exactSourceIntake: true,
@@ -563,6 +564,18 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (decision !== 'ACCEPT' && decision !== 'REJECT') throw new TypeError('decision must be ACCEPT or REJECT');
 
         const previousDecision = guidedResolutionStore.getDecision(proposalId, decision);
+        const conflictingDecision = guidedResolutionStore.getDecision(proposalId, decision === 'ACCEPT' ? 'REJECT' : 'ACCEPT');
+        if (conflictingDecision) {
+          json(res, 409, {
+            code: 'SEMANTIC_RESOLUTION_ALREADY_DECIDED',
+            userMessage: 'These clarifications were already decided. Talos will keep the recorded decision instead of creating a conflicting revision.',
+            nextAction: 'CONTINUE_FROM_RECORDED_DECISION',
+            automaticAuthorityGranted: false,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
         if (previousDecision) {
           json(res, 200, { ...previousDecision.response, idempotentReplay: true });
           return;
@@ -624,6 +637,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             proposalId,
             decision: 'REJECT',
             response: responseBody,
+            bindingSnapshot: binding,
             createdAt: decidedAt,
           });
           json(res, 200, { ...responseBody, idempotentReplay: false });
@@ -679,6 +693,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           proposalId,
           decision: 'ACCEPT',
           response: responseBody,
+          bindingSnapshot: resolvedBinding,
           createdAt: decidedAt,
         });
         json(res, 201, { ...responseBody, idempotentReplay: false });
