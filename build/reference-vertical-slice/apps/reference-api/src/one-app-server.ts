@@ -246,7 +246,7 @@ function recoverApprovedTemporalSession(
   }
 
   const execution = {
-    definition: exactDocumentPayload<any>(repo, revision.executionPlanDefinitionRef, 'ExecutionPlanDefinition'),
+    definition: exactDocumentPayload<any>(repo, revision.executionPlanDefinitionId, 'ExecutionPlanDefinition'),
     revision,
     scopeBindings: (revision.executionScopeBindingRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionScopeBinding')),
     regions: (revision.executionRegionRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionRegion')),
