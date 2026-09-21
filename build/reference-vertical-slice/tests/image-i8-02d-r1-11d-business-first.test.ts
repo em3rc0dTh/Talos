@@ -390,6 +390,18 @@ test('R1-11E recommended Temporal mapping reuses confirmed wait and approved hum
       rationale:'Approve this reviewed automation plan for Temporal design only.',
     });
     assert.equal(approval.response.status,201);
+    assert.equal(approval.body.idempotentReplay,false);
+
+    const approvalReplay=await post(app.baseUrl,'/api/automation/approve',{
+      reviewId:review.body.review.id,
+      approvedBy:'field-trial-user',
+      authorityRef:'authority:r1-11f:test:automation-approval-replay',
+      rationale:'A repeated product click must return the existing exact approval without appending another approval.',
+    });
+    assert.equal(approvalReplay.response.status,200);
+    assert.equal(approvalReplay.body.idempotentReplay,true);
+    assert.equal(approvalReplay.body.id,approval.body.id);
+    assert.equal(approvalReplay.body.executionDigest,approval.body.executionDigest);
 
     await app.close();
     app=await startTalosOneApp({runtimeDir,port:0});
