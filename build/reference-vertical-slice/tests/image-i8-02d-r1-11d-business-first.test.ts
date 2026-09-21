@@ -22,6 +22,8 @@ test('R1-11D simple product shell exposes five business stages and three source 
   assert.match(page,/r111dSimple/);
   assert.match(page,/\/api\/input\/canvas/);
   assert.match(page,/Prepare Temporal workflow/);
+  assert.match(page,/How should this business step be handled when Talos runs the workflow/);
+  assert.match(page,/Who is responsible\?/);
 });
 
 test('R1-11D Canvas enters source preservation, Canonical review, confirmation and Automation Design',async()=>{
@@ -132,6 +134,11 @@ test('R1-11D guided clarification survives product restart and Apply is idempote
     assert.equal(accepted.body.requiresProcessReconfirmation,true);
     assert.equal(accepted.body.authorizesAutomationDesign,false);
     assert.notEqual(accepted.body.revision.id,originalRevisionId);
+    const clarifiedWait=accepted.body.reconciliation.processRevision.nodes.find((node:any)=>node.name==='Let product work');
+    assert.ok(clarifiedWait);
+    assert.equal(clarifiedWait.kind,'WAIT');
+    assert.equal(clarifiedWait.details.waitKind,'DURATION');
+    assert.equal(clarifiedWait.details.expression,'5 minutes');
 
     const replay=await post(app.baseUrl,'/api/semantic-resolution/decide',{
       revisionId:originalRevisionId,
@@ -165,6 +172,92 @@ test('R1-11D guided clarification survives product restart and Apply is idempote
     });
     assert.equal(design.response.status,201);
     assert.equal(design.body.automationDesignOpened,true);
+  }finally{
+    await app.close();
+    rmSync(runtimeDir,{recursive:true,force:true});
+  }
+});
+
+
+test('R1-11D actorless business actions can be explicitly designed as human work without changing Canonical business truth',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r111d-human-capability-'));
+  const app=await startTalosOneApp({runtimeDir,port:0});
+  try{
+    const intake=await post(app.baseUrl,'/api/input/canvas',{
+      title:'Manual service process',
+      initiatedBy:'field-trial-user',
+      elements:[
+        {id:'start',kind:'START',label:'Start'},
+        {id:'work',kind:'STEP',label:'Wash the vehicle'},
+        {id:'end',kind:'END',label:'Done'},
+      ],
+      connections:[],
+    });
+    assert.equal(intake.response.status,201);
+
+    const confirmation=await post(app.baseUrl,'/api/bpmn/confirm',{
+      revisionId:intake.body.revision.id,
+      canonicalProcessRevisionId:intake.body.reconciliation.processRevision.id,
+      confirmedBy:'field-trial-user',
+      authorityRef:'authority:r1-11d:test:manual-confirm',
+      rationale:'Reviewed exact manual service process.',
+    });
+    assert.equal(confirmation.response.status,201);
+
+    const design=await post(app.baseUrl,'/api/bpmn/automation-design-approval',{
+      revisionId:confirmation.body.revision.id,
+      confirmationId:confirmation.body.confirmation.id,
+      approvedBy:'field-trial-user',
+      authorityRef:'authority:r1-11d:test:manual-design',
+    });
+    assert.equal(design.response.status,201);
+    assert.equal(design.body.automationDesignOpened,true);
+    const workspace=design.body.automationDesign.workspace;
+    assert.equal(workspace.requirements.length,1);
+    const requirement=workspace.requirements[0];
+    assert.equal(requirement.businessStepName,'Wash the vehicle');
+    assert.equal(requirement.businessStepKind,'ACTION');
+    assert.equal(requirement.designState,'UNRESOLVED_CAPABILITY');
+
+    const selected=await post(app.baseUrl,'/api/automation/capability/select',{
+      workspaceId:workspace.id,
+      selections:[{
+        source:'EXPLICIT_OFFERING',
+        requirementRef:requirement.capabilityRequirementRef,
+        family:'HUMAN_INTERACTION',
+        operationIntent:requirement.operationIntent,
+        offeringCanonicalName:'Talos manual task',
+        offeringLifecycleStatus:'TEST_ONLY',
+        implementationKind:'HUMAN_SERVICE',
+        implementationRef:'product-explicit:human-interaction:talos-manual-task',
+        decidedBy:'field-trial-user',
+        authorityRef:'authority:r1-11d:test:manual-selection',
+        rationale:'The user explicitly chose a manual human step in Automation Design.',
+        human:{
+          interactionKind:'MANUAL_ACTION',
+          responsibilityKind:'PERFORMER',
+          roleRefs:[],
+          participantLabel:'Car-wash operator',
+          assignmentCardinality:'ANY_ELIGIBLE',
+          outcomes:[{code:'COMPLETED',businessMeaning:'Wash the vehicle is complete.',terminal:true}],
+        },
+      }],
+    });
+    assert.equal(selected.response.status,201);
+    assert.equal(selected.body.createsBinding,true);
+    assert.equal(selected.body.executionPlanAuthorized,false);
+    assert.equal(selected.body.resolution.participantRequirements[0].roleRefs.length,0);
+    assert.deepEqual(selected.body.resolution.participantRequirements[0].actorTypeConstraints,['BUSINESS_RESPONSIBILITY:Car-wash operator']);
+
+    const review=await post(app.baseUrl,'/api/automation/execution-plan/review',{
+      workspaceId:workspace.id,
+      decisions:{},
+    });
+    assert.equal(review.response.status,201);
+    assert.equal(review.body.review.state,'READY_FOR_AUTOMATION_APPROVAL');
+    assert.equal(review.body.review.temporalDesignAuthorized,false);
+    assert.equal(review.body.review.deploymentAuthorized,false);
+    assert.equal(review.body.review.executionAuthorized,false);
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
