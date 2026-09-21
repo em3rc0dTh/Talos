@@ -145,6 +145,9 @@ test('R1-11D guided clarification survives product restart and Apply is idempote
     assert.equal(replay.body.idempotentReplay,true);
     assert.equal(replay.body.revision.id,accepted.body.revision.id);
 
+    await app.close();
+    app=await startTalosOneApp({runtimeDir,port:0});
+
     const confirmation=await post(app.baseUrl,'/api/bpmn/confirm',{
       revisionId:accepted.body.revision.id,
       canonicalProcessRevisionId:accepted.body.reconciliation.processRevision.id,
