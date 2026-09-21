@@ -23,7 +23,8 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   body.r111dSimple .r105DecisionButtons button{background:#22364a;color:#e3edf6}
   body.r111dTechnicalMode .truth,body.r111dTechnicalMode #r110Nav,body.r111dTechnicalMode #r110Recovery,body.r111dTechnicalMode .runtime,body.r111dTechnicalMode #r106ExecutionPlan,body.r111dTechnicalMode #r107RuntimeAuthority{display:grid!important}
   body.r111dTechnicalMode #r110Nav{display:flex!important}body.r111dTechnicalMode .runtime{display:block!important}body.r111dTechnicalMode #r106ExecutionPlan,body.r111dTechnicalMode #r107RuntimeAuthority,body.r111dTechnicalMode #r110Recovery{display:block!important}
-  @media(max-width:800px){.r111dSteps,.r111dSourceChooser{grid-template-columns:1fr}.r111dConnection{grid-template-columns:1fr}.r111dCanvasRow{grid-template-columns:90px 1fr auto}}
+  .r111dResolve{margin-top:9px;border:1px solid #314960;border-radius:10px;padding:10px;background:#08121c}.r111dResolvePrompt{font-size:11px;color:#b7c7d8;line-height:1.45;margin-bottom:8px}.r111dResolveGrid{display:grid;grid-template-columns:180px 1fr;gap:7px}.r111dResolve select,.r111dResolve input{width:100%;background:#0e1823;color:#eef5fb;border:1px solid #334a63;border-radius:8px;padding:8px;font:inherit}.r111dResolveActions{display:flex;gap:8px;align-items:center;margin-top:8px}.r111dResolveSaved{font-size:10px;color:#66e4bd}.r111dResolveHint{font-size:10px;color:#91a5b8;margin-top:6px;line-height:1.4}
+  @media(max-width:800px){.r111dSteps,.r111dSourceChooser{grid-template-columns:1fr}.r111dConnection,.r111dResolveGrid{grid-template-columns:1fr}.r111dCanvasRow{grid-template-columns:90px 1fr auto}}
 </style>
 <script>
 (function(){
@@ -32,6 +33,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   var currentStage='process';
   var hasCandidate=false;
   var latestDesign=null;
+  var explicitSelections={};
   var simpleReview=null;
   var simpleApproval=null;
   var dragId=null;
@@ -115,30 +117,119 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   function installContinue(){
     var review=byId('review');if(!review||byId('r111dContinue'))return;var div=document.createElement('div');div.id='r111dContinue';div.className='r111dContinue';div.innerHTML='<button type="button">Continue to confirmation</button>';div.querySelector('button').onclick=function(){var clarify=byId('r111cClarify');if(clarify&&clarify.classList.contains('open')){clarify.scrollIntoView({behavior:'smooth',block:'center'});return}setStage('confirm')};var confirmation=byId('r104BusinessConfirmation');if(confirmation&&confirmation.parentNode)confirmation.parentNode.insertBefore(div,confirmation);else review.appendChild(div);
   }
-  function humanFamily(value){var map={HUMAN_INTERACTION:'Ask a person',DATA_COLLECTION:'Collect information',COMMUNICATION:'Send or receive information',SYSTEM_OPERATION:'Update a system',DOCUMENT_FILE:'Work with a document',STORAGE:'Store information',EXTERNAL_WORKFLOW_INVOCATION:'Start another process',AI_TASK:'Use AI for a task',CUSTOM_INTEGRATION:'Connect another service'};return map[value]||String(value||'Automation step').replaceAll('_',' ').toLowerCase()}
+  function humanFamily(value){var map={HUMAN_INTERACTION:'Handled by a person',DATA_COLLECTION:'Collect information',COMMUNICATION:'Send or receive information',SYSTEM_OPERATION:'Use a system or API',DOCUMENT_FILE:'Work with a document',STORAGE:'Store information',EXTERNAL_WORKFLOW_INVOCATION:'Start another workflow',AI_TASK:'Use AI for this step',CUSTOM_INTEGRATION:'Use another integration'};return map[value]||String(value||'Automation step').replaceAll('_',' ').toLowerCase()}
+  function implementationKind(family){
+    if(family==='HUMAN_INTERACTION')return'HUMAN_SERVICE';
+    if(family==='AI_TASK')return'AI_SERVICE';
+    if(family==='STORAGE')return'DATABASE_ADAPTER';
+    if(family==='EXTERNAL_WORKFLOW_INVOCATION')return'N8N_WORKFLOW';
+    return'DIRECT_API';
+  }
+  function slug(value){return String(value||'selection').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'selection'}
+  function acceptedDecision(requirement){
+    return (latestDesign&&latestDesign.decisions||[]).find(function(d){return d.capabilityRequirementRef===requirement.capabilityRequirementRef&&(d.decision==='ACCEPT'||d.decision==='REPLACE')});
+  }
+  function hasDirection(requirement){return Boolean(acceptedDecision(requirement)||explicitSelections[requirement.capabilityRequirementRef])}
+  function renderExplicitCapabilityControls(){
+    if(!latestDesign)return;
+    var cards=Array.from(document.querySelectorAll('.r105Requirement'));
+    (latestDesign.requirements||[]).forEach(function(requirement,index){
+      var card=cards[index];if(!card)return;
+      var title=card.querySelector('.r105RequirementTitle');
+      if(title)title.textContent=requirement.businessStepName||humanFamily(requirement.family);
+      var unresolved=requirement.designState==='UNRESOLVED_CAPABILITY'||requirement.designState==='NO_SUGGESTION_AVAILABLE';
+      if(!unresolved)return;
+      var list=card.querySelector('.r105Suggestions');if(!list)return;list.innerHTML='';
+      var box=document.createElement('div');box.className='r111dResolve';
+      var prompt=document.createElement('div');prompt.className='r111dResolvePrompt';prompt.textContent='How should this business step be handled when Talos runs the workflow?';box.appendChild(prompt);
+      var grid=document.createElement('div');grid.className='r111dResolveGrid';
+      var family=document.createElement('select');family.className='r111dResolveFamily';
+      var options=[
+        ['','Choose who or what performs it'],
+        ['HUMAN_INTERACTION','A person / manual task'],
+        ['SYSTEM_OPERATION','A system or API'],
+        ['COMMUNICATION','A message or notification'],
+        ['DATA_COLLECTION','Collect information'],
+        ['DOCUMENT_FILE','A document or file'],
+        ['STORAGE','Store or update data'],
+        ['EXTERNAL_WORKFLOW_INVOCATION','Another workflow / n8n'],
+        ['AI_TASK','An AI capability'],
+        ['CUSTOM_INTEGRATION','Another integration']
+      ];
+      options.forEach(function(pair){var option=document.createElement('option');option.value=pair[0];option.textContent=pair[1];family.appendChild(option)});
+      if(requirement.family&&requirement.family!=='SOURCE_DEFINED'){family.value=requirement.family;family.disabled=true}
+      var offering=document.createElement('input');offering.className='r111dResolveOffering';offering.placeholder='Name the system, service, or execution direction';
+      grid.appendChild(family);grid.appendChild(offering);box.appendChild(grid);
+      var participant=document.createElement('input');participant.className='r111dResolveParticipant';participant.placeholder='Who is responsible? Example: car-wash operator';participant.style.marginTop='7px';participant.style.display=family.value==='HUMAN_INTERACTION'?'block':'none';box.appendChild(participant);
+      var hint=document.createElement('div');hint.className='r111dResolveHint';hint.textContent='This is an automation-design decision. It does not rewrite or reconfirm the business process.';box.appendChild(hint);
+      var actions=document.createElement('div');actions.className='r111dResolveActions';var save=document.createElement('button');save.type='button';save.textContent='Use this direction';var saved=document.createElement('span');saved.className='r111dResolveSaved';actions.appendChild(save);actions.appendChild(saved);box.appendChild(actions);
+      family.addEventListener('change',function(){
+        participant.style.display=family.value==='HUMAN_INTERACTION'?'block':'none';
+        if(!offering.value){
+          if(family.value==='HUMAN_INTERACTION')offering.value='Talos manual task';
+          else if(family.value==='AI_TASK')offering.value='Configured AI capability';
+        }
+      });
+      var existing=explicitSelections[requirement.capabilityRequirementRef];
+      if(existing){family.value=existing.family;offering.value=existing.offeringCanonicalName;participant.value=existing.participantLabel||'';participant.style.display=family.value==='HUMAN_INTERACTION'?'block':'none';saved.textContent='Direction selected'}
+      save.addEventListener('click',function(){
+        var chosen=family.value;var name=offering.value.trim();var person=participant.value.trim();
+        saved.textContent='';
+        if(!chosen){saved.textContent='Choose who or what performs this step.';return}
+        if(!name){saved.textContent='Give this execution direction a name.';return}
+        if(chosen==='HUMAN_INTERACTION'&&!person){saved.textContent='Tell Talos who is responsible for the manual step.';return}
+        explicitSelections[requirement.capabilityRequirementRef]={
+          source:'EXPLICIT_OFFERING',
+          requirementRef:requirement.capabilityRequirementRef,
+          family:chosen,
+          operationIntent:requirement.operationIntent,
+          offeringCanonicalName:name,
+          offeringLifecycleStatus:'TEST_ONLY',
+          implementationKind:implementationKind(chosen),
+          implementationRef:'product-explicit:'+slug(chosen)+':'+slug(name),
+          participantLabel:person,
+          businessStepName:requirement.businessStepName||'this process step'
+        };
+        saved.textContent='Direction selected';
+        updateAutomationGuide();
+      });
+      list.appendChild(box);
+    });
+  }
   function simplifyDesign(){
-    Array.from(document.querySelectorAll('.r105Requirement')).forEach(function(card){var title=card.querySelector('.r105RequirementTitle');if(title){var raw=title.textContent.split(' · ')[0];title.textContent=humanFamily(raw)}Array.from(card.querySelectorAll('.r105DecisionButtons button')).forEach(function(b){var m={ACCEPT:'Use this',REJECT:'Not needed',DEFER:'Decide later',REPLACE:'Choose another'};if(m[b.textContent])b.textContent=m[b.textContent]})});
+    Array.from(document.querySelectorAll('.r105Requirement')).forEach(function(card){Array.from(card.querySelectorAll('.r105DecisionButtons button')).forEach(function(b){var m={ACCEPT:'Use this',REJECT:'Not needed',DEFER:'Decide later',REPLACE:'Choose another'};if(m[b.textContent])b.textContent=m[b.textContent]})});
+    renderExplicitCapabilityControls();
   }
   function installAutomationGuide(){
-    var design=byId('r105AutomationDesign');if(!design||byId('r111dAutomationGuide'))return;var guide=document.createElement('section');guide.id='r111dAutomationGuide';guide.className='r111dAutomationGuide';guide.innerHTML='<h4>Automation plan</h4><p>Choose an automation direction for each item above. Then Talos can prepare a reviewable plan without exposing internal bindings.</p><div id="r111dPlanSummary" class="r111dPlanSummary"></div><div class="r111dAutomationActions"><button id="r111dPreparePlan" type="button" disabled>Prepare automation plan</button><button id="r111dApproveAutomation" type="button" style="display:none">Approve automation</button></div><div id="r111dAutomationState" class="r111dAutomationState"></div>';design.appendChild(guide);byId('r111dPreparePlan').onclick=preparePlan;byId('r111dApproveAutomation').onclick=approveAutomationSimple;
+    var design=byId('r105AutomationDesign');if(!design||byId('r111dAutomationGuide'))return;var guide=document.createElement('section');guide.id='r111dAutomationGuide';guide.className='r111dAutomationGuide';guide.innerHTML='<h4>Automation plan</h4><p>For each business step, tell Talos who or what should perform it. Talos will keep this separate from the confirmed business process.</p><div id="r111dPlanSummary" class="r111dPlanSummary"></div><div class="r111dAutomationActions"><button id="r111dPreparePlan" type="button" disabled>Prepare automation plan</button><button id="r111dApproveAutomation" type="button" style="display:none">Approve automation</button></div><div id="r111dAutomationState" class="r111dAutomationState"></div>';design.appendChild(guide);byId('r111dPreparePlan').onclick=preparePlan;byId('r111dApproveAutomation').onclick=approveAutomationSimple;
   }
   function decisionsReady(){
-    if(!latestDesign)return false;var req=latestDesign.requirements||[],dec=latestDesign.decisions||[];return req.length>0&&req.every(function(r){return dec.some(function(d){return d.capabilityRequirementRef===r.capabilityRequirementRef&&(d.decision==='ACCEPT'||d.decision==='REPLACE')})})
+    if(!latestDesign)return false;var req=latestDesign.requirements||[];return req.length>0&&req.every(hasDirection)
   }
   function updateAutomationGuide(){
-    installAutomationGuide();simplifyDesign();var guide=byId('r111dAutomationGuide');if(!guide||!latestDesign)return;guide.classList.add('open');var button=byId('r111dPreparePlan');button.disabled=!decisionsReady();var state=byId('r111dAutomationState');state.textContent=decisionsReady()?'Your choices are ready. Talos can prepare the automation plan.':'Choose one usable direction for each automation item above.'
+    installAutomationGuide();var guide=byId('r111dAutomationGuide');if(!guide||!latestDesign)return;guide.classList.add('open');var button=byId('r111dPreparePlan');button.disabled=!decisionsReady();var state=byId('r111dAutomationState');state.className='r111dAutomationState';state.textContent=decisionsReady()?'Your choices are ready. Talos can prepare the automation plan.':'Choose how each business step should be handled.';setTimeout(simplifyDesign,0)
   }
   async function post(path,payload){var response=await nativeFetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});var raw=await response.text();var body=raw?JSON.parse(raw):{};if(!response.ok)throw new Error(body.userMessage||body.error||body.code||('HTTP '+response.status));return body}
+  function capabilitySelection(requirement){
+    var explicit=explicitSelections[requirement.capabilityRequirementRef];
+    if(explicit){
+      var result={source:explicit.source,requirementRef:explicit.requirementRef,family:explicit.family,operationIntent:explicit.operationIntent,offeringCanonicalName:explicit.offeringCanonicalName,offeringLifecycleStatus:explicit.offeringLifecycleStatus,implementationKind:explicit.implementationKind,implementationRef:explicit.implementationRef,decidedBy:'one-app-product-user',authorityRef:authority('capability-selection'),rationale:'User explicitly selected how this business step should be executed in Automation Design.'};
+      if(explicit.family==='HUMAN_INTERACTION')result.human={interactionKind:'MANUAL_ACTION',responsibilityKind:'PERFORMER',roleRefs:[],participantLabel:explicit.participantLabel,assignmentCardinality:'ANY_ELIGIBLE',outcomes:[{code:'COMPLETED',businessMeaning:explicit.businessStepName+' is complete.',terminal:true}]};
+      return result;
+    }
+    var d=acceptedDecision(requirement);return{source:'SUGGESTION_DECISION',requirementRef:requirement.capabilityRequirementRef,suggestionDecisionRef:d.id,decidedBy:'one-app-product-user',authorityRef:authority('capability-selection'),rationale:'User explicitly selected this automation direction in the business-first journey.'};
+  }
   async function preparePlan(){
     if(!latestDesign||!decisionsReady())return;var state=byId('r111dAutomationState');state.textContent='Preparing a reviewable automation plan…';
     try{
-      var selections=(latestDesign.requirements||[]).map(function(r){var d=(latestDesign.decisions||[]).find(function(x){return x.capabilityRequirementRef===r.capabilityRequirementRef&&(x.decision==='ACCEPT'||x.decision==='REPLACE')});return{source:'SUGGESTION_DECISION',requirementRef:r.capabilityRequirementRef,suggestionDecisionRef:d.id,decidedBy:'one-app-product-user',authorityRef:authority('capability-selection'),rationale:'User explicitly selected this automation direction in the business-first journey.'}});
+      var selections=(latestDesign.requirements||[]).map(capabilitySelection);
       await post('/api/automation/capability/select',{workspaceId:latestDesign.workspaceId,selections:selections});
       simpleReview=await post('/api/automation/execution-plan/review',{workspaceId:latestDesign.workspaceId,decisions:{}});
       var host=byId('r111dPlanSummary');host.innerHTML='';(simpleReview.execution&&simpleReview.execution.elements||[]).forEach(function(element,index){var row=document.createElement('div');row.className='r111dPlanItem';row.textContent=(index+1)+'. '+String(element.kind||'Step').replaceAll('_',' ').toLowerCase();host.appendChild(row)});
       if(simpleReview.review&&simpleReview.review.state==='READY_FOR_AUTOMATION_APPROVAL'){state.className='r111dAutomationState good';state.textContent='Automation plan ready. Review the summary and approve it when it matches your intent.';byId('r111dApproveAutomation').style.display='inline-block'}else{state.textContent='Talos needs more automation detail before approval. No execution authority was created.'}
     }catch(error){state.className='r111dAutomationState bad';state.textContent=error instanceof Error?error.message:String(error)}
   }
+
   async function approveAutomationSimple(){
     if(!simpleReview)return;var state=byId('r111dAutomationState');state.textContent='Recording your automation approval…';
     try{
@@ -157,18 +248,39 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     try{var body=await post('/api/automation/temporal-mapping',{approvalId:simpleApproval.id,waits:[],humans:[]});var mapping=body.mapping;if(body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('Talos refused an unsafe authority transition.');state.className='r111dRunState good';state.textContent='Temporal workflow prepared. It has not been deployed or started. Runtime administration remains separate from the business journey.';window.dispatchEvent(new CustomEvent('talos:r1-11d-temporal-ready',{detail:{mapping:mapping}}))}
     catch(error){state.className='r111dRunState bad';state.textContent='Talos needs one more execution detail before it can prepare the Temporal workflow. Your approved process is safe and unchanged.'}
   }
+  function renderProductCandidate(reconciliation,badgeText){
+    var process=reconciliation&&reconciliation.processRevision;if(!process)return;
+    var host=byId('nodes');if(host){host.innerHTML='';(process.nodes||[]).forEach(function(node){var row=document.createElement('div');row.className='node';var name=document.createElement('strong');name.textContent=node.name||node.kind||'Process step';var meta=document.createElement('span');var details=node.details||{};var timing=node.kind==='WAIT'&&details.expression?' · '+details.expression:'';meta.textContent=(node.kind||'NODE')+timing+' · '+(node.truthClass||'INFERRED');row.appendChild(name);row.appendChild(meta);host.appendChild(row)})}
+    var badge=byId('reviewBadge');if(badge&&badgeText){badge.textContent=badgeText;badge.className='badge corrected'}
+  }
   function installCopy(){
     var h=document.querySelector('.top h1');if(h)h.textContent='Show Talos how your business works.';
     var p=document.querySelector('.top .lead');if(p)p.textContent='Use an image, BPMN, or create the process here. Talos will ask only what it needs, then help you prepare a governed automation.';
   }
   installJourney();installSourceChooser();installContinue();installAutomationGuide();installRun();installCopy();setStage('process');
-  window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(){hasCandidate=true;setStage('review')});
+  window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(event){hasCandidate=true;var detail=event&&event.detail;renderProductCandidate(detail&&detail.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');setStage('review')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){hasCandidate=true;setStage('automate')});
   window.addEventListener('talos:r1-05-automation-design-updated',function(event){latestDesign=event&&event.detail;updateAutomationGuide();setTimeout(simplifyDesign,10)});
+  window.addEventListener('talos:r1-05-automation-design-invalidated',function(){latestDesign=null;explicitSelections={};simpleReview=null;simpleApproval=null});
   window.addEventListener('talos:r1-06-automation-approved',function(){setStage('run');updateRun()});
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
-    return nativeFetch(input,init).then(function(response){if(response.ok&&method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1)){response.clone().json().then(function(body){if(body&&body.revision&&body.reconciliation&&body.reconciliation.status==='RECONCILED'){hasCandidate=true;setStage('review')}}).catch(function(){})}return response});
+    return nativeFetch(input,init).then(function(response){
+      var sourceInput=path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1;
+      var clarified=path.indexOf('/api/semantic-resolution/decide')!==-1;
+      var confirmed=path.indexOf('/api/bpmn/confirm')!==-1;
+      if(response.ok&&method==='POST'&&(sourceInput||clarified||confirmed)){
+        response.clone().json().then(function(body){
+          if(body&&body.revision&&body.reconciliation&&body.reconciliation.status==='RECONCILED'){
+            hasCandidate=true;
+            if(clarified)renderProductCandidate(body.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');
+            else if(confirmed)renderProductCandidate(body.reconciliation,'CONFIRMED · AUTOMATION NOT AUTHORIZED');
+            if(sourceInput||clarified)setStage('review');
+          }
+        }).catch(function(){});
+      }
+      return response;
+    });
   };
 })();
 </script>`;
