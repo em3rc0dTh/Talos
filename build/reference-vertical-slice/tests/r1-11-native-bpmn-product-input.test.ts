@@ -79,7 +79,7 @@ test('R1-11 native BPMN traverses product proxy to review and exact confirmation
     const statusResponse = await fetch(`${app.baseUrl}/api/status`);
     assert.equal(statusResponse.status, 200);
     const status = await statusResponse.json() as any;
-    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN']);
+    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN', 'TALOS_CANVAS']);
     assert.equal(status.image.liveVisionInterpretation, false);
     assert.equal(status.automaticWorkflowExecutionAuthorized, false);
 
