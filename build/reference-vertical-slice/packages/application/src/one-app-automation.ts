@@ -359,3 +359,9 @@ export function recordOneAppAuthorizedWorkflowExecution(
   persistOneAppWorkflowExecutionObservation(repo,workflowExecutionObservation);
   return{...context,workflowExecutionObservation};
 }
+
+export type {
+  AutomationDesignApprovalRecord,
+  AutomationExecutionPlanReview,
+  AutomationExecutionPlanReviewBundle,
+} from '../../execution/src/index.ts';
