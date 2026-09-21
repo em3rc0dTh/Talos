@@ -32,6 +32,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   .r111dResolve{margin-top:9px;border:1px solid #314960;border-radius:10px;padding:10px;background:#08121c}.r111dResolvePrompt{font-size:11px;color:#b7c7d8;line-height:1.45;margin-bottom:8px}.r111dResolveGrid{display:grid;grid-template-columns:180px 1fr;gap:7px}.r111dResolve select,.r111dResolve input{width:100%;background:#0e1823;color:#eef5fb;border:1px solid #334a63;border-radius:8px;padding:8px;font:inherit}.r111dResolveActions{display:flex;gap:8px;align-items:center;margin-top:8px}.r111dResolveSaved{font-size:10px;color:#66e4bd}.r111dResolveHint{font-size:10px;color:#91a5b8;margin-top:6px;line-height:1.4}
   .r111eBulk{display:none;margin:10px 0;border:1px solid #315b4a;border-radius:12px;padding:12px;background:#0a1914}.r111eBulk.open{display:block}.r111eBulk strong{display:block;font-size:12px}.r111eBulk p{margin:4px 0 9px!important;color:#a7c4b8!important}.r111eBulkGrid{display:grid;grid-template-columns:180px 1fr;gap:7px}.r111eBulk select,.r111eBulk input{width:100%;background:#0e1823;color:#eef5fb;border:1px solid #365744;border-radius:8px;padding:8px;font:inherit}.r111eBulkRole{margin-top:7px}.r111eBulkActions{display:flex;gap:8px;align-items:center;margin-top:9px}.r111eResolved{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid #2e5547;border-radius:9px;padding:9px;background:#0a1713;font-size:11px}.r111eResolved button{padding:5px 8px;font-size:9px;background:#203b32;color:#dff6ec}
   .r111fProposal{display:none;margin:10px 0;border:1px solid #3b6c59;border-radius:14px;padding:14px;background:linear-gradient(180deg,#0c2019,#08150f)}.r111fProposal.open{display:block}.r111fProposal strong{display:block;font-size:14px;color:#e7fff5}.r111fProposal p{margin:6px 0 0!important;color:#abd0c0!important;line-height:1.55!important}.r111fProposalSummary{margin-top:10px;padding:10px;border:1px solid #2b5646;border-radius:10px;background:#07140f;color:#cce9dc;font-size:11px;line-height:1.55}.r111fProposalActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.r111fProposalActions button.secondary{background:#172335;color:#d4e2ed;border:1px solid #334963}.r111fProposalState{font-size:11px;color:#ffca6b;margin-top:8px}.r111fProposalState.good{color:#66e4bd}
+  .r111gRunFlow{display:grid;gap:10px;margin-top:12px}.r111gRunCard{display:none;border:1px solid #294f43;border-radius:12px;padding:12px;background:#081711}.r111gRunCard.open{display:block}.r111gRunCard strong{display:block;color:#e1fff2;font-size:12px}.r111gRunCard p{margin:5px 0 9px!important;color:#a6c9bb!important;font-size:10px!important;line-height:1.5!important}.r111gRunSummary{padding:9px;border:1px solid #294638;border-radius:9px;background:#06100d;color:#c4e6d8;font-size:10px;line-height:1.55}.r111gRunState{margin-top:7px;font-size:10px;color:#ffca6b}.r111gRunState.good{color:#66e4bd}.r111gRunState.bad{color:#ff7f8e}#r111gTemporalLink{align-items:center;padding:8px 10px;border:1px solid #315b4a;border-radius:8px;color:#66e4bd;text-decoration:none;font-size:10px}
   @media(max-width:800px){.r111dSteps,.r111dSourceChooser{grid-template-columns:1fr}.r111dConnection,.r111dResolveGrid,.r111eBulkGrid{grid-template-columns:1fr}.r111dCanvasRow{grid-template-columns:90px 1fr auto}}
 </style>
 <script>
@@ -44,6 +45,13 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   var explicitSelections={};
   var simpleReview=null;
   var simpleApproval=null;
+  var simpleMapping=null;
+  var simpleRuntimeTarget=null;
+  var simpleRuntimePolicy=null;
+  var simpleDeploymentDesign=null;
+  var simpleRealization=null;
+  var simpleDeploymentAttempt=null;
+  var simpleExecutionObservation=null;
   var dragId=null;
   var canvasCounter=0;
   var connectionCounter=0;
