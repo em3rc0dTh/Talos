@@ -458,6 +458,7 @@ test('R1-11E recommended Temporal mapping reuses confirmed wait and approved hum
     assert.equal(runtimePolicy.body.runtimePolicy.idempotencyPolicies.length,0);
     assert.equal(runtimePolicy.body.deploymentAuthorized,false);
     assert.equal(runtimePolicy.body.executionAuthorized,false);
+
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
