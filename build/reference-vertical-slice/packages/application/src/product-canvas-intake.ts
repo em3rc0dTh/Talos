@@ -77,7 +77,7 @@ export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,inpu
     if(kind==='WAIT'){
       const waitKind=item.waitKind?.trim().toUpperCase();
       const expression=item.expression?.trim();
-      propertyValues.waitKind=waitKind?{state:'SET',value:waitKind}:{state:'UNKNOWN'};
+      propertyValues.waitKind=waitKind?{state:'SET',value:waitKind}:{state:'SET',value:'SOURCE_DEFINED'};
       if(expression)propertyValues.duration={state:'SET',literalText:expression};
     }
     if(kind==='HUMAN_INTERACTION')propertyValues.interactionKind={state:'SET',value:requestedKind==='APPROVAL'?'APPROVAL':'HUMAN_TASK'};
