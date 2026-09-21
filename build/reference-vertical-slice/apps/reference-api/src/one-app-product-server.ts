@@ -14,6 +14,8 @@ import { renderR105AutomationDesignPage } from './one-app-r1-05-automation-desig
 import { renderR106ExecutionPlanPage } from './one-app-r1-06-execution-plan-extension.ts';
 import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authority-extension.ts';
 import { renderR110ProductShellPage } from './one-app-r1-10-product-shell-extension.ts';
+import { renderR111DBusinessFirstPage } from './one-app-r1-11d-business-first-extension.ts';
+import { buildTalosProductJourneyState } from './product-journey.ts';
 import {
   buildTalosProductRecoverySnapshot,
   ensureTalosProductRuntimeCompatibility,
@@ -158,7 +160,8 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const withAutomationDesign = renderR105AutomationDesignPage(withGuidedResolution);
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
         const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
-        const productPage = renderR110ProductShellPage(withExecutionPlan);
+        const withProductShell = renderR110ProductShellPage(withExecutionPlan);
+        const productPage = renderR111DBusinessFirstPage(withProductShell);
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'content-length': Buffer.byteLength(productPage),
@@ -170,6 +173,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       }
       if (req.method === 'GET' && url.pathname === '/api/product/recovery') {
         json(res, 200, buildTalosProductRecoverySnapshot(inner.runtimeDir));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/product/journey') {
+        json(res, 200, buildTalosProductJourneyState(buildTalosProductRecoverySnapshot(inner.runtimeDir)));
         return;
       }
       if (url.pathname.startsWith('/api/')) {
