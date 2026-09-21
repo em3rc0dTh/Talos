@@ -75,6 +75,29 @@ export interface OneAppWorkflowExecutionExecutorResult {
   evidenceRefs: string[];
 }
 
+export interface OneAppWorkflowRuntimeState {
+  executionId: string;
+  currentElementRef: string | null;
+  currentHumanTaskRef: string | null;
+  visitedElementRefs: string[];
+  completedHumanTaskRefs: string[];
+}
+
+export interface OneAppWorkflowRuntimeReadResult {
+  executionStatus: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  state: OneAppWorkflowRuntimeState;
+}
+
+export interface OneAppWorkflowRuntimeExecutorInput {
+  context: OneAppAutomationContext;
+  workflowIdRef: string;
+  runIdRef: string;
+}
+
+export interface OneAppHumanTaskExecutorInput extends OneAppWorkflowRuntimeExecutorInput {
+  executionElementRef: string;
+}
+
 export interface TalosOneAppOptions {
   port?: number;
   host?: string;
@@ -87,6 +110,12 @@ export interface TalosOneAppOptions {
   workflowExecutionExecutor?: (
     input: OneAppWorkflowExecutionExecutorInput,
   ) => Promise<OneAppWorkflowExecutionExecutorResult>;
+  workflowRuntimeStateReader?: (
+    input: OneAppWorkflowRuntimeExecutorInput,
+  ) => Promise<OneAppWorkflowRuntimeReadResult>;
+  humanTaskExecutor?: (
+    input: OneAppHumanTaskExecutorInput,
+  ) => Promise<OneAppWorkflowRuntimeReadResult>;
 }
 
 type ReconciledBinding = Extract<BpmnCanonicalReconciliationResult, { status: 'RECONCILED' }>;
@@ -194,6 +223,73 @@ function publicAutomationWorkspace(context: OneAppAutomationContext) {
         };
       }),
     },
+  };
+}
+
+function publicWorkflowRuntimeState(
+  context: OneAppAutomationContext,
+  runtime: OneAppWorkflowRuntimeReadResult,
+) {
+  const execution = context.executionReview?.execution;
+  if (!execution) throw new TypeError('one-app runtime state requires the exact reviewed ExecutionPlan');
+  const currentElement = runtime.state.currentElementRef
+    ? execution.elements.find((element) => element.id === runtime.state.currentElementRef)
+    : undefined;
+  const humanElement = runtime.state.currentHumanTaskRef
+    ? execution.elements.find((element) => element.id === runtime.state.currentHumanTaskRef)
+    : undefined;
+  const activeElement = humanElement ?? currentElement;
+  const semanticSubjectRef = activeElement?.semanticSubjectRefs?.[0] ?? null;
+  const semanticSubject = semanticSubjectRef
+    ? context.process.nodes.find((node) => node.id === semanticSubjectRef)
+    : undefined;
+  const isWait = Boolean(currentElement?.constructKinds?.includes('DURABLE_TIMER'));
+  const currentWork = runtime.executionStatus === 'COMPLETED'
+    ? { kind: 'COMPLETE' as const, executionElementRef: null, businessStepName: 'Process complete', businessStepKind: 'END', semanticSubjectRef: null, waitExpression: null }
+    : runtime.state.currentHumanTaskRef
+      ? {
+          kind: 'HUMAN_TASK' as const,
+          executionElementRef: runtime.state.currentHumanTaskRef,
+          businessStepName: semanticSubject?.name ?? 'Human task',
+          businessStepKind: semanticSubject?.kind ?? 'ACTION',
+          semanticSubjectRef,
+          waitExpression: null,
+        }
+      : isWait
+        ? {
+            kind: 'WAIT' as const,
+            executionElementRef: currentElement?.id ?? null,
+            businessStepName: semanticSubject?.name ?? 'Wait',
+            businessStepKind: semanticSubject?.kind ?? 'WAIT',
+            semanticSubjectRef,
+            waitExpression: typeof semanticSubject?.details?.expression === 'string'
+              ? semanticSubject.details.expression
+              : null,
+          }
+        : {
+            kind: 'RUNNING' as const,
+            executionElementRef: currentElement?.id ?? null,
+            businessStepName: semanticSubject?.name ?? null,
+            businessStepKind: semanticSubject?.kind ?? null,
+            semanticSubjectRef,
+            waitExpression: null,
+          };
+  return {
+    executionStatus: runtime.executionStatus,
+    executionId: runtime.state.executionId,
+    currentElementRef: runtime.state.currentElementRef,
+    currentHumanTaskRef: runtime.state.currentHumanTaskRef,
+    visitedElementRefs: runtime.state.visitedElementRefs,
+    completedHumanTaskRefs: runtime.state.completedHumanTaskRefs,
+    currentWork,
+    progress: {
+      visited: new Set(runtime.state.visitedElementRefs).size,
+      total: execution.elements.length,
+      humanCompleted: runtime.state.completedHumanTaskRefs.length,
+      humanTotal: execution.elements.filter((element) => element.kind === 'HUMAN_COORDINATION').length,
+    },
+    automaticExecutionAuthorityGranted: false,
+    additionalWorkflowStartAuthorized: false,
   };
 }
 
@@ -405,6 +501,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           automaticWorkflowExecutionAuthorized: false,
           deploymentAttemptExecutorConfigured: Boolean(options.deploymentAttemptExecutor),
           workflowExecutionExecutorConfigured: Boolean(options.workflowExecutionExecutor),
+          workflowRuntimeStateReaderConfigured: Boolean(options.workflowRuntimeStateReader),
+          humanTaskExecutorConfigured: Boolean(options.humanTaskExecutor),
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -1395,6 +1493,57 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           workflowExecutionObservation,
           workflowExecutionApprovalConsumed: true,
           workflowStartWasExplicitlyAuthorized: true,
+          additionalWorkflowStartAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/execution/state') {
+        const input = await jsonBody(req);
+        const automationApprovalId = text(input.automationApprovalId, 'automationApprovalId');
+        const session = approvalSessions.get(automationApprovalId);
+        if (!session) throw new TypeError('one-app runtime state requires the explicit automation approval session');
+        const observation = session.automation.workflowExecutionObservation;
+        if (!observation) throw new TypeError('one-app runtime state requires an existing workflow execution observation');
+        if (!options.workflowRuntimeStateReader) throw new TypeError('one-app runtime state requires a configured trusted workflow state reader');
+        const runtime = await options.workflowRuntimeStateReader({
+          context: session.automation,
+          workflowIdRef: observation.workflowIdRef,
+          runIdRef: observation.runIdRef,
+        });
+        json(res, 200, {
+          workflowExecutionObservation: observation,
+          runtime: publicWorkflowRuntimeState(session.automation, runtime),
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/execution/human-task/complete') {
+        const input = await jsonBody(req);
+        const automationApprovalId = text(input.automationApprovalId, 'automationApprovalId');
+        const session = approvalSessions.get(automationApprovalId);
+        if (!session) throw new TypeError('one-app human task completion requires the explicit automation approval session');
+        const observation = session.automation.workflowExecutionObservation;
+        if (!observation) throw new TypeError('one-app human task completion requires an existing workflow execution observation');
+        if (!options.humanTaskExecutor) throw new TypeError('one-app human task completion requires a configured trusted human task executor');
+        const executionElementRef = text(input.executionElementRef, 'executionElementRef');
+        const execution = session.automation.executionReview?.execution;
+        const element = execution?.elements.find((candidate) => candidate.id === executionElementRef);
+        const updateMapping = session.automation.mapping?.units.find(
+          (unit) => unit.constructKind === 'UPDATE_HANDLER' && unit.executionSubjectRefs.includes(executionElementRef),
+        );
+        if (!element || element.kind !== 'HUMAN_COORDINATION' || !updateMapping) {
+          throw new TypeError('one-app human task completion must target an exact Update-backed HUMAN_COORDINATION element');
+        }
+        const runtime = await options.humanTaskExecutor({
+          context: session.automation,
+          workflowIdRef: observation.workflowIdRef,
+          runIdRef: observation.runIdRef,
+          executionElementRef,
+        });
+        json(res, 200, {
+          completedExecutionElementRef: executionElementRef,
+          runtime: publicWorkflowRuntimeState(session.automation, runtime),
           additionalWorkflowStartAuthorized: false,
         });
         return;
