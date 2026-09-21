@@ -19,7 +19,8 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   body.r111dSimple.r111dStage-review #r111dRun,body.r111dSimple.r111dStage-confirm #r111dRun,body.r111dSimple.r111dStage-automate #r111dRun,body.r111dSimple.r111dStage-process #r111dRun{display:none!important}
   body.r111dSimple.r111dStage-run #r111dRun{display:block}
   body.r111dSimple.r111dStage-review .r111dSourceChooser,body.r111dSimple.r111dStage-confirm .r111dSourceChooser,body.r111dSimple.r111dStage-automate .r111dSourceChooser,body.r111dSimple.r111dStage-run .r111dSourceChooser{display:none!important}
-  body.r111dSimple .r105Meta,body.r111dSimple .r105Suggestion small,body.r111dSimple .r105RequirementState{display:none!important}
+  body.r111dSimple .r105Meta,body.r111dSimple .r105Suggestion small,body.r111dSimple .r105RequirementState,body.r111dSimple #r105State{display:none!important}
+  body.r111dSimple.r111fDesignReady .r105Actions{display:none!important}
   body.r111dSimple:not(.r111fExceptions) #r105Workspace{display:none!important}
   body.r111dSimple:not(.r111fExceptions) #r111eBulk{display:none!important}
   body.r111dSimple:not(.r111fExceptions) #r111dPreparePlan{display:none!important}
@@ -306,8 +307,8 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   installJourney();installSourceChooser();installContinue();installAutomationGuide();installRun();installCopy();setStage('process');
   window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(event){hasCandidate=true;var detail=event&&event.detail;renderProductCandidate(detail&&detail.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');setStage('review')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){hasCandidate=true;setStage('automate')});
-  window.addEventListener('talos:r1-05-automation-design-updated',function(event){latestDesign=event&&event.detail;updateAutomationGuide();setTimeout(simplifyDesign,10)});
-  window.addEventListener('talos:r1-05-automation-design-invalidated',function(){latestDesign=null;explicitSelections={};simpleReview=null;simpleApproval=null});
+  window.addEventListener('talos:r1-05-automation-design-updated',function(event){latestDesign=event&&event.detail;document.body.classList.add('r111fDesignReady');updateAutomationGuide();setTimeout(simplifyDesign,10)});
+  window.addEventListener('talos:r1-05-automation-design-invalidated',function(){latestDesign=null;explicitSelections={};simpleReview=null;simpleApproval=null;document.body.classList.remove('r111fDesignReady','r111fExceptions')});
   window.addEventListener('talos:r1-06-automation-approved',function(){setStage('run');updateRun()});
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
