@@ -224,10 +224,8 @@ function recoverApprovedTemporalSession(
   const approvalDocument = repo.get<AutomationDesignApprovalRecord>(approvalId as OpaqueId);
   if (!approvalDocument || approvalDocument.aggregateKind !== 'AutomationDesignApprovalRecord') return undefined;
   const approval = approvalDocument.payload;
-  const binding = [...bindings.values()].find((candidate) => candidate.processRevision.id === approval.processRevisionRef);
-  if (!binding) {
-    throw new TypeError('DURABLE_TEMPORAL_RECOVERY_REQUIRES_PROCESS_BINDING');
-  }
+  const process = exactDocumentPayload<any>(repo, approval.processRevisionRef, 'ProcessRevision');
+  const recoveredBinding = [...bindings.values()].find((candidate) => candidate.processRevision.id === approval.processRevisionRef);
 
   const review = exactDocumentPayload<AutomationExecutionPlanReview>(
     repo,
@@ -272,16 +270,18 @@ function recoverApprovedTemporalSession(
     execution: execution as AutomationExecutionPlanReviewBundle['execution'],
   };
   const automation = {
-    process: binding.processRevision,
-    scope: binding.validation.scope,
-    assessment: binding.validation.assessment,
+    process,
+    ...(recoveredBinding ? {
+      scope: recoveredBinding.validation.scope,
+      assessment: recoveredBinding.validation.assessment,
+    } : {}),
     executionReview,
     approval,
   } as unknown as OneAppAutomationContext;
 
   return {
-    revisionId: binding.alignedBpmnRevision.id,
-    binding,
+    revisionId: recoveredBinding?.alignedBpmnRevision.id ?? `durable:${approval.id}`,
+    binding: recoveredBinding ?? ({ processRevision: process } as unknown as ReconciledBinding),
     automation,
   };
 }
@@ -292,7 +292,7 @@ function recommendedProductTemporalResolutions(
 ) {
   const execution = session.automation.executionReview?.execution;
   if (!execution) throw new TypeError('recommended Temporal mapping requires an existing reviewed ExecutionPlan');
-  const process = session.binding.processRevision;
+  const process = session.automation.process;
   const waits = execution.elements
     .filter((element) => element.kind === 'WAIT_COORDINATION')
     .map((element) => {
