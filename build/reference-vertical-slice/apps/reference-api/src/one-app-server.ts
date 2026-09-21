@@ -19,6 +19,7 @@ import {
   initializeReview,
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
+  prepareProductCanvasSource,
   proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
@@ -27,7 +28,6 @@ import {
   selectOneAppAutomationCapabilities,
   type BpmnCanonicalReconciliationResult,
   type GuidedResolutionAnswer,
-  type GuidedResolutionProposal,
   type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
@@ -37,6 +37,7 @@ import {
 } from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
 import { createOneAppReviewRouter } from './one-app-review.ts';
+import { DurableGuidedResolutionStore, guidedResolutionFingerprint } from './guided-resolution-store.ts';
 
 export interface OneAppDeploymentAttemptExecutorInput {
   context: OneAppAutomationContext;
@@ -185,7 +186,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
   const nativeReconciler = new NativeBpmnCanonicalReconciliationService(repo);
   const imageRuntime = resolveImagePerceptionRuntimeBinding(options.imagePerceptionEnv ?? process.env);
   const bindings = new Map<string, ReconciledBinding>();
-  const guidedResolutionProposals = new Map<string, GuidedResolutionProposal>();
+  const guidedResolutionStore = new DurableGuidedResolutionStore(repo);
+  for (const recoveredBinding of guidedResolutionStore.recoverBindings()) bindings.set(recoveredBinding.alignedBpmnRevision.id, recoveredBinding);
   const automationSessions = new Map<string, OneAppSession>();
   const reviewSessions = new Map<string, OneAppSession>();
   const approvalSessions = new Map<string, OneAppSession>();
@@ -210,7 +212,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           environmentRealizationStage: 'I9-05_ENVIRONMENT_REALIZATION',
           deploymentAttemptStage: 'I9-06_EXPLICIT_DEPLOYMENT_APPROVAL_ATTEMPT',
           workflowExecutionStage: 'I9-07_EXPLICIT_WORKFLOW_EXECUTION_AUTHORITY',
-          inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN'] : ['NATIVE_BPMN'],
+          inputRoutes: imageConfigured ? ['IMAGE_PNG', 'NATIVE_BPMN', 'TALOS_CANVAS'] : ['NATIVE_BPMN', 'TALOS_CANVAS'],
           imageInputIntegratedIntoOneApp: imageConfigured,
           image: {
             exactSourceIntake: true,
@@ -344,6 +346,63 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/input/canvas') {
+        const input = await jsonBody(req);
+        const result = prepareProductCanvasSource(repo, {
+          title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : 'Untitled process',
+          initiatedBy: typeof input.initiatedBy === 'string' && input.initiatedBy.trim() ? input.initiatedBy : 'one-app-user',
+          elements: array(input.elements, 'elements') as any,
+          connections: Array.isArray(input.connections) ? input.connections as any : [],
+          ...(input.presentation && typeof input.presentation === 'object' ? { presentation: input.presentation } : {}),
+        });
+        if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          json(res, 200, {
+            status: result.status,
+            sourceKind: 'TALOS_CANVAS',
+            sourceArtifactId: result.preserved.artifact.id,
+            sourceRepresentationId: result.preserved.nativeRepresentation.id,
+            userMessage: 'Talos saved your process, but it could not prepare the review yet.',
+            automaticConfirmationAuthorized: false,
+            automaticAutomationDesignAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+        const review = initializeReview(repo, result.normalized.processRevision, result.validation, {
+          createdBy: typeof input.initiatedBy === 'string' ? input.initiatedBy : 'one-app-user',
+          sourceRepresentationRefs: [result.preserved.nativeRepresentation.id],
+          adapterResultContextRefs: [result.attempt.result!.id],
+        });
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: result.projection.bpmnRevision,
+          alignedBpmnRevision: result.projection.bpmnRevision,
+          processDefinition: result.normalized.processDefinition,
+          processRevision: result.normalized.processRevision,
+          validation: result.validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(result.projection.bpmnRevision.id, binding);
+        json(res, 201, {
+          status: 'BPMN_READY_FOR_PROCESS_REVIEW',
+          sourceKind: 'TALOS_CANVAS',
+          canvasDefinition: result.definition,
+          canvasRevision: result.revision,
+          sourceArtifactId: result.preserved.artifact.id,
+          sourceRepresentationId: result.preserved.nativeRepresentation.id,
+          revision: result.projection.bpmnRevision,
+          reconciliation: publicReconciliation(binding),
+          projectionDiagnostics: result.projection.diagnostics,
+          unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticAutomationDesignAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/input/bpmn') {
         const input = await jsonBody(req);
         const initiatedBy = typeof input.initiatedBy === 'string' ? input.initiatedBy : 'one-app-user';
@@ -444,19 +503,47 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const binding = bindings.get(revisionId);
         if (!binding) throw new TypeError('one-app semantic resolution requires the exact current review revision');
         if (!Array.isArray(input.answers)) throw new TypeError('answers must be an array');
+        const answers = input.answers as GuidedResolutionAnswer[];
+        const fingerprint = guidedResolutionFingerprint({
+          revisionId,
+          validationAssessmentId: binding.validation.assessment.id,
+          answers,
+        });
+        const existing = guidedResolutionStore.findProposalByFingerprint(fingerprint);
+        if (existing) {
+          json(res, 200, {
+            proposal: existing.proposal,
+            questions: existing.bindingSnapshot.validation.questions,
+            createsCanonicalRevision: false,
+            confirmsProcess: false,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+            idempotentReplay: true,
+          });
+          return;
+        }
+
         const answeredBy = typeof input.answeredBy === 'string' ? input.answeredBy : 'one-app-user';
+        const answeredAt = new Date().toISOString();
         const proposal = proposeGuidedSemanticResolution({
           processRevision: binding.processRevision,
           validation: binding.validation,
-          answers: input.answers as GuidedResolutionAnswer[],
+          answers,
           authority: {
             answeredBy,
             authorityRef: text(input.authorityRef, 'authorityRef'),
             rationale: text(input.rationale, 'rationale'),
-            answeredAt: new Date().toISOString(),
+            answeredAt,
           },
         });
-        guidedResolutionProposals.set(proposal.id, proposal);
+        guidedResolutionStore.saveProposal({
+          proposal,
+          fingerprint,
+          revisionId,
+          validationAssessmentId: binding.validation.assessment.id,
+          bindingSnapshot: binding,
+          createdAt: answeredAt,
+        });
         json(res, 201, {
           proposal,
           questions: binding.validation.questions,
@@ -464,6 +551,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           confirmsProcess: false,
           authorizesAutomationDesign: false,
           authorizesExecution: false,
+          idempotentReplay: false,
         });
         return;
       }
@@ -472,17 +560,62 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const input = await jsonBody(req);
         const revisionId = text(input.revisionId, 'revisionId');
         const proposalId = text(input.proposalId, 'proposalId');
-        const binding = bindings.get(revisionId);
-        if (!binding) throw new TypeError('one-app semantic resolution requires the exact current review revision');
-        const proposal = guidedResolutionProposals.get(proposalId);
-        if (!proposal) throw new TypeError('one-app guided semantic-resolution proposal not found');
         const decision = text(input.decision, 'decision');
         if (decision !== 'ACCEPT' && decision !== 'REJECT') throw new TypeError('decision must be ACCEPT or REJECT');
+
+        const previousDecision = guidedResolutionStore.getDecision(proposalId, decision);
+        const conflictingDecision = guidedResolutionStore.getDecision(proposalId, decision === 'ACCEPT' ? 'REJECT' : 'ACCEPT');
+        if (conflictingDecision) {
+          json(res, 409, {
+            code: 'SEMANTIC_RESOLUTION_ALREADY_DECIDED',
+            userMessage: 'These clarifications were already decided. Talos will keep the recorded decision instead of creating a conflicting revision.',
+            nextAction: 'CONTINUE_FROM_RECORDED_DECISION',
+            automaticAuthorityGranted: false,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
+        if (previousDecision) {
+          json(res, 200, { ...previousDecision.response, idempotentReplay: true });
+          return;
+        }
+
+        const durableProposal = guidedResolutionStore.getProposal(proposalId);
+        if (!durableProposal) {
+          json(res, 409, {
+            code: 'PROCESS_REVIEW_REFRESH_REQUIRED',
+            userMessage: 'The process changed while you were reviewing it. Talos can refresh the questions using the latest saved process.',
+            nextAction: 'REFRESH_PROCESS_REVIEW',
+            automaticAuthorityGranted: false,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
+
+        const binding = bindings.get(revisionId) ?? durableProposal.bindingSnapshot;
+        if (
+          durableProposal.revisionId !== revisionId
+          || durableProposal.proposal.processRevisionRef !== binding.processRevision.id
+          || durableProposal.proposal.validationAssessmentRef !== binding.validation.assessment.id
+        ) {
+          json(res, 409, {
+            code: 'PROCESS_REVIEW_SUPERSEDED',
+            userMessage: 'The process changed while you were reviewing it. Review the latest questions before continuing.',
+            nextAction: 'REVIEW_UPDATED_QUESTIONS',
+            automaticAuthorityGranted: false,
+            authorizesAutomationDesign: false,
+            authorizesExecution: false,
+          });
+          return;
+        }
+
         const decidedBy = typeof input.decidedBy === 'string' ? input.decidedBy : 'one-app-user';
         const decidedAt = new Date().toISOString();
         const authorityRef = text(input.authorityRef, 'authorityRef');
         const result = decideGuidedSemanticResolution({
-          proposal,
+          proposal: durableProposal.proposal,
           processRevision: binding.processRevision,
           validation: binding.validation,
           decision,
@@ -491,16 +624,23 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           rationale: text(input.rationale, 'rationale'),
           decidedAt,
         });
-        guidedResolutionProposals.delete(proposalId);
 
         if (result.decision === 'REJECT') {
-          json(res, 200, {
+          const responseBody = {
             decision: result,
             createsCanonicalRevision: false,
             currentRevisionId: revisionId,
             authorizesAutomationDesign: false,
             authorizesExecution: false,
+          };
+          guidedResolutionStore.saveDecision({
+            proposalId,
+            decision: 'REJECT',
+            response: responseBody,
+            bindingSnapshot: binding,
+            createdAt: decidedAt,
           });
+          json(res, 200, { ...responseBody, idempotentReplay: false });
           return;
         }
 
@@ -539,7 +679,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           review,
         };
         bindings.set(alignedRevision.id, resolvedBinding);
-        json(res, 201, {
+        const responseBody = {
           decision: result,
           revision: alignedRevision,
           reconciliation: publicReconciliation(resolvedBinding),
@@ -548,7 +688,15 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           confirmation: null,
           authorizesAutomationDesign: false,
           authorizesExecution: false,
+        };
+        guidedResolutionStore.saveDecision({
+          proposalId,
+          decision: 'ACCEPT',
+          response: responseBody,
+          bindingSnapshot: resolvedBinding,
+          createdAt: decidedAt,
         });
+        json(res, 201, { ...responseBody, idempotentReplay: false });
         return;
       }
 

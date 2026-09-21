@@ -16,3 +16,5 @@ export * from './bpmn-correction-factory.ts';
 export * from './image-bpmn-review.ts';
 export * from './image-process-confirmation.ts';
 export * from './semantic-resolution.ts';
+
+export * from './product-canvas-intake.ts';
