@@ -21,10 +21,26 @@ import {
   ensureTalosProductRuntimeCompatibility,
 } from './product-runtime-recovery.ts';
 
+export interface TalosSimpleRuntimeTarget {
+  environmentKey:string;
+  environmentClass:'DEVELOPMENT'|'TEST'|'STAGING'|'PRODUCTION';
+  temporalPlatformRef:string;
+  namespace:string;
+  taskQueue:string;
+  workflowTypeName:string;
+  activityTypeName:string;
+  workerLogicalName:string;
+  executableArtifactRef:string;
+  artifactDigest:string;
+  sdkFamily:string;
+  sdkVersionRef:string;
+  temporalWebUi?:string;
+}
 export interface TalosOneAppProductOptions {
   port?: number;
   host?: string;
   oneApp?: Omit<TalosOneAppOptions, 'port' | 'host'>;
+  simpleRuntimeTarget?: TalosSimpleRuntimeTarget;
 }
 
 const MAX_PROXY_BYTES = 24 * 1024 * 1024;
@@ -177,6 +193,12 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       }
       if (req.method === 'GET' && url.pathname === '/api/product/journey') {
         json(res, 200, buildTalosProductJourneyState(buildTalosProductRecoverySnapshot(inner.runtimeDir)));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/product/runtime-target') {
+        json(res, 200, options.simpleRuntimeTarget
+          ? { available: true, target: options.simpleRuntimeTarget }
+          : { available: false, target: null });
         return;
       }
       if (url.pathname.startsWith('/api/')) {
