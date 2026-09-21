@@ -248,18 +248,39 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     try{var body=await post('/api/automation/temporal-mapping',{approvalId:simpleApproval.id,waits:[],humans:[]});var mapping=body.mapping;if(body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('Talos refused an unsafe authority transition.');state.className='r111dRunState good';state.textContent='Temporal workflow prepared. It has not been deployed or started. Runtime administration remains separate from the business journey.';window.dispatchEvent(new CustomEvent('talos:r1-11d-temporal-ready',{detail:{mapping:mapping}}))}
     catch(error){state.className='r111dRunState bad';state.textContent='Talos needs one more execution detail before it can prepare the Temporal workflow. Your approved process is safe and unchanged.'}
   }
+  function renderProductCandidate(reconciliation,badgeText){
+    var process=reconciliation&&reconciliation.processRevision;if(!process)return;
+    var host=byId('nodes');if(host){host.innerHTML='';(process.nodes||[]).forEach(function(node){var row=document.createElement('div');row.className='node';var name=document.createElement('strong');name.textContent=node.name||node.kind||'Process step';var meta=document.createElement('span');var details=node.details||{};var timing=node.kind==='WAIT'&&details.expression?' · '+details.expression:'';meta.textContent=(node.kind||'NODE')+timing+' · '+(node.truthClass||'INFERRED');row.appendChild(name);row.appendChild(meta);host.appendChild(row)})}
+    var badge=byId('reviewBadge');if(badge&&badgeText){badge.textContent=badgeText;badge.className='badge corrected'}
+  }
   function installCopy(){
     var h=document.querySelector('.top h1');if(h)h.textContent='Show Talos how your business works.';
     var p=document.querySelector('.top .lead');if(p)p.textContent='Use an image, BPMN, or create the process here. Talos will ask only what it needs, then help you prepare a governed automation.';
   }
   installJourney();installSourceChooser();installContinue();installAutomationGuide();installRun();installCopy();setStage('process');
-  window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(){hasCandidate=true;setStage('review')});
+  window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(event){hasCandidate=true;var detail=event&&event.detail;renderProductCandidate(detail&&detail.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');setStage('review')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){hasCandidate=true;setStage('automate')});
   window.addEventListener('talos:r1-05-automation-design-updated',function(event){latestDesign=event&&event.detail;updateAutomationGuide();setTimeout(simplifyDesign,10)});
+  window.addEventListener('talos:r1-05-automation-design-invalidated',function(){latestDesign=null;explicitSelections={};simpleReview=null;simpleApproval=null});
   window.addEventListener('talos:r1-06-automation-approved',function(){setStage('run');updateRun()});
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
-    return nativeFetch(input,init).then(function(response){if(response.ok&&method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1)){response.clone().json().then(function(body){if(body&&body.revision&&body.reconciliation&&body.reconciliation.status==='RECONCILED'){hasCandidate=true;setStage('review')}}).catch(function(){})}return response});
+    return nativeFetch(input,init).then(function(response){
+      var sourceInput=path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1;
+      var clarified=path.indexOf('/api/semantic-resolution/decide')!==-1;
+      var confirmed=path.indexOf('/api/bpmn/confirm')!==-1;
+      if(response.ok&&method==='POST'&&(sourceInput||clarified||confirmed)){
+        response.clone().json().then(function(body){
+          if(body&&body.revision&&body.reconciliation&&body.reconciliation.status==='RECONCILED'){
+            hasCandidate=true;
+            if(clarified)renderProductCandidate(body.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');
+            else if(confirmed)renderProductCandidate(body.reconciliation,'CONFIRMED · AUTOMATION NOT AUTHORIZED');
+            if(sourceInput||clarified)setStage('review');
+          }
+        }).catch(function(){});
+      }
+      return response;
+    });
   };
 })();
 </script>`;
