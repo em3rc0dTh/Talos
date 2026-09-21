@@ -18,7 +18,9 @@ import {
   designOneAppExplicitRuntimePolicy,
   initializeReview,
   mapOneAppApprovedTemporalDesign,
+  normalizeAdapterResult,
   openOneAppAutomationDesign,
+  persistValidationBundle,
   proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
@@ -35,6 +37,17 @@ import {
   resolveImagePerceptionRuntimeBinding,
 } from '../../../packages/image-perception/src/index.ts';
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
+import {
+  adaptPreservedCanvas,
+  buildCanvasRevision,
+  CanvasDomainStore,
+  preserveCanvasRevision,
+  type CanvasDefinition,
+  type CanvasElementDraft,
+  type CanvasRelationshipDraft,
+} from '../../../packages/canvas-source/src/index.ts';
+import { validateProcessRevision } from '../../../packages/semantic-core/src/validation.ts';
+import { projectCanonicalProcessToBpmn } from '../../../packages/review/src/bpmn-projector.ts';
 import { createOneAppReviewRouter } from './one-app-review.ts';
 import { DurableGuidedResolutionStore, guidedResolutionFingerprint } from './guided-resolution-store.ts';
 
@@ -339,6 +352,192 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
           automaticConfirmationAuthorized: false,
           automaticFreezeAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/input/canvas') {
+        const input = await jsonBody(req);
+        const initiatedBy = typeof input.initiatedBy === 'string' ? input.initiatedBy : 'one-app-user';
+        const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : 'Untitled process';
+        const rawElements = array(input.elements, 'elements');
+        if (rawElements.length === 0) throw new TypeError('Canvas requires at least one process step');
+        const rawConnections = Array.isArray(input.connections) ? input.connections : [];
+        const now = new Date().toISOString();
+        const definitionId = createOpaqueId('canvas', `product-canvas-definition:${title}:${now}`);
+        const revisionId = createOpaqueId('canvas', `product-canvas-revision:${definitionId}:1`);
+        const changeSetId = createOpaqueId('canvas', `product-canvas-changeset:${revisionId}`);
+        const sourceOriginId = createOpaqueId('source', `product-canvas-origin:${definitionId}`);
+
+        const kindMap: Record<string, CanvasElementDraft['kind']> = {
+          START: 'TRIGGER',
+          STEP: 'ACTION',
+          DECISION: 'DECISION',
+          WAIT: 'WAIT',
+          PERSON: 'HUMAN_INTERACTION',
+          APPROVAL: 'HUMAN_INTERACTION',
+          SUBPROCESS: 'SUBPROCESS',
+          END: 'END',
+        };
+        const clientToCanvas = new Map<string, ReturnType<typeof createOpaqueId>>();
+        const elements: CanvasElementDraft[] = rawElements.map((value, index) => {
+          const item = object(value, `elements[${index}]`);
+          const clientId = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `step-${index + 1}`;
+          const requestedKind = text(item.kind, `elements[${index}].kind`).toUpperCase();
+          const kind = kindMap[requestedKind];
+          if (!kind) throw new TypeError(`Unsupported Canvas step kind: ${requestedKind}`);
+          const canvasElementId = createOpaqueId('canvas', `product-canvas-element:${definitionId}:${clientId}`);
+          clientToCanvas.set(clientId, canvasElementId);
+          const propertyValues: Record<string, any> = {};
+          if (kind === 'WAIT') {
+            const waitKind = typeof item.waitKind === 'string' && item.waitKind.trim() ? item.waitKind.trim().toUpperCase() : undefined;
+            const expression = typeof item.expression === 'string' && item.expression.trim() ? item.expression.trim() : undefined;
+            propertyValues.waitKind = waitKind ? { state: 'SET', value: waitKind } : { state: 'UNKNOWN' };
+            if (expression) propertyValues.duration = { state: 'SET', literalText: expression };
+          }
+          if (kind === 'HUMAN_INTERACTION') {
+            propertyValues.interactionKind = { state: 'SET', value: requestedKind === 'APPROVAL' ? 'APPROVAL' : 'HUMAN_TASK' };
+          }
+          return {
+            canvasElementId,
+            kind,
+            label: typeof item.label === 'string' && item.label.trim() ? item.label.trim() : `Step ${index + 1}`,
+            propertyValues,
+            actorRefs: [],
+            dataRefs: [],
+            ruleRefs: [],
+          };
+        });
+
+        const connectionsInput = rawConnections.length
+          ? rawConnections
+          : rawElements.slice(0, -1).map((value, index) => {
+              const from = object(value, `elements[${index}]`);
+              const to = object(rawElements[index + 1], `elements[${index + 1}]`);
+              return {
+                id: `auto-${index + 1}`,
+                from: typeof from.id === 'string' ? from.id : `step-${index + 1}`,
+                to: typeof to.id === 'string' ? to.id : `step-${index + 2}`,
+                kind: 'FLOW',
+              };
+            });
+
+        const relationships: CanvasRelationshipDraft[] = connectionsInput.map((value, index) => {
+          const item = object(value, `connections[${index}]`);
+          const from = text(item.from, `connections[${index}].from`);
+          const to = text(item.to, `connections[${index}].to`);
+          const source = clientToCanvas.get(from);
+          const target = clientToCanvas.get(to);
+          if (!source || !target) throw new TypeError('Canvas connection references an unknown step');
+          const requestedKind = typeof item.kind === 'string' ? item.kind.toUpperCase() : 'FLOW';
+          const condition = typeof item.condition === 'string' && item.condition.trim() ? item.condition.trim() : undefined;
+          const kind: CanvasRelationshipDraft['kind'] =
+            requestedKind === 'CONDITION' ? 'CONDITIONAL_FLOW'
+              : requestedKind === 'DEFAULT' ? 'DEFAULT_FLOW'
+                : requestedKind === 'PARALLEL' ? 'PARALLEL_FLOW'
+                  : 'CONTROL_FLOW';
+          return {
+            canvasRelationshipId: createOpaqueId('canvas', `product-canvas-relationship:${definitionId}:${typeof item.id === 'string' ? item.id : index + 1}`),
+            kind,
+            sourceEndpoint: { state: 'SET', elementId: source },
+            targetEndpoint: { state: 'SET', elementId: target },
+            ...(kind === 'CONDITIONAL_FLOW' ? {
+              guard: condition
+                ? { literalText: condition, semanticState: 'SET' as const }
+                : { semanticState: 'UNKNOWN' as const },
+            } : {}),
+            relationshipProperties: {},
+          };
+        });
+
+        const revision = buildCanvasRevision({
+          id: revisionId,
+          canvasDefinitionId: definitionId,
+          revisionNumber: 1,
+          createdAt: now,
+          createdBy: initiatedBy,
+          revisionKind: 'SEMANTIC',
+          changeSetId,
+          elements,
+          relationships,
+          presentationSnapshot: input.presentation && typeof input.presentation === 'object'
+            ? input.presentation as any
+            : undefined,
+        });
+        const definition: CanvasDefinition = {
+          id: definitionId,
+          sourceOriginId,
+          title,
+          createdAt: now,
+          createdBy: initiatedBy,
+          latestRevisionId: revision.id,
+        };
+        const canvasStore = new CanvasDomainStore(repo);
+        canvasStore.saveInitialCanvas(definition, revision);
+        const preserved = preserveCanvasRevision(repo, definition, revision, { startedAt: now, initiatedBy });
+        const attempt = adaptPreservedCanvas(repo, preserved, undefined, { now });
+        if (!attempt.result || (attempt.completion?.status !== 'SUCCEEDED' && attempt.completion?.status !== 'PARTIAL')) {
+          json(res, 200, {
+            status: 'SAFE_STOP_BEFORE_CANONICAL',
+            sourceKind: 'TALOS_CANVAS',
+            sourceArtifactId: preserved.artifact.id,
+            sourceRepresentationId: preserved.nativeRepresentation.id,
+            userMessage: 'Talos saved your process, but it could not prepare the review yet.',
+            automaticConfirmationAuthorized: false,
+            automaticAutomationDesignAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+
+        const normalized = normalizeAdapterResult(repo, attempt.result.id, { normalizedAt: now });
+        const validation = validateProcessRevision(normalized.processRevision, now);
+        persistValidationBundle(repo, validation);
+        const projection = projectCanonicalProcessToBpmn({
+          processRevision: normalized.processRevision,
+          sourceRoute: 'TALOS_CANVAS',
+          createdAt: now,
+          createdBy: initiatedBy,
+          revisionNumber: 1,
+        });
+        repo.append({
+          id: projection.bpmnRevision.id as OpaqueId,
+          aggregateKind: 'BpmnProcessRevision',
+          schemaVersion: 'talos-bpmn-workspace-v0.1',
+          payload: projection.bpmnRevision,
+          createdAt: projection.bpmnRevision.createdAt,
+        });
+        const review = initializeReview(repo, normalized.processRevision, validation, {
+          createdBy: initiatedBy,
+          sourceRepresentationRefs: [preserved.nativeRepresentation.id],
+          adapterResultContextRefs: [attempt.result.id],
+        });
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: projection.bpmnRevision,
+          alignedBpmnRevision: projection.bpmnRevision,
+          processDefinition: normalized.processDefinition,
+          processRevision: normalized.processRevision,
+          validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(projection.bpmnRevision.id, binding);
+        json(res, 201, {
+          status: 'BPMN_READY_FOR_PROCESS_REVIEW',
+          sourceKind: 'TALOS_CANVAS',
+          canvasDefinition: definition,
+          canvasRevision: revision,
+          sourceArtifactId: preserved.artifact.id,
+          sourceRepresentationId: preserved.nativeRepresentation.id,
+          revision: projection.bpmnRevision,
+          reconciliation: publicReconciliation(binding),
+          projectionDiagnostics: projection.diagnostics,
+          unprojectableCanonicalRefs: projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticAutomationDesignAuthorized: false,
           automaticExecutionAuthorized: false,
         });
         return;
