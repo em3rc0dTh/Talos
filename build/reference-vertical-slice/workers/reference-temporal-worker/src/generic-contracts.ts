@@ -47,6 +47,14 @@ export interface GenericWorkflowInput {
   capabilityInputs?:Record<string,unknown>;
   program:CompiledGenericRuntimeProgram;
 }
+export interface GenericHumanTaskSubmission { executionElementRef:string; outcome:'COMPLETED'; }
+export interface GenericWorkflowState {
+  executionId:string;
+  currentElementRef:string|null;
+  currentHumanTaskRef:string|null;
+  visitedElementRefs:string[];
+  completedHumanTaskRefs:string[];
+}
 export interface GenericCapabilityActivityInput { executionId:string; capabilityUseOccurrenceRef:string; input:unknown; }
 export interface GenericCapabilityActivityResult {
   outcome:'COMPLETED';
@@ -57,4 +65,4 @@ export interface GenericCapabilityActivityResult {
   externalEffectRef?:string;
   evidenceRefs?:string[];
 }
-export interface GenericWorkflowResult { outcome:'COMPLETED'; executionId:string; visitedElementRefs:string[]; capabilityResults:GenericCapabilityActivityResult[]; }
+export interface GenericWorkflowResult { outcome:'COMPLETED'; executionId:string; visitedElementRefs:string[]; capabilityResults:GenericCapabilityActivityResult[]; completedHumanTaskRefs:string[]; }
