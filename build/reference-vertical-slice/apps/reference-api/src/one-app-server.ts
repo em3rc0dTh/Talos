@@ -1009,6 +1009,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const reviewId = text(input.reviewId, 'reviewId');
         const session = reviewSessions.get(reviewId);
         if (!session) throw new TypeError('one-app automation approval requires an existing ExecutionPlan review');
+        if (session.automation.approval) {
+          const approval = session.automation.approval;
+          approvalSessions.set(approval.id, session);
+          json(res, 200, { ...approval, idempotentReplay: true });
+          return;
+        }
         session.automation = approveOneAppAutomation(repo, session.automation, {
           approvedBy: typeof input.approvedBy === 'string' ? input.approvedBy : 'one-app-user',
           authorityRef: text(input.authorityRef, 'authorityRef'),
@@ -1018,7 +1024,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const approval = session.automation.approval;
         if (!approval) throw new TypeError('one-app automation approval was not created');
         approvalSessions.set(approval.id, session);
-        json(res, 201, approval);
+        json(res, 201, { ...approval, idempotentReplay: false });
         return;
       }
 
