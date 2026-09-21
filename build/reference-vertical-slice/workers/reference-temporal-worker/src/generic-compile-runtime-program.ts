@@ -26,8 +26,8 @@ export function compileGenericRuntimeProgram(
   const entries=execution.elements.filter(e=>(incoming.get(e.id)??0)===0);
   if(entries.length!==1)throw new TypeError(`generic runtime v0.1 requires exactly one graph entry; found ${entries.length}`);
   if(execution.relations.some(r=>r.relationKind==='PARALLEL'||r.relationKind==='SOURCE_DEFINED'))throw new TypeError('generic runtime v0.1 does not execute parallel/source-defined relations');
-  const unsupported=new Set(['CHILD_WORKFLOW','UPDATE_HANDLER','SIGNAL_HANDLER']);
-  if(mapping.units.some(u=>unsupported.has(u.constructKind)))throw new TypeError('generic runtime v0.1 does not yet execute child-workflow or human-message mappings');
+  const unsupported=new Set(['CHILD_WORKFLOW','SIGNAL_HANDLER']);
+  if(mapping.units.some(u=>unsupported.has(u.constructKind)))throw new TypeError('generic runtime v0.1 does not yet execute child-workflow or signal-handler mappings');
 
   const elements=execution.elements.map(element=>({
     id:element.id,
