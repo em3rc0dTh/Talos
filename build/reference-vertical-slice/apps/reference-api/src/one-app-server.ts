@@ -26,6 +26,9 @@ import {
   recordOneAppAuthorizedWorkflowExecution,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
+  type AutomationDesignApprovalRecord,
+  type AutomationExecutionPlanReview,
+  type AutomationExecutionPlanReviewBundle,
   type BpmnCanonicalReconciliationResult,
   type GuidedResolutionAnswer,
   type OneAppAutomationContext,
@@ -198,13 +201,96 @@ function publicAutomationWorkspace(context: OneAppAutomationContext) {
 
 const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
 
+
+function exactDocumentPayload<T>(
+  repo: SqliteDocumentStore,
+  id: string,
+  aggregateKind: string,
+): T {
+  const document = repo.get<T>(id as OpaqueId);
+  if (!document || document.aggregateKind !== aggregateKind) {
+    throw new TypeError(`durable recovery missing ${aggregateKind} ${id}`);
+  }
+  return document.payload;
+}
+
+function recoverApprovedTemporalSession(
+  repo: SqliteDocumentStore,
+  bindings: Map<string, ReconciledBinding>,
+  approvalId: string,
+): OneAppSession | undefined {
+  const approvalDocument = repo.get<AutomationDesignApprovalRecord>(approvalId as OpaqueId);
+  if (!approvalDocument || approvalDocument.aggregateKind !== 'AutomationDesignApprovalRecord') return undefined;
+  const approval = approvalDocument.payload;
+  const process = exactDocumentPayload<any>(repo, approval.processRevisionRef, 'ProcessRevision');
+  const recoveredBinding = [...bindings.values()].find((candidate) => candidate.processRevision.id === approval.processRevisionRef);
+
+  const review = exactDocumentPayload<AutomationExecutionPlanReview>(
+    repo,
+    approval.automationExecutionPlanReviewRef,
+    'AutomationExecutionPlanReview',
+  );
+  if (review.executionPlanRevisionRef !== approval.executionPlanRevisionRef
+    || review.executionPlanAssessmentRef !== approval.executionPlanAssessmentRef) {
+    throw new TypeError('durable automation approval/review lineage mismatch');
+  }
+
+  const revision = exactDocumentPayload<any>(repo, approval.executionPlanRevisionRef, 'ExecutionPlanRevision');
+  const assessment = exactDocumentPayload<any>(repo, approval.executionPlanAssessmentRef, 'ExecutionPlanAssessment');
+  if (revision.executionDigest !== approval.executionDigest) {
+    throw new TypeError('durable automation approval/execution digest mismatch');
+  }
+
+  const execution = {
+    definition: exactDocumentPayload<any>(repo, revision.executionPlanDefinitionId, 'ExecutionPlanDefinition'),
+    revision,
+    scopeBindings: (revision.executionScopeBindingRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionScopeBinding')),
+    regions: (revision.executionRegionRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionRegion')),
+    elements: (revision.executionElementRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionElement')),
+    relations: (revision.executionRelationRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionRelation')),
+    capabilityUses: (revision.capabilityUseOccurrenceRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'CapabilityUseOccurrence')),
+    dataDependencies: (revision.executionDataDependencyRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionDataDependency')),
+    requirements: (revision.executionRequirementRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionRequirement')),
+    mappingTraces: (revision.semanticMappingTraceRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionSemanticMappingTrace')),
+    scopeAssessments: (revision.executionScopeAssessmentRefs ?? []).map((id: string) => exactDocumentPayload<any>(repo, id, 'ExecutionScopeAssessment')),
+    assessment,
+    coordinationResolutions: repo.listByKind<any>('ExecutionCoordinationResolution')
+      .map((document) => document.payload)
+      .filter((item) => item.executionPlanRevisionId === revision.id),
+    relationResolutions: repo.listByKind<any>('ExecutionRelationResolution')
+      .map((document) => document.payload)
+      .filter((item) => item.executionPlanRevisionId === revision.id),
+    plannerVersion: 'durable-recovery-v0.1',
+  };
+
+  const executionReview: AutomationExecutionPlanReviewBundle = {
+    review,
+    execution: execution as AutomationExecutionPlanReviewBundle['execution'],
+  };
+  const automation = {
+    process,
+    ...(recoveredBinding ? {
+      scope: recoveredBinding.validation.scope,
+      assessment: recoveredBinding.validation.assessment,
+    } : {}),
+    executionReview,
+    approval,
+  } as unknown as OneAppAutomationContext;
+
+  return {
+    revisionId: recoveredBinding?.alignedBpmnRevision.id ?? `durable:${approval.id}`,
+    binding: recoveredBinding ?? ({ processRevision: process } as unknown as ReconciledBinding),
+    automation,
+  };
+}
+
 function recommendedProductTemporalResolutions(
   session: OneAppSession,
   input: { decidedBy: string; authorityRef: string; rationale: string },
 ) {
   const execution = session.automation.executionReview?.execution;
   if (!execution) throw new TypeError('recommended Temporal mapping requires an existing reviewed ExecutionPlan');
-  const process = session.binding.processRevision;
+  const process = session.automation.process;
   const waits = execution.elements
     .filter((element) => element.kind === 'WAIT_COORDINATION')
     .map((element) => {
@@ -939,9 +1025,31 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
       if (req.method === 'POST' && url.pathname === '/api/automation/temporal-mapping') {
         const input = await jsonBody(req);
         const approvalId = text(input.approvalId, 'approvalId');
-        const session = approvalSessions.get(approvalId);
+        let session = approvalSessions.get(approvalId);
+        let durableRecoveryApplied = false;
+        if (!session && input.allowDurableRecovery === true) {
+          session = recoverApprovedTemporalSession(repo, bindings, approvalId);
+          if (session) {
+            approvalSessions.set(approvalId, session);
+            durableRecoveryApplied = true;
+          }
+        }
         if (!session) throw new TypeError('one-app Temporal mapping requires an explicit I8-06 automation approval');
         const useRecommendedMapping = input.useRecommendedMapping === true;
+        if (session.automation.mapping) {
+          json(res, 200, {
+            mapping: session.automation.mapping,
+            idempotentReplay: true,
+            durableRecoveryApplied,
+            recommendedMappingApplied: useRecommendedMapping,
+            recommendationVersion: useRecommendedMapping ? PRODUCT_TEMPORAL_RECOMMENDATION_VERSION : null,
+            runtimePolicyAuthorized: false,
+            automaticRuntimePolicyDefaultsAuthorized: false,
+            deploymentAuthorized: false,
+            executionAuthorized: false,
+          });
+          return;
+        }
         const resolutions = useRecommendedMapping
           ? recommendedProductTemporalResolutions(session, {
               decidedBy: typeof input.decidedBy === 'string' ? input.decidedBy : 'one-app-product-user',
@@ -963,6 +1071,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         json(res, 201, {
           mapping,
           recommendedMappingApplied: useRecommendedMapping,
+          durableRecoveryApplied,
+          idempotentReplay: false,
           recommendationVersion: useRecommendedMapping ? PRODUCT_TEMPORAL_RECOMMENDATION_VERSION : null,
           recommendedWaitResolutionCount: useRecommendedMapping ? resolutions.waits.length : 0,
           recommendedHumanResolutionCount: useRecommendedMapping ? resolutions.humans.length : 0,

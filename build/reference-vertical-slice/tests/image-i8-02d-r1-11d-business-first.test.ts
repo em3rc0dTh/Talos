@@ -24,14 +24,18 @@ test('R1-11D simple product shell exposes five business stages and three source 
   assert.match(page,/Prepare Temporal workflow/);
   assert.match(page,/How should this business step be handled when Talos runs the workflow/);
   assert.match(page,/Who is responsible\?/);
+  assert.match(page,/Talos has a low-risk draft/);
+  assert.match(page,/Use Talos proposal/);
+  assert.match(page,/Review exceptions/);
   assert.match(page,/Set one default/);
   assert.match(page,/Apply to similar unresolved steps/);
   assert.match(page,/useRecommendedMapping:true/);
+  assert.match(page,/allowDurableRecovery:true/);
 });
 
 test('R1-11D Canvas enters source preservation, Canonical review, confirmation and Automation Design',async()=>{
   const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r111d-canvas-'));
-  const app=await startTalosOneApp({runtimeDir,port:0});
+  let app=await startTalosOneApp({runtimeDir,port:0});
   try{
     const intake=await post(app.baseUrl,'/api/input/canvas',{
       title:'Simple service process',
@@ -270,7 +274,7 @@ test('R1-11D actorless business actions can be explicitly designed as human work
 
 test('R1-11E recommended Temporal mapping reuses confirmed wait and approved human design without another per-step form',async()=>{
   const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r111e-low-friction-'));
-  const app=await startTalosOneApp({runtimeDir,port:0});
+  let app=await startTalosOneApp({runtimeDir,port:0});
   try{
     const intake=await post(app.baseUrl,'/api/input/canvas',{
       title:'Low-friction manual process',
@@ -387,21 +391,41 @@ test('R1-11E recommended Temporal mapping reuses confirmed wait and approved hum
     });
     assert.equal(approval.response.status,201);
 
+    await app.close();
+    app=await startTalosOneApp({runtimeDir,port:0});
+
     const mapping=await post(app.baseUrl,'/api/automation/temporal-mapping',{
       approvalId:approval.body.id,
       useRecommendedMapping:true,
+      allowDurableRecovery:true,
       decidedBy:'field-trial-user',
-      authorityRef:'authority:r1-11e:test:recommended-temporal',
-      rationale:'Use Talos recommended technical mapping from already approved process and automation semantics.',
+      authorityRef:'authority:r1-11f:test:recommended-temporal-after-restart',
+      rationale:'Explicitly resume Temporal design from the exact durable automation approval without re-entering approved details.',
     });
     assert.equal(mapping.response.status,201);
     assert.equal(mapping.body.recommendedMappingApplied,true);
+    assert.equal(mapping.body.durableRecoveryApplied,true);
+    assert.equal(mapping.body.idempotentReplay,false);
     assert.equal(mapping.body.recommendedWaitResolutionCount,1);
     assert.equal(mapping.body.recommendedHumanResolutionCount,1);
     assert.ok(mapping.body.mapping.units.some((unit:any)=>unit.constructKind==='DURABLE_TIMER'));
     assert.ok(mapping.body.mapping.units.some((unit:any)=>unit.constructKind==='UPDATE_HANDLER'));
     assert.equal(mapping.body.deploymentAuthorized,false);
     assert.equal(mapping.body.executionAuthorized,false);
+
+    const replay=await post(app.baseUrl,'/api/automation/temporal-mapping',{
+      approvalId:approval.body.id,
+      useRecommendedMapping:true,
+      allowDurableRecovery:true,
+      decidedBy:'field-trial-user',
+      authorityRef:'authority:r1-11f:test:recommended-temporal-replay',
+      rationale:'Repeat click must return the already prepared Temporal mapping without creating another revision.',
+    });
+    assert.equal(replay.response.status,200);
+    assert.equal(replay.body.idempotentReplay,true);
+    assert.equal(replay.body.mapping.revision.id,mapping.body.mapping.revision.id);
+    assert.equal(replay.body.deploymentAuthorized,false);
+    assert.equal(replay.body.executionAuthorized,false);
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
