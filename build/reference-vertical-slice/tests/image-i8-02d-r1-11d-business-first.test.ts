@@ -24,6 +24,9 @@ test('R1-11D simple product shell exposes five business stages and three source 
   assert.match(page,/Prepare Temporal workflow/);
   assert.match(page,/How should this business step be handled when Talos runs the workflow/);
   assert.match(page,/Who is responsible\?/);
+  assert.match(page,/Set one default/);
+  assert.match(page,/Apply to similar unresolved steps/);
+  assert.match(page,/useRecommendedMapping:true/);
 });
 
 test('R1-11D Canvas enters source preservation, Canonical review, confirmation and Automation Design',async()=>{
@@ -258,6 +261,147 @@ test('R1-11D actorless business actions can be explicitly designed as human work
     assert.equal(review.body.review.temporalDesignAuthorized,false);
     assert.equal(review.body.review.deploymentAuthorized,false);
     assert.equal(review.body.review.executionAuthorized,false);
+  }finally{
+    await app.close();
+    rmSync(runtimeDir,{recursive:true,force:true});
+  }
+});
+
+
+test('R1-11E recommended Temporal mapping reuses confirmed wait and approved human design without another per-step form',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r111e-low-friction-'));
+  const app=await startTalosOneApp({runtimeDir,port:0});
+  try{
+    const intake=await post(app.baseUrl,'/api/input/canvas',{
+      title:'Low-friction manual process',
+      initiatedBy:'field-trial-user',
+      elements:[
+        {id:'start',kind:'START',label:'Start'},
+        {id:'work',kind:'STEP',label:'Wash the vehicle'},
+        {id:'wait',kind:'WAIT',label:'Let product work'},
+        {id:'end',kind:'END',label:'Done'},
+      ],
+      connections:[
+        {id:'a',from:'start',to:'work',kind:'FLOW'},
+        {id:'b',from:'work',to:'wait',kind:'FLOW'},
+        {id:'c',from:'wait',to:'end',kind:'FLOW'},
+      ],
+    });
+    assert.equal(intake.response.status,201);
+
+    const validation=intake.body.reconciliation.validation;
+    const waitQuestion=validation.questions.find((question:any)=>{
+      const finding=validation.findings.find((item:any)=>question.findingRefs.includes(item.id));
+      return finding?.code==='SV-EVT-003';
+    });
+    assert.ok(waitQuestion);
+    const waitFinding=validation.findings.find((item:any)=>waitQuestion.findingRefs.includes(item.id));
+    assert.ok(waitFinding);
+
+    const proposal=await post(app.baseUrl,'/api/semantic-resolution/propose',{
+      revisionId:intake.body.revision.id,
+      answers:[{
+        kind:'WAIT_SEMANTICS',
+        questionRef:waitQuestion.id,
+        findingRef:waitFinding.id,
+        targetRef:waitQuestion.targetRef,
+        waitKind:'DURATION',
+        expression:'5 minutes',
+      }],
+      answeredBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:wait-answer',
+      rationale:'The business user confirmed the exact wait duration.',
+    });
+    assert.equal(proposal.response.status,201);
+
+    const accepted=await post(app.baseUrl,'/api/semantic-resolution/decide',{
+      revisionId:intake.body.revision.id,
+      proposalId:proposal.body.proposal.id,
+      decision:'ACCEPT',
+      decidedBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:wait-accept',
+      rationale:'Apply the confirmed wait semantics.',
+    });
+    assert.equal(accepted.response.status,201);
+
+    const confirmation=await post(app.baseUrl,'/api/bpmn/confirm',{
+      revisionId:accepted.body.revision.id,
+      canonicalProcessRevisionId:accepted.body.reconciliation.processRevision.id,
+      confirmedBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:confirm',
+      rationale:'Reviewed the clarified business process.',
+    });
+    assert.equal(confirmation.response.status,201);
+
+    const design=await post(app.baseUrl,'/api/bpmn/automation-design-approval',{
+      revisionId:confirmation.body.revision.id,
+      confirmationId:confirmation.body.confirmation.id,
+      approvedBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:automation-design',
+    });
+    assert.equal(design.response.status,201);
+    const workspace=design.body.automationDesign.workspace;
+    assert.equal(workspace.requirements.length,1);
+    const requirement=workspace.requirements[0];
+
+    const selected=await post(app.baseUrl,'/api/automation/capability/select',{
+      workspaceId:workspace.id,
+      selections:[{
+        source:'EXPLICIT_OFFERING',
+        requirementRef:requirement.capabilityRequirementRef,
+        family:'HUMAN_INTERACTION',
+        operationIntent:requirement.operationIntent,
+        offeringCanonicalName:'Talos manual task',
+        offeringLifecycleStatus:'TEST_ONLY',
+        implementationKind:'HUMAN_SERVICE',
+        implementationRef:'product-explicit:human-interaction:talos-manual-task',
+        decidedBy:'field-trial-user',
+        authorityRef:'authority:r1-11e:test:human-default',
+        rationale:'One explicit default says this manual process step is handled by the car-wash operator.',
+        human:{
+          interactionKind:'MANUAL_ACTION',
+          responsibilityKind:'PERFORMER',
+          roleRefs:[],
+          participantLabel:'Car-wash operator',
+          assignmentCardinality:'ANY_ELIGIBLE',
+          outcomes:[{code:'COMPLETED',businessMeaning:'Wash the vehicle is complete.',terminal:true}],
+        },
+      }],
+    });
+    assert.equal(selected.response.status,201);
+
+    const review=await post(app.baseUrl,'/api/automation/execution-plan/review',{
+      workspaceId:workspace.id,
+      decisions:{},
+    });
+    assert.equal(review.response.status,201);
+    assert.equal(review.body.review.state,'READY_FOR_AUTOMATION_APPROVAL');
+    assert.ok(review.body.execution.elements.some((element:any)=>element.kind==='WAIT_COORDINATION'));
+    assert.ok(review.body.execution.elements.some((element:any)=>element.kind==='HUMAN_COORDINATION'));
+
+    const approval=await post(app.baseUrl,'/api/automation/approve',{
+      reviewId:review.body.review.id,
+      approvedBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:automation-approval',
+      rationale:'Approve this reviewed automation plan for Temporal design only.',
+    });
+    assert.equal(approval.response.status,201);
+
+    const mapping=await post(app.baseUrl,'/api/automation/temporal-mapping',{
+      approvalId:approval.body.id,
+      useRecommendedMapping:true,
+      decidedBy:'field-trial-user',
+      authorityRef:'authority:r1-11e:test:recommended-temporal',
+      rationale:'Use Talos recommended technical mapping from already approved process and automation semantics.',
+    });
+    assert.equal(mapping.response.status,201);
+    assert.equal(mapping.body.recommendedMappingApplied,true);
+    assert.equal(mapping.body.recommendedWaitResolutionCount,1);
+    assert.equal(mapping.body.recommendedHumanResolutionCount,1);
+    assert.ok(mapping.body.mapping.units.some((unit:any)=>unit.constructKind==='DURABLE_TIMER'));
+    assert.ok(mapping.body.mapping.units.some((unit:any)=>unit.constructKind==='UPDATE_HANDLER'));
+    assert.equal(mapping.body.deploymentAuthorized,false);
+    assert.equal(mapping.body.executionAuthorized,false);
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
