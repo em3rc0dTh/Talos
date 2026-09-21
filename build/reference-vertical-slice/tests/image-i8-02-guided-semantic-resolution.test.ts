@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOpaqueId } from '../packages/foundation/src/ids.ts';
+import { digestDeterministicJson } from '../packages/foundation/src/digest.ts';
 import {
   decideGuidedSemanticResolution,
   proposeGuidedSemanticResolution,
@@ -126,6 +127,47 @@ test('I8-02 accepted answers create a new revision, revalidate, and require reco
   assert.equal(decision.requiresProcessReconfirmation, true);
   assert.equal(decision.authorizesAutomationDesign, false);
   assert.equal(decision.authorizesExecution, false);
+});
+
+test('I8-02 accepted resolution remains deterministic JSON when optional Canonical fields are absent', () => {
+  const revision = quarryLikeRevision();
+  revision.rules.push({
+    id: createOpaqueId('canonical', 'i8-02:existing-rule-without-outputs'),
+    naturalLanguage: 'Existing source rule without optional outputs.',
+    inputs: [],
+    truthClass: 'INFERRED',
+    unresolvedTerms: [],
+    provenanceRefs: [],
+  });
+  const validation = validateProcessRevision(revision);
+  const proposal = proposeGuidedSemanticResolution({
+    processRevision: revision,
+    validation,
+    answers: answersFor(revision, validation),
+    authority: {
+      answeredBy: 'business-owner',
+      authorityRef: 'authority:business-owner',
+      rationale: 'Resolve material findings without manufacturing absent optional fields.',
+      answeredAt: '2026-08-21T18:01:00.000Z',
+    },
+  });
+  const decision = decideGuidedSemanticResolution({
+    proposal,
+    processRevision: revision,
+    validation,
+    decision: 'ACCEPT',
+    decidedBy: 'business-owner',
+    authorityRef: 'authority:business-owner',
+    rationale: 'Accept exact reviewed meanings.',
+    decidedAt: '2026-08-21T18:02:00.000Z',
+  });
+  assert.equal(decision.decision, 'ACCEPT');
+  if (decision.decision !== 'ACCEPT') throw new Error('expected accepted decision');
+  assert.doesNotThrow(() => digestDeterministicJson(decision.resolvedRevision));
+  assert.equal(Object.hasOwn(decision.resolvedRevision.nodes[0]!, 'details'), false);
+  const inheritedRule = decision.resolvedRevision.rules.find((rule) => rule.id === createOpaqueId('canonical', 'i8-02:existing-rule-without-outputs'));
+  assert.ok(inheritedRule);
+  assert.equal(Object.hasOwn(inheritedRule, 'outputs'), false);
 });
 
 test('I8-02 rejection and invalid cross-assessment answers create no revision', () => {
