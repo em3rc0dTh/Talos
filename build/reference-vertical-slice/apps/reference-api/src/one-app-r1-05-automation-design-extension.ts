@@ -123,7 +123,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
 
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
-    var semanticResolution=path.indexOf('/api/semantic-resolution/decide')!==-1;var invalidates=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/bpmn/edit')!==-1||semanticResolution);
+    var semanticResolution=path.indexOf('/api/semantic-resolution/decide')!==-1;var invalidates=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1||path.indexOf('/api/bpmn/edit')!==-1||semanticResolution);
     return nativeFetch(input,init).then(function(response){if(invalidates&&response.ok)reset(semanticResolution?'Clarifications updated the process · review and confirm it again.':'Process changed · review and confirm it again.');return response});
   };
 })();
