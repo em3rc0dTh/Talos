@@ -93,6 +93,14 @@ function processResponse(envelope: AsyncImagePerceptionTransportEnvelope) {
   };
 }
 
+function explicitDurationWaitResponse(envelope: AsyncImagePerceptionTransportEnvelope) {
+  const response = processResponse(envelope);
+  response.observations = response.observations.map((item: any) => item.providerObservationKey === 'o-task'
+    ? { ...item, observedValue: 'Dejar actuar 5 minutos' }
+    : item);
+  return response;
+}
+
 function noResultResponse(envelope: AsyncImagePerceptionTransportEnvelope) {
   return {
     providerId: 'I7C04_HTTP_MODEL', providerVersion: '1.0.0', providerClass: 'MODEL_PROVIDER',
@@ -161,6 +169,32 @@ test('I7C-04 arbitrary image evidence normalizes, validates and projects into a 
       assert.equal(result.automaticConfirmationAuthorized, false);
       assert.equal(result.automaticFreezeAuthorized, false);
       assert.equal(result.automaticExecutionAuthorized, false);
+    });
+  });
+});
+
+test('I7C-04 explicit duration literal upgrades an ACTION candidate to a canonical WAIT without asking the user again', async () => {
+  await withRuntime(async (repo, byteStore) => {
+    await provider(explicitDurationWaitResponse, async (endpoint) => {
+      const resolution = resolveImagePerceptionRuntimeBinding(env(endpoint));
+      assert.equal(resolution.status, 'CONFIGURED');
+      if (resolution.status !== 'CONFIGURED') throw new Error('expected provider');
+      const result = await buildImageBpmnReviewCandidate(repo, byteStore, PNG, resolution.binding, {
+        declaredName: 'explicit-wait.png', initiatedBy: 'i7c04-test-user',
+        receivedAt: '2026-08-20T22:05:00.000Z', perceivedAt: '2026-08-20T22:05:01.000Z',
+        normalizedAt: '2026-08-20T22:05:02.000Z', assessedAt: '2026-08-20T22:05:03.000Z', projectedAt: '2026-08-20T22:05:04.000Z',
+      });
+      assert.equal(result.status, 'BPMN_READY_FOR_PROCESS_REVIEW');
+      if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') throw new Error('expected BPMN review candidate');
+      const wait = result.semantic.normalization.processRevision.nodes.find((node) => node.name === 'Dejar actuar 5 minutos');
+      assert.ok(wait);
+      assert.equal(wait.kind, 'WAIT');
+      assert.equal(wait.details?.waitKind, 'DURATION');
+      assert.equal(wait.details?.expression, '5 minutes');
+      assert.equal(wait.details?.sourceTemporalLiteral, 'Dejar actuar 5 minutos');
+      assert.equal(result.semantic.validation.findings.some((finding) => finding.code === 'SV-EVT-003' && finding.targetRefs.includes(wait.id)), false);
+      assert.equal(result.semantic.validation.findings.some((finding) => finding.code === 'SV-EVT-002' && finding.targetRefs.includes(wait.id)), false);
+      assert.match(result.projection.bpmnRevision.bpmnXml, /bpmn:intermediateCatchEvent|bpmn:task/);
     });
   });
 });
