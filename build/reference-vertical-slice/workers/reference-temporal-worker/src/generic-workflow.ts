@@ -1,7 +1,17 @@
-import { proxyActivities, sleep } from '@temporalio/workflow';
-import type { GenericCapabilityActivityInput,GenericCapabilityActivityResult,GenericWorkflowInput,GenericWorkflowResult } from './generic-contracts.ts';
+import { condition, defineQuery, defineUpdate, proxyActivities, setHandler, sleep } from '@temporalio/workflow';
+import type {
+  GenericCapabilityActivityInput,
+  GenericCapabilityActivityResult,
+  GenericHumanTaskSubmission,
+  GenericWorkflowInput,
+  GenericWorkflowResult,
+  GenericWorkflowState,
+} from './generic-contracts.ts';
 
 type GenericActivities={executeGenericCapability(input:GenericCapabilityActivityInput):Promise<GenericCapabilityActivityResult>};
+export const completeGenericHumanTask = defineUpdate<GenericWorkflowState,[GenericHumanTaskSubmission]>('completeGenericHumanTask');
+export const getGenericWorkflowState = defineQuery<GenericWorkflowState>('getGenericWorkflowState');
+
 
 function evaluate(expression:unknown,facts:Record<string,unknown>):boolean{
   if(!expression||typeof expression!=='object')throw new TypeError('runtime condition expression must be an object');
@@ -21,7 +31,31 @@ function activityOptions(policy:any){return{startToCloseTimeout:policy.timeout.s
 export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<GenericWorkflowResult>{
   if(!input.executionId||input.program.schemaVersion!=='talos.generic-runtime-program.v1')throw new TypeError('invalid generic workflow input/program');
   let current=input.program.graph.entryElementRef;
+  let currentHumanTaskRef:string|null=null;
   const visited:string[]=[],capabilityResults:GenericCapabilityActivityResult[]=[];
+  const completedHumanTaskRefs:string[]=[];
+  const state=():GenericWorkflowState=>({
+    executionId:input.executionId,
+    currentElementRef:current,
+    currentHumanTaskRef,
+    visitedElementRefs:[...visited],
+    completedHumanTaskRefs:[...completedHumanTaskRefs],
+  });
+  setHandler(getGenericWorkflowState,()=>state());
+  setHandler(
+    completeGenericHumanTask,
+    (submission)=>{
+      if(submission.executionElementRef!==currentHumanTaskRef)throw new TypeError('generic human task update must target the exact current human task');
+      if(submission.outcome!=='COMPLETED')throw new TypeError('generic human task v0.1 accepts only COMPLETED');
+      if(!completedHumanTaskRefs.includes(submission.executionElementRef))completedHumanTaskRefs.push(submission.executionElementRef);
+      return state();
+    },
+    {validator:(submission)=>{
+      if(!currentHumanTaskRef)throw new TypeError('generic workflow is not waiting on a human task');
+      if(submission.executionElementRef!==currentHumanTaskRef)throw new TypeError('generic human task update is stale or targets another step');
+      if(submission.outcome!=='COMPLETED')throw new TypeError('generic human task v0.1 accepts only COMPLETED');
+    }},
+  );
   for(let step=0;step<1000;step++){
     const element=input.program.graph.elements.find(e=>e.id===current);if(!element)throw new TypeError(`runtime graph element missing ${current}`);
     visited.push(element.id);
@@ -32,6 +66,11 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
       const effective=Math.max(0,Math.floor(wait.durationMs*scale));
       if(effective>0)await sleep(effective);
     }
+    if(element.kind==='HUMAN_COORDINATION'&&element.constructKinds.includes('UPDATE_HANDLER')){
+      currentHumanTaskRef=element.id;
+      await condition(()=>completedHumanTaskRefs.includes(element.id));
+      currentHumanTaskRef=null;
+    }
     if(element.kind==='CAPABILITY_INVOCATION'){
       if(element.capabilityUseOccurrenceRefs.length!==1)throw new TypeError('generic runtime v0.1 requires exactly one capability use per invocation element');
       const useRef=element.capabilityUseOccurrenceRefs[0];const policy=input.program.activity.policies.find(p=>p.capabilityUseOccurrenceRef===useRef);if(!policy)throw new TypeError(`compiled Activity policy missing for ${useRef}`);
@@ -41,7 +80,7 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
     const outgoing=input.program.graph.relations.filter(r=>r.sourceElementRef===element.id);
     if(outgoing.length===0){
       if(element.kind!=='COMPLETION_COORDINATION')throw new TypeError(`runtime graph terminated without completion at ${element.id}`);
-      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults};
+      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults,completedHumanTaskRefs};
     }
     const conditional=outgoing.filter(r=>r.relationKind==='CONDITIONAL');
     let next:string|undefined;
