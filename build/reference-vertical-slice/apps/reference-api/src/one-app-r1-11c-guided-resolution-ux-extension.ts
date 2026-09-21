@@ -106,7 +106,7 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
     try{
       setState('Checking your answers…');
       var response=await nativeFetch('/api/semantic-resolution/propose',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:state.revision.id,answers:collect(),answeredBy:'one-app-product-user',authorityRef:authority('answers'),rationale:'User supplied the missing business meaning through the guided One-App review.'})});
-      var body=await response.json();if(!response.ok)throw new Error(body.error||('HTTP '+response.status));state.proposal=body.proposal;
+      var body=await response.json();if(!response.ok){var e=new Error(body.userMessage||body.error||('HTTP '+response.status));e.code=body.code;throw e}state.proposal=body.proposal;
       var summary=byId('r111cSummary');summary.textContent='Talos will create a new process revision from these clarifications. Your original source stays unchanged, and you will confirm the updated process again before automation.';summary.classList.add('open');
       byId('r111cReview').style.display='none';byId('r111cApply').style.display='inline-block';byId('r111cBack').style.display='inline-block';setState('Ready to apply. Nothing has changed yet.','good');
     }catch(error){setState(error instanceof Error?error.message:String(error))}
@@ -116,12 +116,12 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
     try{
       setState('Applying your clarifications…');
       var response=await nativeFetch('/api/semantic-resolution/decide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:state.revision.id,proposalId:state.proposal.id,decision:decision,decidedBy:'one-app-product-user',authorityRef:authority('accept'),rationale:'User explicitly accepted the guided process clarifications.'})});
-      var body=await response.json();if(!response.ok)throw new Error(body.error||('HTTP '+response.status));
+      var body=await response.json();if(!response.ok){var e=new Error(body.userMessage||body.error||('HTTP '+response.status));e.code=body.code;throw e}
       if(body.revision)state.revision=body.revision;if(body.reconciliation)state.reconciliation=body.reconciliation;state.proposal=null;render();
       window.dispatchEvent(new CustomEvent('talos:r1-11c-semantic-resolution-applied',{detail:{revision:body.revision,reconciliation:body.reconciliation}}));
       setState('Clarifications applied. Review the updated process and confirm it again.','good');
       var confirm=byId('r104BusinessConfirmation');if(confirm)confirm.scrollIntoView({behavior:'smooth',block:'center'});
-    }catch(error){setState(error instanceof Error?error.message:String(error))}
+    }catch(error){if(error&&String(error.code||'').indexOf('PROCESS_REVIEW_')===0){state.proposal=null;byId('r111cSummary').classList.remove('open');byId('r111cApply').style.display='none';byId('r111cBack').style.display='none';byId('r111cReview').style.display='inline-block';}setState(error instanceof Error?error.message:String(error))}
   }
   function capture(body){
     if(!body)return;
