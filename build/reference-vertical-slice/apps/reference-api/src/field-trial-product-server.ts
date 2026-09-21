@@ -6,7 +6,11 @@ import { digestDeterministicJson } from '../../../packages/foundation/src/digest
 import { compileGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-compile-runtime-program.ts';
 import type { CompiledGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 import { connectGenericTemporalWorker } from '../../../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
-import { TalosGenericWorkflow } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
+import {
+  TalosGenericWorkflow,
+  completeGenericHumanTask,
+  getGenericWorkflowState,
+} from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
 
 interface DeployedFieldTrialRuntime {
@@ -62,6 +66,26 @@ function durationMs(expression: unknown): number {
   const value = amount * factor;
   if (!Number.isFinite(value) || value < 0) throw new TypeError(`R1-11 local runtime duration is invalid: ${expression}`);
   return Math.round(value);
+}
+
+function executionStatus(description: any): 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' {
+  const raw = String(description?.status?.name ?? description?.status ?? '').toUpperCase();
+  if (raw.includes('COMPLETED')) return 'COMPLETED';
+  if (raw.includes('CANCELLED') || raw.includes('CANCELED') || raw.includes('TERMINATED')) return 'CANCELLED';
+  if (raw.includes('FAILED') || raw.includes('TIMED_OUT')) return 'FAILED';
+  return 'RUNNING';
+}
+
+async function readGenericWorkflowRuntime(workflowIdRef: string, runIdRef: string) {
+  const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
+  const [state, description] = await Promise.all([
+    handle.query(getGenericWorkflowState),
+    handle.describe(),
+  ]);
+  return {
+    executionStatus: executionStatus(description),
+    state,
+  };
 }
 
 function runtimeWaitSnapshot(context: OneAppDeploymentAttemptExecutorInput['context']) {
@@ -212,6 +236,26 @@ const product = await startTalosOneAppProduct({
           `started:${startedAt}`,
         ],
       };
+    },
+    workflowRuntimeStateReader: async ({ workflowIdRef, runIdRef }) => {
+      return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+    },
+    humanTaskExecutor: async ({ workflowIdRef, runIdRef, executionElementRef }) => {
+      const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
+      const before = await handle.query(getGenericWorkflowState);
+      if (before.currentHumanTaskRef !== executionElementRef) {
+        throw new TypeError(`R1-11 human task update is stale: workflow expects ${before.currentHumanTaskRef ?? 'no human task'}`);
+      }
+      await handle.executeUpdate(completeGenericHumanTask, {
+        args: [{ executionElementRef, outcome: 'COMPLETED' }],
+      });
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const runtime = await readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+        if (runtime.executionStatus !== 'RUNNING'
+          || runtime.state.currentHumanTaskRef !== executionElementRef) return runtime;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
     },
   },
 });
