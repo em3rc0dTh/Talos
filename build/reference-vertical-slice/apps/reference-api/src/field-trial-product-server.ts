@@ -109,9 +109,12 @@ const product = await startTalosOneAppProduct({
         throw new TypeError('R1-11 local deployment requires reviewed execution, mapping, RuntimePolicy, deployment design and realization');
       }
       const waits = runtimeWaitSnapshot(context);
-      const realizedNamespace = context.deploymentRealization.namespaceBinding.namespaceLocatorRef;
+      const realizedNamespaceLocator = context.deploymentRealization.namespaceBinding.namespaceLocatorRef;
+      const realizedNamespace = realizedNamespaceLocator.startsWith('temporal-namespace:')
+        ? realizedNamespaceLocator.slice('temporal-namespace:'.length)
+        : realizedNamespaceLocator;
       if (realizedNamespace !== temporalNamespace) {
-        throw new TypeError(`R1-11 local Temporal namespace mismatch: realized ${realizedNamespace}, configured ${temporalNamespace}`);
+        throw new TypeError(`R1-11 local Temporal namespace mismatch: realized ${realizedNamespaceLocator}, configured ${temporalNamespace}`);
       }
       const taskQueue = context.deploymentRealization.taskQueueBindings[0]?.taskQueueKey;
       if (!taskQueue) throw new TypeError('R1-11 local deployment realization has no task queue binding');

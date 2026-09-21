@@ -235,7 +235,22 @@ test('I9-06 explicitly approves one exact realized DeploymentRevision and perfor
     assert.equal(approved.body.deploymentApproval.createsDeploymentAttemptAuthority,true);
     assert.equal(approved.body.deploymentApproval.createsExecutionAuthority,false);
     assert.equal(approved.body.deploymentAttemptAuthorized,true);
+    assert.equal(approved.body.idempotentReplay,false);
     assert.equal(approved.body.executionAuthorized,false);
+
+    const replayApproval=await post(app.baseUrl,'/api/automation/deployment/approve',{
+      automationApprovalId:x.automationApproval.id,
+      deploymentRevisionId:x.realization.revision.id,
+      authorityRef:'authority:i9-06-deployment-owner-replay',
+      approvedBy:'i9-06-deployment-owner-replay',
+      rationale:'Repeated UI click must reuse the exact unconsumed approval without appending authority.',
+    });
+    assert.equal(replayApproval.response.status,200);
+    assert.equal(replayApproval.body.idempotentReplay,true);
+    assert.equal(replayApproval.body.deploymentAttemptAuthorized,true);
+    assert.equal(replayApproval.body.authorizedAttemptCount,1);
+    assert.equal(replayApproval.body.deploymentApproval.id,approved.body.deploymentApproval.id);
+    assert.equal(replayApproval.body.deploymentApproval.authorityRef,approved.body.deploymentApproval.authorityRef);
 
     const staleAttempt=await post(app.baseUrl,'/api/automation/deployment/attempt',{
       deploymentApprovalId:approved.body.deploymentApproval.id,
@@ -265,6 +280,19 @@ test('I9-06 explicitly approves one exact realized DeploymentRevision and perfor
     });
     assert.equal(duplicate.response.status,409);
     assert.equal(executorCalls,1,'consumed one-attempt approval must be rejected before executor invocation');
+
+    const replayAfterAttempt=await post(app.baseUrl,'/api/automation/deployment/approve',{
+      automationApprovalId:x.automationApproval.id,
+      deploymentRevisionId:x.realization.revision.id,
+      authorityRef:'authority:i9-06-after-attempt',
+      approvedBy:'i9-06-after-attempt',
+      rationale:'A consumed approval may be replayed for inspection but must not create another deployment-attempt authority.',
+    });
+    assert.equal(replayAfterAttempt.response.status,200);
+    assert.equal(replayAfterAttempt.body.idempotentReplay,true);
+    assert.equal(replayAfterAttempt.body.deploymentApproval.id,approved.body.deploymentApproval.id);
+    assert.equal(replayAfterAttempt.body.deploymentAttemptAuthorized,false);
+    assert.equal(replayAfterAttempt.body.authorizedAttemptCount,0);
   }finally{
     await app.close();
     await temporal.teardown().catch(()=>undefined);
