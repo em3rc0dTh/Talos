@@ -458,6 +458,57 @@ test('R1-11E recommended Temporal mapping reuses confirmed wait and approved hum
     assert.equal(runtimePolicy.body.runtimePolicy.idempotencyPolicies.length,0);
     assert.equal(runtimePolicy.body.deploymentAuthorized,false);
     assert.equal(runtimePolicy.body.executionAuthorized,false);
+
+    const deploymentDesign=await post(app.baseUrl,'/api/automation/deployment-design',{
+      approvalId:approval.body.id,
+      runtimePolicyRevisionId:runtimePolicy.body.runtimePolicy.revision.id,
+      environmentKey:'talos-r1-11g-human-only',
+      environmentClass:'TEST',
+      temporalPlatformRef:'TEMPORAL_LOCAL_DOCKER',
+      desiredNamespaceKey:'default',
+      desiredTaskQueueKey:'talos-r1-field-trial',
+      desiredWorkflowTypeName:'TalosGenericWorkflow',
+      desiredActivityTypeName:'executeGenericCapability',
+      desiredWorkerLogicalName:'talos-r1-field-trial-worker',
+      authorityRef:'authority:r1-11g:test:deployment-design',
+      decidedBy:'field-trial-user',
+      rationale:'Use the configured local field-trial Temporal target.',
+    });
+    assert.equal(deploymentDesign.response.status,201);
+
+    const realization=await post(app.baseUrl,'/api/automation/environment-realization',{
+      approvalId:approval.body.id,
+      deploymentRevisionId:deploymentDesign.body.deploymentDesign.revision.id,
+      actualNamespace:'default',
+      taskQueue:'talos-r1-field-trial',
+      workflowTypeName:'TalosGenericWorkflow',
+      activityTypeName:'executeGenericCapability',
+      workerLogicalName:'talos-r1-field-trial-worker',
+      executableArtifactRef:'workers/reference-temporal-worker/src/generic-worker-runtime.ts',
+      artifactDigest:'r1-11g-human-only-test-artifact-digest',
+      sdkFamily:'TEMPORAL_TYPESCRIPT_SDK',
+      sdkVersionRef:'1.22.0',
+      authorityRef:'authority:r1-11g:test:environment-realization',
+      realizedBy:'talos-field-trial-host',
+    });
+    assert.equal(realization.response.status,201);
+    assert.equal(realization.body.deploymentRealization.assessment.readiness,'READY_FOR_DEPLOYMENT_ATTEMPT');
+    assert.equal(realization.body.deploymentRealization.taskQueueBindings.length,1);
+    assert.equal(realization.body.deploymentRealization.workflowTypeBindings.length,1);
+    assert.equal(realization.body.deploymentRealization.activityTypeBindings.length,0);
+    assert.equal(realization.body.deploymentRealization.workerArtifactBindings.length,1);
+
+    const deploymentApproval=await post(app.baseUrl,'/api/automation/deployment/approve',{
+      automationApprovalId:approval.body.id,
+      deploymentRevisionId:realization.body.deploymentRealization.revision.id,
+      authorityRef:'authority:r1-11g:test:deployment-approval',
+      approvedBy:'field-trial-user',
+      rationale:'Authorize exactly one deployment attempt for the realized human-only Temporal workflow.',
+    });
+    assert.equal(deploymentApproval.response.status,201);
+    assert.equal(deploymentApproval.body.deploymentApproval.deploymentRevisionRef,realization.body.deploymentRealization.revision.id);
+    assert.equal(deploymentApproval.body.deploymentApproval.authorizedAttemptCount,1);
+    assert.equal(deploymentApproval.body.deploymentApproval.createsExecutionAuthority,false);
   }finally{
     await app.close();
     rmSync(runtimeDir,{recursive:true,force:true});
