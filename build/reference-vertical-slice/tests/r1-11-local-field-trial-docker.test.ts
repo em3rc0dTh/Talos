@@ -59,7 +59,7 @@ test('R1-11 field-trial host configures trusted local deployment and workflow ex
   assert.match(host, /runtimeWaitSnapshot/);
   assert.match(host, /currently requires DURATION waits/);
   assert.match(host, /cannot safely parse duration/);
-  assert.match(host, /namespaceLocatorRef\.startsWith\('temporal-namespace:'\)/);
+  assert.match(host, /realizedNamespaceLocator\.startsWith\('temporal-namespace:'\)/);
   assert.match(host, /slice\('temporal-namespace:'\.length\)/);
   assert.match(host, /executionStatus: 'RUNNING'/);
   assert.doesNotMatch(host, /automaticDeploymentAttemptAuthorized\s*:\s*true/);
