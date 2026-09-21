@@ -26,16 +26,14 @@ import {
   recordOneAppAuthorizedWorkflowExecution,
   reviewOneAppExecutionPlan,
   selectOneAppAutomationCapabilities,
+  type AutomationDesignApprovalRecord,
+  type AutomationExecutionPlanReview,
+  type AutomationExecutionPlanReviewBundle,
   type BpmnCanonicalReconciliationResult,
   type GuidedResolutionAnswer,
   type OneAppAutomationContext,
 } from '../../../packages/application/src/index.ts';
 import { createOpaqueId, type OpaqueId } from '../../../packages/foundation/src/ids.ts';
-import type {
-  AutomationDesignApprovalRecord,
-  AutomationExecutionPlanReview,
-  AutomationExecutionPlanReviewBundle,
-} from '../../../packages/execution/src/index.ts';
 import {
   LocalImageByteStore,
   resolveImagePerceptionRuntimeBinding,
