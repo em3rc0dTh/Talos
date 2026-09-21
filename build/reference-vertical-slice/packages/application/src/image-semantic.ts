@@ -10,6 +10,33 @@ export interface ImageSemanticBundle {
   validation: ValidationBundle;
 }
 
+function explicitDurationWait(label: string | undefined) {
+  if (!label) return undefined;
+  const normalized = label.trim().toLowerCase();
+  const waitCue = /\b(wait|delay|pause|hold|espera(?:r)?|aguarda(?:r)?|dejar\s+actuar|reposar)\b/i.test(normalized);
+  if (!waitCue) return undefined;
+  const match = normalized.match(/\b(\d+(?:[.,]\d+)?)\s*(seconds?|secs?|segundos?|mins?|minutes?|minutos?|hours?|hrs?|horas?|days?|d[ií]as?)\b/i);
+  if (!match) return undefined;
+  const amount = match[1].replace(',', '.');
+  const unitRaw = match[2].toLowerCase();
+  const unit = /^(second|sec|segundo)/.test(unitRaw)
+    ? 'seconds'
+    : /^(hour|hr|hora)/.test(unitRaw)
+      ? 'hours'
+      : /^(day|d[ií]a)/.test(unitRaw)
+        ? 'days'
+        : 'minutes';
+  return {
+    kind: 'WAIT' as const,
+    details: {
+      waitKind: 'DURATION',
+      expression: `${amount} ${unit}`,
+      sourceTemporalLiteral: label,
+      temporalDerivation: 'EXPLICIT_DURATION_LITERAL',
+    },
+  };
+}
+
 export function normalizeAndValidateImageResult(
   repo: ImmutableDocumentRepository,
   adapterResultId: SourceId,
@@ -34,8 +61,13 @@ export function normalizeAndValidateImageResult(
       sourceFamily: 'IMAGE_PERCEPTION',
       extractionMethod: 'VISUAL_PERCEPTION',
       interpretationMethod: 'PERCEPTION_COMMON_EVIDENCE_NORMALIZATION',
-      interpreterVersion: 'image-common-normalizer-reference-v0.1',
+      interpreterVersion: 'image-common-normalizer-reference-v0.2',
       defaultTruthClass: 'INFERRED',
+      resolveNode: ({ candidateSemanticType, literalLabel }) => {
+        const explicitWait = explicitDurationWait(literalLabel);
+        if (candidateSemanticType === 'ACTION' && explicitWait) return explicitWait;
+        return undefined;
+      },
       perspective: 'BUSINESS_INTENT',
       evidenceType: 'VISUAL_PERCEPTION_EVIDENCE',
       nodeFragmentKind: 'IMAGE_REGION',
