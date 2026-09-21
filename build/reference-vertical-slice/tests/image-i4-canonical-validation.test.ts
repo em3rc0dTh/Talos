@@ -58,7 +58,7 @@ test('I4 image common evidence normalizes without Canvas native model and remain
     assert.equal(revision.semanticClaims.some((claim) => claim.truthClass === 'SOURCE_TRUTH'), false);
     assert.equal(revision.provenanceLinks.every((link) => link.truthClass === 'INFERRED'), true);
     assert.equal(revision.provenanceLinks.every((link) => link.extractionMethod === 'VISUAL_PERCEPTION'), true);
-    assert.equal(revision.provenanceLinks.every((link) => link.interpreterVersion === 'image-common-normalizer-reference-v0.1'), true);
+    assert.equal(revision.provenanceLinks.every((link) => link.interpreterVersion === 'image-common-normalizer-reference-v0.2'), true);
 
     const rasterOccurrences = semantic.normalization.sourceOccurrences.filter((item) => item.occurrenceKind !== 'EDGE');
     assert.equal(rasterOccurrences.length > 0, true);
