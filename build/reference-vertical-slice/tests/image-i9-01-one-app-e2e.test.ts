@@ -35,7 +35,7 @@ test('I9-01 one app runs native BPMN through explicit automation approval and ap
     assert.equal(statusResponse.status, 200);
     const status = await statusResponse.json() as any;
     assert.equal(status.releaseGate, 'I9-01_ONE_APP_NATIVE_BPMN_E2E');
-    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN']);
+    assert.deepEqual(status.inputRoutes, ['NATIVE_BPMN', 'TALOS_CANVAS']);
     assert.equal(status.imageInputIntegratedIntoOneApp, false);
     assert.equal(status.automaticCapabilityBindingAuthorized, false);
     assert.equal(status.automaticTemporalDesignAuthorized, false);
