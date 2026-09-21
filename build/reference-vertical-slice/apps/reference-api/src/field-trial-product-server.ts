@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Connection, Client } from '@temporalio/client';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
 import { compileGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-compile-runtime-program.ts';
@@ -21,6 +23,10 @@ const port = Number(process.env.PORT ?? 8787);
 const runtimeDir = process.env.TALOS_RUNTIME_DIR?.trim() || '/data/talos-runtime';
 const temporalAddress = process.env.TEMPORAL_ADDRESS?.trim() || 'temporal:7233';
 const temporalNamespace = process.env.TEMPORAL_NAMESPACE?.trim() || 'default';
+const fieldTrialTaskQueue = process.env.TALOS_FIELD_TRIAL_TASK_QUEUE?.trim() || 'talos-r1-field-trial';
+const workerArtifactRef = 'workers/reference-temporal-worker/src/generic-worker-runtime.ts';
+const workerArtifactPath = path.resolve(process.cwd(), workerArtifactRef);
+const workerArtifactDigest = createHash('sha256').update(readFileSync(workerArtifactPath)).digest('hex');
 
 async function connectWithRetry<T>(label: string, connect: () => Promise<T>): Promise<T> {
   let lastError: unknown;
@@ -42,19 +48,67 @@ const clientConnection = await connectWithRetry(
 const temporalClient = new Client({ connection: clientConnection, namespace: temporalNamespace });
 const deployed = new Map<string, DeployedFieldTrialRuntime>();
 
+function durationMs(expression: unknown): number {
+  if (typeof expression !== 'string') throw new TypeError('R1-11 local runtime requires a textual duration expression');
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(milliseconds?|ms|seconds?|secs?|segundos?|minutes?|mins?|minutos?|hours?|hrs?|horas?|days?|d[ií]as?)\s*$/i.exec(expression);
+  if (!match) throw new TypeError(`R1-11 local runtime cannot safely parse duration: ${expression}`);
+  const amount = Number(match[1].replace(',', '.'));
+  const unit = match[2].toLowerCase();
+  const factor = /^(millisecond|ms)/.test(unit) ? 1
+    : /^(second|sec|segundo)/.test(unit) ? 1_000
+      : /^(hour|hr|hora)/.test(unit) ? 3_600_000
+        : /^(day|d[ií]a)/.test(unit) ? 86_400_000
+          : 60_000;
+  const value = amount * factor;
+  if (!Number.isFinite(value) || value < 0) throw new TypeError(`R1-11 local runtime duration is invalid: ${expression}`);
+  return Math.round(value);
+}
+
+function runtimeWaitSnapshot(context: OneAppDeploymentAttemptExecutorInput['context']) {
+  if (!context.executionReview) throw new TypeError('R1-11 local runtime requires reviewed execution before wait materialization');
+  return context.executionReview.execution.elements
+    .filter((element) => element.kind === 'WAIT_COORDINATION')
+    .map((element) => {
+      const subjectRef = element.semanticSubjectRefs[0];
+      const node = context.process.nodes.find((candidate) => candidate.id === subjectRef);
+      if (!node || node.kind !== 'WAIT') throw new TypeError('R1-11 local runtime WAIT element lost its exact Canonical semantic subject');
+      if (node.details?.waitKind !== 'DURATION') {
+        throw new TypeError(`R1-11 local runtime currently requires DURATION waits; ${node.name ?? node.id} is ${String(node.details?.waitKind ?? 'UNRESOLVED')}`);
+      }
+      return {
+        executionElementRef: element.id,
+        durationMs: durationMs(node.details?.expression),
+        sourceRef: node.id,
+      };
+    });
+}
+
+
 const product = await startTalosOneAppProduct({
   host,
   port,
+  simpleRuntimeTarget: {
+    environmentKey: 'talos-local-field-trial',
+    environmentClass: 'TEST',
+    temporalPlatformRef: 'TEMPORAL_LOCAL_DOCKER',
+    namespace: temporalNamespace,
+    taskQueue: fieldTrialTaskQueue,
+    workflowTypeName: 'TalosGenericWorkflow',
+    activityTypeName: 'executeGenericCapability',
+    workerLogicalName: 'talos-r1-field-trial-worker',
+    executableArtifactRef: workerArtifactRef,
+    artifactDigest: workerArtifactDigest,
+    sdkFamily: 'TEMPORAL_TYPESCRIPT_SDK',
+    sdkVersionRef: '1.22.0',
+    temporalWebUi: 'http://localhost:18233',
+  },
   oneApp: {
     runtimeDir,
     deploymentAttemptExecutor: async ({ context, deploymentApprovalId, startedAt }) => {
       if (!context.executionReview || !context.mapping || !context.runtimePolicy || !context.deploymentDesign || !context.deploymentRealization) {
         throw new TypeError('R1-11 local deployment requires reviewed execution, mapping, RuntimePolicy, deployment design and realization');
       }
-      const waitElements = context.executionReview.execution.elements.filter((element) => element.kind === 'WAIT_COORDINATION');
-      if (waitElements.length > 0) {
-        throw new TypeError('R1-11 local Temporal host does not invent wait durations; materialize wait semantics explicitly or record this trial as BLOCKED_BY_OPERATOR');
-      }
+      const waits = runtimeWaitSnapshot(context);
       const realizedNamespace = context.deploymentRealization.namespaceBinding.namespaceLocatorRef;
       if (realizedNamespace !== temporalNamespace) {
         throw new TypeError(`R1-11 local Temporal namespace mismatch: realized ${realizedNamespace}, configured ${temporalNamespace}`);
@@ -67,7 +121,6 @@ const product = await startTalosOneAppProduct({
       }
 
       const conditionRules = context.process.rules.map((rule) => ({ ref: rule.id, expression: rule.expression }));
-      const waits: [] = [];
       const semantics = {
         conditionRules,
         waits,
@@ -140,17 +193,14 @@ const product = await startTalosOneAppProduct({
         }],
         retry: { maximumAttempts: runtime.program.workflow.workflowMaximumAttempts },
       });
-      const result = await handle.result();
-      if (result.outcome !== 'COMPLETED') throw new TypeError(`R1-11 local workflow returned ${String(result.outcome)}`);
       const description = await handle.describe();
       const runId = (description as any).runId ?? (handle as any).firstExecutionRunId;
       if (!runId) throw new TypeError('R1-11 local Temporal execution did not expose a run id');
       return {
-        completedAt: new Date().toISOString(),
         workflowExecutionRef: `temporal:${workflowId}:${String(runId)}`,
         workflowIdRef: workflowId,
         runIdRef: String(runId),
-        executionStatus: 'COMPLETED' as const,
+        executionStatus: 'RUNNING' as const,
         evidenceRefs: [
           `field-trial:execution-approval:${workflowExecutionApprovalId}`,
           `workflow-id:${workflowId}`,

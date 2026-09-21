@@ -56,7 +56,10 @@ test('R1-11 field-trial host configures trusted local deployment and workflow ex
   assert.match(host, /compileGenericRuntimeProgram/);
   assert.match(host, /connectGenericTemporalWorker/);
   assert.match(host, /temporalClient\.workflow\.start\(TalosGenericWorkflow/);
-  assert.match(host, /does not invent wait durations/);
+  assert.match(host, /runtimeWaitSnapshot/);
+  assert.match(host, /currently requires DURATION waits/);
+  assert.match(host, /cannot safely parse duration/);
+  assert.match(host, /executionStatus: 'RUNNING'/);
   assert.doesNotMatch(host, /automaticDeploymentAttemptAuthorized\s*:\s*true/);
   assert.doesNotMatch(host, /automaticWorkflowExecutionAuthorized\s*:\s*true/);
 });

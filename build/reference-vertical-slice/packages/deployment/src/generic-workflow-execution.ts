@@ -23,11 +23,11 @@ export interface GenericWorkflowExecutionApprovalInput {
 
 export interface GenericWorkflowExecutionResult {
   startedAt:string;
-  completedAt:string;
+  completedAt?:string;
   workflowExecutionRef:string;
   workflowIdRef:string;
   runIdRef:string;
-  executionStatus:'COMPLETED'|'FAILED'|'CANCELLED';
+  executionStatus:'RUNNING'|'COMPLETED'|'FAILED'|'CANCELLED';
   evidenceRefs:string[];
 }
 
@@ -113,7 +113,7 @@ export function recordAuthorizedWorkflowExecution(
   const executionInputDigest=workflowExecutionInputDigest({executionId,facts:input.facts,capabilityInputs:input.capabilityInputs});
   if(executionInputDigest!==approval.executionInputDigest)throw new TypeError('workflow start input must match the exact approved execution input digest');
   const startedAt=required(result.startedAt,'startedAt');
-  const completedAt=required(result.completedAt,'completedAt');
+  const completedAt=result.completedAt===undefined?undefined:required(result.completedAt,'completedAt');
   if(startedAt<approval.approvedAt)throw new TypeError('workflow execution cannot begin before explicit execution approval');
   const workflowExecutionRef=required(result.workflowExecutionRef,'workflowExecutionRef');
   const workflowIdRef=required(result.workflowIdRef,'workflowIdRef');
@@ -130,7 +130,7 @@ export function recordAuthorizedWorkflowExecution(
     executionInputDigest,
     runtimeSegmentObservationRefs:[],
     startedAt,
-    closedAt:completedAt,
+    ...(completedAt?{closedAt:completedAt}:{}),
     executionStatus:result.executionStatus,
     evidenceRefs:[...result.evidenceRefs],
   };
