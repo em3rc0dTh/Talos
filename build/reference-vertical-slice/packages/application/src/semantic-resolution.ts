@@ -260,7 +260,7 @@ export function decideGuidedSemanticResolution(input: {
     inputRefs: [...node.inputRefs],
     outputRefs: [...node.outputRefs],
     ruleRefs: [...node.ruleRefs],
-    details: node.details ? { ...node.details } : undefined,
+    ...(node.details ? { details: { ...node.details } } : {}),
     provenanceRefs: [...node.provenanceRefs],
     sourceExtensionRefs: [...node.sourceExtensionRefs],
   }));
@@ -272,7 +272,7 @@ export function decideGuidedSemanticResolution(input: {
   const rules: BusinessRule[] = input.processRevision.rules.map((rule) => ({
     ...rule,
     inputs: [...rule.inputs],
-    outputs: rule.outputs ? [...rule.outputs] : undefined,
+    ...(rule.outputs ? { outputs: [...rule.outputs] } : {}),
     unresolvedTerms: [...rule.unresolvedTerms],
     provenanceRefs: [...rule.provenanceRefs],
   }));
