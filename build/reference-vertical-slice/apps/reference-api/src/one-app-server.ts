@@ -1363,7 +1363,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           { executionId, facts, ...(capabilityInputs ? { capabilityInputs } : {}) },
           {
             startedAt,
-            completedAt: text(outcome.completedAt, 'completedAt'),
+            ...(outcome.completedAt ? { completedAt: text(outcome.completedAt, 'completedAt') } : {}),
             workflowExecutionRef: text(outcome.workflowExecutionRef, 'workflowExecutionRef'),
             workflowIdRef: text(outcome.workflowIdRef, 'workflowIdRef'),
             runIdRef: text(outcome.runIdRef, 'runIdRef'),
