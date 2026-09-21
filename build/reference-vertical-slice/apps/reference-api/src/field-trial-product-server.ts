@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Connection, Client } from '@temporalio/client';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
 import { compileGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-compile-runtime-program.ts';
@@ -21,6 +23,10 @@ const port = Number(process.env.PORT ?? 8787);
 const runtimeDir = process.env.TALOS_RUNTIME_DIR?.trim() || '/data/talos-runtime';
 const temporalAddress = process.env.TEMPORAL_ADDRESS?.trim() || 'temporal:7233';
 const temporalNamespace = process.env.TEMPORAL_NAMESPACE?.trim() || 'default';
+const fieldTrialTaskQueue = process.env.TALOS_FIELD_TRIAL_TASK_QUEUE?.trim() || 'talos-r1-field-trial';
+const workerArtifactRef = 'workers/reference-temporal-worker/src/generic-worker-runtime.ts';
+const workerArtifactPath = path.resolve(process.cwd(), workerArtifactRef);
+const workerArtifactDigest = createHash('sha256').update(readFileSync(workerArtifactPath)).digest('hex');
 
 async function connectWithRetry<T>(label: string, connect: () => Promise<T>): Promise<T> {
   let lastError: unknown;
@@ -81,6 +87,21 @@ function runtimeWaitSnapshot(context: OneAppDeploymentAttemptExecutorInput['cont
 const product = await startTalosOneAppProduct({
   host,
   port,
+  simpleRuntimeTarget: {
+    environmentKey: 'talos-local-field-trial',
+    environmentClass: 'TEST',
+    temporalPlatformRef: 'TEMPORAL_LOCAL_DOCKER',
+    namespace: temporalNamespace,
+    taskQueue: fieldTrialTaskQueue,
+    workflowTypeName: 'TalosGenericWorkflow',
+    activityTypeName: 'executeGenericCapability',
+    workerLogicalName: 'talos-r1-field-trial-worker',
+    executableArtifactRef: workerArtifactRef,
+    artifactDigest: workerArtifactDigest,
+    sdkFamily: 'TEMPORAL_TYPESCRIPT_SDK',
+    sdkVersionRef: '1.22.0',
+    temporalWebUi: 'http://localhost:18233',
+  },
   oneApp: {
     runtimeDir,
     deploymentAttemptExecutor: async ({ context, deploymentApprovalId, startedAt }) => {
