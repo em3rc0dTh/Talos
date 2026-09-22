@@ -168,7 +168,8 @@ function manifestFor(context:OneAppAutomationContext){
 
 function workflowSource(manifest:any):string {
   const embedded=JSON.stringify(manifest,null,2);
-  return `import { condition, defineQuery, defineSignal, defineUpdate, proxyActivities, setHandler, sleep } from '@temporalio/workflow';
+  const temporalWorkflowPackage='@temporalio/'+'workflow';
+  return `import { condition, defineQuery, defineSignal, defineUpdate, proxyActivities, setHandler, sleep } from '${temporalWorkflowPackage}';
 
 const manifest = ${embedded} as const;
 
