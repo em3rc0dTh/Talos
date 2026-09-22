@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { Connection, Client } from '@temporalio/client';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
@@ -31,7 +31,17 @@ const temporalNamespace = process.env.TEMPORAL_NAMESPACE?.trim() || 'default';
 const fieldTrialTaskQueue = process.env.TALOS_FIELD_TRIAL_TASK_QUEUE?.trim() || 'talos-r1-field-trial';
 const workerArtifactRef = 'workers/reference-temporal-worker/src/generic-worker-runtime.ts';
 const workerArtifactPath = path.resolve(process.cwd(), workerArtifactRef);
-const workerArtifactDigest = createHash('sha256').update(readFileSync(workerArtifactPath)).digest('hex');
+const workerSourceDir = path.dirname(workerArtifactPath);
+const workerArtifactDigest = (() => {
+  const digest = createHash('sha256');
+  for (const fileName of readdirSync(workerSourceDir).filter((name) => name.endsWith('.ts')).sort()) {
+    digest.update(fileName);
+    digest.update('\0');
+    digest.update(readFileSync(path.join(workerSourceDir, fileName)));
+    digest.update('\0');
+  }
+  return digest.digest('hex');
+})();
 
 async function connectWithRetry<T>(label: string, connect: () => Promise<T>): Promise<T> {
   let lastError: unknown;
