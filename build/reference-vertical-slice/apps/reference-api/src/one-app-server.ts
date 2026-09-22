@@ -20,6 +20,7 @@ import {
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
   prepareProductCanvasSource,
+  persistOneAppWorkflowExecutionObservation,
   proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
   recordOneAppAuthorizedDeploymentAttempt,
@@ -81,6 +82,9 @@ export interface OneAppWorkflowRuntimeState {
   currentHumanTaskRef: string | null;
   currentDecisionRef?: string | null;
   currentDecisionPrompt?: string | null;
+  currentDecisionMode?: 'BOOLEAN' | 'CHOICE' | null;
+  currentDecisionOptions?: Array<{ relationRef:string; decisionRef:string; label:string; targetElementRef:string }>;
+  selectedDecisionRelations?: Record<string,string>;
   visitedElementRefs: string[];
   completedHumanTaskRefs: string[];
   decisionOutcomes?: Record<string, boolean>;
@@ -103,7 +107,8 @@ export interface OneAppHumanTaskExecutorInput extends OneAppWorkflowRuntimeExecu
 
 export interface OneAppBusinessDecisionExecutorInput extends OneAppWorkflowRuntimeExecutorInput {
   decisionRef: string;
-  applies: boolean;
+  applies?: boolean;
+  selectedRelationRef?: string;
 }
 
 export interface TalosOneAppOptions {
@@ -278,6 +283,8 @@ function publicWorkflowRuntimeState(
             waitExpression: null,
             decisionRef: runtime.state.currentDecisionRef,
             decisionPrompt: runtime.state.currentDecisionPrompt ?? 'Does this business condition apply?',
+            decisionMode: runtime.state.currentDecisionMode ?? 'BOOLEAN',
+            decisionOptions: (runtime.state.currentDecisionOptions ?? []).map((option) => ({ ...option })),
           }
         : isWait
           ? {
@@ -309,6 +316,9 @@ function publicWorkflowRuntimeState(
     currentHumanTaskRef: runtime.state.currentHumanTaskRef,
     currentDecisionRef: runtime.state.currentDecisionRef ?? null,
     currentDecisionPrompt: runtime.state.currentDecisionPrompt ?? null,
+    currentDecisionMode: runtime.state.currentDecisionMode ?? null,
+    currentDecisionOptions: (runtime.state.currentDecisionOptions ?? []).map((option) => ({ ...option })),
+    selectedDecisionRelations: { ...(runtime.state.selectedDecisionRelations ?? {}) },
     decisionOutcomes: { ...(runtime.state.decisionOutcomes ?? {}) },
     visitedElementRefs: runtime.state.visitedElementRefs,
     completedHumanTaskRefs: runtime.state.completedHumanTaskRefs,
@@ -325,6 +335,28 @@ function publicWorkflowRuntimeState(
 }
 
 
+
+function persistTerminalWorkflowObservation(
+  repo: SqliteDocumentStore,
+  session: OneAppSession,
+  runtime: OneAppWorkflowRuntimeReadResult,
+) {
+  const observation = session.automation.workflowExecutionObservation;
+  if (!observation || runtime.executionStatus === 'RUNNING' || observation.executionStatus === runtime.executionStatus) {
+    return observation;
+  }
+  const closedAt = new Date().toISOString();
+  const terminal = {
+    ...observation,
+    id: createOpaqueId('observation', `workflow-runtime-status:${observation.workflowExecutionRef}:${runtime.executionStatus}`),
+    closedAt,
+    executionStatus: runtime.executionStatus,
+    evidenceRefs: [...observation.evidenceRefs, `runtime-status:${runtime.executionStatus}`],
+  };
+  persistOneAppWorkflowExecutionObservation(repo, terminal);
+  session.automation = { ...session.automation, workflowExecutionObservation: terminal };
+  return terminal;
+}
 
 const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
 
@@ -1543,8 +1575,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           workflowIdRef: observation.workflowIdRef,
           runIdRef: observation.runIdRef,
         });
+        const durableObservation = persistTerminalWorkflowObservation(repo, session, runtime) ?? observation;
         json(res, 200, {
-          workflowExecutionObservation: observation,
+          workflowExecutionObservation: durableObservation,
           runtime: publicWorkflowRuntimeState(session.automation, runtime),
         });
         return;
@@ -1573,8 +1606,10 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           runIdRef: observation.runIdRef,
           executionElementRef,
         });
+        const durableObservation = persistTerminalWorkflowObservation(repo, session, runtime);
         json(res, 200, {
           completedExecutionElementRef: executionElementRef,
+          ...(durableObservation ? { workflowExecutionObservation: durableObservation } : {}),
           runtime: publicWorkflowRuntimeState(session.automation, runtime),
           additionalWorkflowStartAuthorized: false,
         });
@@ -1591,24 +1626,37 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (!observation) throw new TypeError('one-app business decision requires an existing workflow execution observation');
         if (!options.businessDecisionExecutor) throw new TypeError('one-app business decision requires a configured trusted decision executor');
         const decisionRef = text(input.decisionRef, 'decisionRef');
-        if (typeof input.applies !== 'boolean') throw new TypeError('applies must be a boolean');
-        const rule = session.automation.process.rules.find((candidate) => candidate.id === decisionRef);
-        const relation = session.automation.executionReview?.execution.relations.find(
-          (candidate) => candidate.conditionRef === decisionRef,
-        );
-        if (!rule || !relation) {
-          throw new TypeError('one-app business decision must target an exact condition used by the reviewed ExecutionPlan');
+        const selectedRelationRef = typeof input.selectedRelationRef === 'string' && input.selectedRelationRef.trim()
+          ? input.selectedRelationRef.trim()
+          : undefined;
+        const applies = typeof input.applies === 'boolean' ? input.applies : undefined;
+        const executionRelations = session.automation.executionReview?.execution.relations ?? [];
+        if (selectedRelationRef) {
+          const selectedRelation = executionRelations.find(
+            (candidate) => candidate.id === selectedRelationRef && candidate.relationKind === 'CONDITIONAL' && Boolean(candidate.conditionRef),
+          );
+          if (!selectedRelation) {
+            throw new TypeError('one-app business decision choice must target an exact conditional ExecutionPlan relation');
+          }
+        } else {
+          const rule = session.automation.process.rules.find((candidate) => candidate.id === decisionRef);
+          const relation = executionRelations.find((candidate) => candidate.conditionRef === decisionRef);
+          if (!rule || !relation || applies === undefined) {
+            throw new TypeError('one-app business decision must target an exact condition used by the reviewed ExecutionPlan');
+          }
         }
         const runtime = await options.businessDecisionExecutor({
           context: session.automation,
           workflowIdRef: observation.workflowIdRef,
           runIdRef: observation.runIdRef,
           decisionRef,
-          applies: input.applies,
+          ...(selectedRelationRef ? { selectedRelationRef } : { applies }),
         });
+        const durableObservation = persistTerminalWorkflowObservation(repo, session, runtime);
         json(res, 200, {
           resolvedDecisionRef: decisionRef,
-          applies: input.applies,
+          ...(selectedRelationRef ? { selectedRelationRef } : { applies }),
+          ...(durableObservation ? { workflowExecutionObservation: durableObservation } : {}),
           runtime: publicWorkflowRuntimeState(session.automation, runtime),
           additionalWorkflowStartAuthorized: false,
         });
