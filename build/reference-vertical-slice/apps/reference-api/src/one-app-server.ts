@@ -42,6 +42,10 @@ import {
 import { SqliteDocumentStore } from '../../../packages/persistence-sqlite/src/sqlite-document-store.ts';
 import { createOneAppReviewRouter } from './one-app-review.ts';
 import { DurableGuidedResolutionStore, guidedResolutionFingerprint } from './guided-resolution-store.ts';
+import {
+  buildTemporalWorkflowExport,
+  buildTemporalWorkflowPackageTarGz,
+} from './temporal-workflow-export.ts';
 
 export interface OneAppDeploymentAttemptExecutorInput {
   context: OneAppAutomationContext;
@@ -150,6 +154,24 @@ function json(res: http.ServerResponse, status: number, payload: unknown): void 
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
+  });
+  res.end(body);
+}
+
+function bytes(
+  res:http.ServerResponse,
+  status:number,
+  payload:Buffer|string,
+  contentType:string,
+  fileName?:string,
+):void{
+  const body=typeof payload==='string'?Buffer.from(payload,'utf8'):payload;
+  res.writeHead(status,{
+    'content-type':contentType,
+    'content-length':body.byteLength,
+    'cache-control':'no-store',
+    ...(fileName?{'content-disposition':`attachment; filename="${fileName}"`}:{}),
+    'x-content-type-options':'nosniff',
   });
   res.end(body);
 }
@@ -356,6 +378,19 @@ function persistTerminalWorkflowObservation(
   persistOneAppWorkflowExecutionObservation(repo, terminal);
   session.automation = { ...session.automation, workflowExecutionObservation: terminal };
   return terminal;
+}
+
+function exactBpmnXmlForSession(repo:SqliteDocumentStore,session:OneAppSession):string{
+  const direct=(session.binding as any)?.alignedBpmnRevision;
+  if(direct?.canonicalProcessRevisionId===session.automation.process.id&&typeof direct.bpmnXml==='string'&&direct.bpmnXml.trim()){
+    return direct.bpmnXml;
+  }
+  const candidates=repo.listByKind<any>('BpmnProcessRevision')
+    .map((document)=>document.payload)
+    .filter((revision)=>revision.canonicalProcessRevisionId===session.automation.process.id&&typeof revision.bpmnXml==='string'&&revision.bpmnXml.trim())
+    .sort((a,b)=>Number(b.revisionNumber??0)-Number(a.revisionNumber??0));
+  if(!candidates[0])throw new TypeError('Temporal export requires exact BPMN lineage for the approved process');
+  return candidates[0].bpmnXml;
 }
 
 const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
@@ -570,6 +605,14 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/process/bpmn/export') {
+        const revisionId = text(url.searchParams.get('revisionId'), 'revisionId');
+        const revision = workspace.getRevision(revisionId);
+        if (!revision) throw new TypeError('BPMN export revision not found');
+        bytes(res, 200, revision.bpmnXml, 'application/xml; charset=utf-8', 'talos-process.bpmn');
         return;
       }
 
@@ -1249,6 +1292,59 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/temporal-export') {
+        const input = await jsonBody(req);
+        const approvalId = text(input.approvalId, 'approvalId');
+        let session = approvalSessions.get(approvalId);
+        let durableRecoveryApplied = false;
+        if (!session && input.allowDurableRecovery === true) {
+          session = recoverApprovedTemporalSession(repo, bindings, approvalId);
+          if (session) {
+            approvalSessions.set(approvalId, session);
+            durableRecoveryApplied = true;
+          }
+        }
+        if (!session) throw new TypeError('Temporal export requires the exact approved automation session');
+        const mapping = session.automation.mapping;
+        if (!mapping) throw new TypeError('Temporal export requires an approved Temporal mapping first');
+        const temporalMappingRevisionId = text(input.temporalMappingRevisionId, 'temporalMappingRevisionId');
+        if (temporalMappingRevisionId !== mapping.revision.id) {
+          throw new TypeError('Temporal export must pin the exact approved TemporalMappingRevision');
+        }
+        const bundle = buildTemporalWorkflowExport(session.automation, exactBpmnXmlForSession(repo, session));
+        json(res, 200, {
+          ...bundle,
+          durableRecoveryApplied,
+          deploymentAuthorized:false,
+          executionAuthorized:false,
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/automation/temporal-export/package') {
+        const approvalId = text(url.searchParams.get('approvalId'), 'approvalId');
+        const temporalMappingRevisionId = text(url.searchParams.get('temporalMappingRevisionId'), 'temporalMappingRevisionId');
+        let session = approvalSessions.get(approvalId);
+        if (!session && url.searchParams.get('allowDurableRecovery') === 'true') {
+          session = recoverApprovedTemporalSession(repo, bindings, approvalId);
+          if (session) approvalSessions.set(approvalId, session);
+        }
+        if (!session) throw new TypeError('Temporal package export requires the exact approved automation session');
+        const mapping = session.automation.mapping;
+        if (!mapping || mapping.revision.id !== temporalMappingRevisionId) {
+          throw new TypeError('Temporal package export must pin the exact approved TemporalMappingRevision');
+        }
+        const bundle = buildTemporalWorkflowExport(session.automation, exactBpmnXmlForSession(repo, session));
+        bytes(
+          res,
+          200,
+          buildTemporalWorkflowPackageTarGz(bundle),
+          'application/gzip',
+          'talos-temporal-workflow.tar.gz',
+        );
         return;
       }
 
