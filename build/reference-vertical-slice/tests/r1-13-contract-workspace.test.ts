@@ -269,3 +269,66 @@ test('R1-13B HTML exposes safe visual correction, wait inspector and Canvas port
     rmSync(runtimeDir, { recursive: true, force: true });
   }
 });
+
+
+test('R1-13C Simple Mode keeps implementation business-facing and infrastructure details collapsible', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13c-implementation-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const html = await fetch(app.baseUrl).then((response) => response.text());
+    for (const marker of [
+      'Make this process live',
+      '1 · Prepare execution',
+      'Prepare execution',
+      '2 · Prepare this environment',
+      '3 · Make workflow available',
+      '4 · Start this process',
+      'Execution settings are ready. Nothing has been deployed.',
+      'Workflow is available. The business process has not started.',
+      'body.r111dSimple.r113ImplementationChosen #r111dRun .r111gRunSummary{display:none!important}',
+      'Implementation selected. Export remains available and no deployment or process start happens until you explicitly authorize those steps.',
+      'Implement & resolve requirements',
+    ]) assert.ok(html.includes(marker), marker);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test('R1-13C product journey exposes contract readiness independently from execution authority', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13c-readiness-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const initial = await fetch(app.baseUrl + '/api/product/journey').then((response) => response.json()) as any;
+    assert.deepEqual(initial.readiness, {
+      processReady: false,
+      bpmnReady: false,
+      temporalDesignReady: false,
+      temporalExportReady: false,
+      temporalExecutionReady: false,
+      deployed: false,
+      executionObserved: false,
+    });
+    assert.equal(initial.automaticAuthorityGranted, false);
+
+    const imported = await fetch(app.baseUrl + '/api/input/bpmn', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fileName: 'readiness.bpmn', bpmnXml: bpmn, initiatedBy: 'r1-13c-user' }),
+    });
+    assert.equal(imported.status, 201);
+
+    const afterImport = await fetch(app.baseUrl + '/api/product/journey').then((response) => response.json()) as any;
+    assert.equal(afterImport.readiness.bpmnReady, true);
+    assert.equal(afterImport.readiness.processReady, false);
+    assert.equal(afterImport.readiness.temporalDesignReady, false);
+    assert.equal(afterImport.readiness.temporalExportReady, false);
+    assert.equal(afterImport.readiness.temporalExecutionReady, false);
+    assert.equal(afterImport.readiness.deployed, false);
+    assert.equal(afterImport.readiness.executionObserved, false);
+    assert.equal(afterImport.automaticAuthorityGranted, false);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
