@@ -154,6 +154,32 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     }catch(error){if(state)state.textContent=error instanceof Error?error.message:String(error)}
   }
 
+  async function recoverDurableWorkspace(){
+    try{
+      var response=await priorFetch('/api/product/workspace-snapshot'),snapshot=await response.json();
+      if(!response.ok||!snapshot||snapshot.status!=='RECOVERED'||!snapshot.processRevision||!snapshot.bpmnRevision)return;
+      latestApprovalId=snapshot.automationApproval&&snapshot.automationApproval.id||null;
+      latestMapping=snapshot.temporalMapping?{revision:{id:snapshot.temporalMapping.revisionId,mappingDigest:snapshot.temporalMapping.mappingDigest,executionPlanRevisionRef:snapshot.temporalMapping.executionPlanRevisionRef}}:null;
+      updateProcess({
+        sourceKind:snapshot.bpmnRevision.sourceRoute,
+        revision:snapshot.bpmnRevision,
+        canvasRevision:snapshot.canvas&&snapshot.canvas.revision||undefined,
+        reconciliation:{processRevision:snapshot.processRevision},
+      });
+      var status=byId('r113Status');if(status)status.textContent=(snapshot.confirmation?'RECOVERED · CONFIRMED':'RECOVERED · REVIEW');
+      var canvasState=byId('r113CanvasState');if(canvasState)canvasState.textContent='Recovered from durable Talos history. No execution authority was restored.';
+      if(latestApprovalId){
+        var prepare=byId('r113PrepareTemporal');if(prepare)prepare.disabled=false;
+      }
+      if(latestApprovalId&&latestMapping){
+        await loadTemporalExport();
+        var temporalState=byId('r113TemporalState');if(temporalState)temporalState.textContent='Temporal design recovered from durable approved evidence. Nothing was deployed or started.';
+      }
+    }catch(error){
+      var state=byId('r113CanvasState');if(state)state.textContent='Talos could not restore the visual workspace automatically. Durable evidence remains available in Technical details.';
+    }
+  }
+
   function renderTemporalExport(bundle){
     var manifestFile=(bundle.files||[]).find(function(file){return file.path==='workflow.manifest.json'}),manifest=manifestFile?JSON.parse(manifestFile.content):null;if(!manifest)return;
     var readiness=byId('r113TemporalReadiness');if(readiness)readiness.innerHTML='<div class="r113Ready yes"><strong>Design ready</strong>Temporal mapping exists.</div><div class="r113Ready yes"><strong>Export ready</strong>Portable package can be copied or downloaded.</div><div class="r113Ready '+(bundle.readiness.temporalExecutionReady?'yes':'no')+'"><strong>Execution '+(bundle.readiness.temporalExecutionReady?'ready':'not ready')+'</strong>'+(bundle.readiness.temporalExecutionReady?'No portable blockers detected.':'Resolve implementation blockers only if you want to run it.')+'</div>';
@@ -195,7 +221,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     ensureSourcePositions();
     return{nodeLayouts:sourceRows().map(function(row){var pos=sourcePositions[row.dataset.id]||{x:0,y:0};return{clientElementId:row.dataset.id,x:Math.round(pos.x),y:Math.round(pos.y)}}),viewport:{mode:'BUSINESS_CANVAS'},zoom:1};
   };
-  installWorkspace();setTimeout(installVisualSourceCanvas,0);
+  installWorkspace();setTimeout(installVisualSourceCanvas,0);setTimeout(recoverDurableWorkspace,0);
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){var ws=byId('r113Workspace');if(ws)ws.classList.add('open')});
   window.addEventListener('talos:r1-06-automation-approved',function(event){latestApprovalId=event&&event.detail&&event.detail.approvalId||latestApprovalId;var button=byId('r113PrepareTemporal');if(button)button.disabled=!latestApprovalId;var ws=byId('r113Workspace');if(ws){ws.classList.add('open');ws.scrollIntoView({behavior:'smooth',block:'start'})}selectTab('temporal')});
   window.addEventListener('talos:r1-11d-temporal-ready',function(event){latestMapping=event&&event.detail&&event.detail.mapping||null;if(latestMapping)loadTemporalExport()});
