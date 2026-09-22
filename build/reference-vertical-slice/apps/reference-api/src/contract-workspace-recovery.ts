@@ -74,17 +74,25 @@ export function buildTalosDurableWorkspaceSnapshot(runtimeDir:string):TalosDurab
     const confirmations=repo.listByKind<any>('BusinessProcessConfirmationRecord')
       .map((document)=>document.payload)
       .filter((confirmation)=>confirmation?.status==='CONFIRMED');
-    const confirmation=latest(confirmations,'confirmedAt');
-    if(!confirmation)return empty;
+    const confirmation=latest(confirmations,'confirmedAt')??null;
 
-    const processRevision=record(repo,confirmation.canonicalProcessRevisionId);
-    const storedBpmn=record(repo,confirmation.bpmnRevisionId);
-    if(!processRevision||!storedBpmn)return empty;
-    const bpmnRevision={
+    const allBpmn=repo.listByKind<any>('BpmnProcessRevision').map((document)=>document.payload);
+    const storedBpmn=confirmation
+      ? record(repo,confirmation.bpmnRevisionId)
+      : latest(allBpmn,'createdAt');
+    if(!storedBpmn)return empty;
+
+    const processRevision=confirmation
+      ? record(repo,confirmation.canonicalProcessRevisionId)
+      : (record(repo,storedBpmn.canonicalProcessRevisionId)
+        ?? latest(repo.listByKind<any>('ProcessRevision').map((document)=>document.payload),'createdAt'));
+    if(!processRevision)return empty;
+
+    const bpmnRevision=confirmation?{
       ...storedBpmn,
       state:'CONFIRMED',
       canonicalProcessRevisionId:confirmation.canonicalProcessRevisionId,
-    };
+    }:storedBpmn;
 
     let canvas:TalosDurableWorkspaceSnapshot['canvas']=null;
     if(storedBpmn.sourceRoute==='TALOS_CANVAS'){
@@ -99,9 +107,9 @@ export function buildTalosDurableWorkspaceSnapshot(runtimeDir:string):TalosDurab
       }
     }
 
-    const approvals=repo.listByKind<any>('AutomationDesignApprovalRecord')
+    const approvals=confirmation?repo.listByKind<any>('AutomationDesignApprovalRecord')
       .map((document)=>document.payload)
-      .filter((approval)=>approval?.processRevisionRef===confirmation.canonicalProcessRevisionId);
+      .filter((approval)=>approval?.processRevisionRef===confirmation.canonicalProcessRevisionId):[];
     const approval=latest(approvals,'approvedAt');
     const mappings=approval
       ? repo.listByKind<any>('TemporalMappingRevision')
