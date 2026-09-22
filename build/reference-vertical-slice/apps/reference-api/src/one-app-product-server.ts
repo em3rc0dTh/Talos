@@ -21,6 +21,7 @@ import {
   buildTalosProductRecoverySnapshot,
   ensureTalosProductRuntimeCompatibility,
 } from './product-runtime-recovery.ts';
+import { buildTalosDurableWorkspaceSnapshot } from './contract-workspace-recovery.ts';
 
 export interface TalosSimpleRuntimeTarget {
   environmentKey:string;
@@ -220,6 +221,10 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       }
       if (req.method === 'GET' && url.pathname === '/api/product/journey') {
         json(res, 200, buildTalosProductJourneyState(buildTalosProductRecoverySnapshot(inner.runtimeDir)));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/product/workspace-snapshot') {
+        json(res, 200, buildTalosDurableWorkspaceSnapshot(inner.runtimeDir));
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/runtime-target') {

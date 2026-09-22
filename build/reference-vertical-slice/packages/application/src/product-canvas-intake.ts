@@ -45,6 +45,30 @@ function required(value:string,field:string):string{
   return normalized;
 }
 
+function normalizePresentation(
+  presentation:unknown,
+  clientToCanvas:Map<string,ReturnType<typeof createOpaqueId>>,
+):Record<string,unknown>|undefined{
+  if(!presentation||typeof presentation!=='object'||Array.isArray(presentation))return undefined;
+  const source=presentation as Record<string,unknown>;
+  const nodeLayouts=Array.isArray(source.nodeLayouts)
+    ? source.nodeLayouts.map((item)=>{
+        if(!item||typeof item!=='object'||Array.isArray(item))return item;
+        const layout=item as Record<string,unknown>;
+        const clientElementId=typeof layout.clientElementId==='string'?layout.clientElementId:undefined;
+        const stable=clientElementId?clientToCanvas.get(clientElementId):undefined;
+        return{
+          ...layout,
+          ...(stable?{canvasElementId:stable}:{}),
+        };
+      })
+    : undefined;
+  return{
+    ...source,
+    ...(nodeLayouts?{nodeLayouts}:{}),
+  };
+}
+
 export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,input:ProductCanvasInput){
   if(!Array.isArray(input.elements)||input.elements.length===0)throw new TypeError('Canvas requires at least one process step');
   const initiatedBy=required(input.initiatedBy,'initiatedBy');
@@ -111,10 +135,11 @@ export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,inpu
     };
   });
 
+  const presentationSnapshot=normalizePresentation(input.presentation,clientToCanvas);
   const revision=buildCanvasRevision({
     id:revisionId,canvasDefinitionId:definitionId,revisionNumber:1,createdAt:now,createdBy:initiatedBy,revisionKind:'SEMANTIC',changeSetId,
     elements,relationships,
-    ...(input.presentation&&typeof input.presentation==='object'?{presentationSnapshot:input.presentation as any}:{}),
+    ...(presentationSnapshot?{presentationSnapshot:presentationSnapshot as any}:{}),
   });
   const definition:CanvasDefinition={id:definitionId,sourceOriginId,title,createdAt:now,createdBy:initiatedBy,latestRevisionId:revision.id};
   new CanvasDomainStore(repo).saveInitialCanvas(definition,revision);
