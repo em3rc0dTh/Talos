@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { Connection, Client } from '@temporalio/client';
 import { digestDeterministicJson } from '../../../packages/foundation/src/digest.ts';
@@ -10,6 +10,7 @@ import {
   TalosGenericWorkflow,
   completeGenericHumanTask,
   getGenericWorkflowState,
+  resolveGenericDecision,
 } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
 
@@ -30,7 +31,17 @@ const temporalNamespace = process.env.TEMPORAL_NAMESPACE?.trim() || 'default';
 const fieldTrialTaskQueue = process.env.TALOS_FIELD_TRIAL_TASK_QUEUE?.trim() || 'talos-r1-field-trial';
 const workerArtifactRef = 'workers/reference-temporal-worker/src/generic-worker-runtime.ts';
 const workerArtifactPath = path.resolve(process.cwd(), workerArtifactRef);
-const workerArtifactDigest = createHash('sha256').update(readFileSync(workerArtifactPath)).digest('hex');
+const workerSourceDir = path.dirname(workerArtifactPath);
+const workerArtifactDigest = (() => {
+  const digest = createHash('sha256');
+  for (const fileName of readdirSync(workerSourceDir).filter((name) => name.endsWith('.ts')).sort()) {
+    digest.update(fileName);
+    digest.update('\0');
+    digest.update(readFileSync(path.join(workerSourceDir, fileName)));
+    digest.update('\0');
+  }
+  return digest.digest('hex');
+})();
 
 async function connectWithRetry<T>(label: string, connect: () => Promise<T>): Promise<T> {
   let lastError: unknown;
@@ -253,6 +264,23 @@ const product = await startTalosOneAppProduct({
         const runtime = await readGenericWorkflowRuntime(workflowIdRef, runIdRef);
         if (runtime.executionStatus !== 'RUNNING'
           || runtime.state.currentHumanTaskRef !== executionElementRef) return runtime;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+    },
+    businessDecisionExecutor: async ({ workflowIdRef, runIdRef, decisionRef, applies }) => {
+      const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
+      const before = await handle.query(getGenericWorkflowState);
+      if (before.currentDecisionRef !== decisionRef) {
+        throw new TypeError(`R1-11 business decision update is stale: workflow expects ${before.currentDecisionRef ?? 'no runtime decision'}`);
+      }
+      await handle.executeUpdate(resolveGenericDecision, {
+        args: [{ decisionRef, applies }],
+      });
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const runtime = await readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+        if (runtime.executionStatus !== 'RUNNING'
+          || runtime.state.currentDecisionRef !== decisionRef) return runtime;
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return readGenericWorkflowRuntime(workflowIdRef, runIdRef);

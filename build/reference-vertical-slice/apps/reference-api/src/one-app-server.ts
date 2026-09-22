@@ -79,8 +79,11 @@ export interface OneAppWorkflowRuntimeState {
   executionId: string;
   currentElementRef: string | null;
   currentHumanTaskRef: string | null;
+  currentDecisionRef?: string | null;
+  currentDecisionPrompt?: string | null;
   visitedElementRefs: string[];
   completedHumanTaskRefs: string[];
+  decisionOutcomes?: Record<string, boolean>;
 }
 
 export interface OneAppWorkflowRuntimeReadResult {
@@ -96,6 +99,11 @@ export interface OneAppWorkflowRuntimeExecutorInput {
 
 export interface OneAppHumanTaskExecutorInput extends OneAppWorkflowRuntimeExecutorInput {
   executionElementRef: string;
+}
+
+export interface OneAppBusinessDecisionExecutorInput extends OneAppWorkflowRuntimeExecutorInput {
+  decisionRef: string;
+  applies: boolean;
 }
 
 export interface TalosOneAppOptions {
@@ -115,6 +123,9 @@ export interface TalosOneAppOptions {
   ) => Promise<OneAppWorkflowRuntimeReadResult>;
   humanTaskExecutor?: (
     input: OneAppHumanTaskExecutorInput,
+  ) => Promise<OneAppWorkflowRuntimeReadResult>;
+  businessDecisionExecutor?: (
+    input: OneAppBusinessDecisionExecutorInput,
   ) => Promise<OneAppWorkflowRuntimeReadResult>;
 }
 
@@ -245,7 +256,7 @@ function publicWorkflowRuntimeState(
     : undefined;
   const isWait = Boolean(currentElement?.constructKinds?.includes('DURABLE_TIMER'));
   const currentWork = runtime.executionStatus === 'COMPLETED'
-    ? { kind: 'COMPLETE' as const, executionElementRef: null, businessStepName: 'Process complete', businessStepKind: 'END', semanticSubjectRef: null, waitExpression: null }
+    ? { kind: 'COMPLETE' as const, executionElementRef: null, businessStepName: 'Process complete', businessStepKind: 'END', semanticSubjectRef: null, waitExpression: null, decisionRef: null, decisionPrompt: null }
     : runtime.state.currentHumanTaskRef
       ? {
           kind: 'HUMAN_TASK' as const,
@@ -254,31 +265,51 @@ function publicWorkflowRuntimeState(
           businessStepKind: semanticSubject?.kind ?? 'ACTION',
           semanticSubjectRef,
           waitExpression: null,
+          decisionRef: null,
+          decisionPrompt: null,
         }
-      : isWait
+      : runtime.state.currentDecisionRef
         ? {
-            kind: 'WAIT' as const,
+            kind: 'DECISION' as const,
             executionElementRef: currentElement?.id ?? null,
-            businessStepName: semanticSubject?.name ?? 'Wait',
-            businessStepKind: semanticSubject?.kind ?? 'WAIT',
-            semanticSubjectRef,
-            waitExpression: typeof semanticSubject?.details?.expression === 'string'
-              ? semanticSubject.details.expression
-              : null,
-          }
-        : {
-            kind: 'RUNNING' as const,
-            executionElementRef: currentElement?.id ?? null,
-            businessStepName: semanticSubject?.name ?? null,
-            businessStepKind: semanticSubject?.kind ?? null,
+            businessStepName: semanticSubject?.name ?? 'Business decision',
+            businessStepKind: semanticSubject?.kind ?? 'DECISION',
             semanticSubjectRef,
             waitExpression: null,
-          };
+            decisionRef: runtime.state.currentDecisionRef,
+            decisionPrompt: runtime.state.currentDecisionPrompt ?? 'Does this business condition apply?',
+          }
+        : isWait
+          ? {
+              kind: 'WAIT' as const,
+              executionElementRef: currentElement?.id ?? null,
+              businessStepName: semanticSubject?.name ?? 'Wait',
+              businessStepKind: semanticSubject?.kind ?? 'WAIT',
+              semanticSubjectRef,
+              waitExpression: typeof semanticSubject?.details?.expression === 'string'
+                ? semanticSubject.details.expression
+                : null,
+              decisionRef: null,
+              decisionPrompt: null,
+            }
+          : {
+              kind: 'RUNNING' as const,
+              executionElementRef: currentElement?.id ?? null,
+              businessStepName: semanticSubject?.name ?? null,
+              businessStepKind: semanticSubject?.kind ?? null,
+              semanticSubjectRef,
+              waitExpression: null,
+              decisionRef: null,
+              decisionPrompt: null,
+            };
   return {
     executionStatus: runtime.executionStatus,
     executionId: runtime.state.executionId,
     currentElementRef: runtime.state.currentElementRef,
     currentHumanTaskRef: runtime.state.currentHumanTaskRef,
+    currentDecisionRef: runtime.state.currentDecisionRef ?? null,
+    currentDecisionPrompt: runtime.state.currentDecisionPrompt ?? null,
+    decisionOutcomes: { ...(runtime.state.decisionOutcomes ?? {}) },
     visitedElementRefs: runtime.state.visitedElementRefs,
     completedHumanTaskRefs: runtime.state.completedHumanTaskRefs,
     currentWork,
@@ -503,6 +534,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           workflowExecutionExecutorConfigured: Boolean(options.workflowExecutionExecutor),
           workflowRuntimeStateReaderConfigured: Boolean(options.workflowRuntimeStateReader),
           humanTaskExecutorConfigured: Boolean(options.humanTaskExecutor),
+          businessDecisionExecutorConfigured: Boolean(options.businessDecisionExecutor),
           deploymentAuthorized: false,
           executionAuthorized: false,
         });
@@ -1543,6 +1575,40 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         });
         json(res, 200, {
           completedExecutionElementRef: executionElementRef,
+          runtime: publicWorkflowRuntimeState(session.automation, runtime),
+          additionalWorkflowStartAuthorized: false,
+        });
+        return;
+      }
+
+
+      if (req.method === 'POST' && url.pathname === '/api/automation/execution/decision/resolve') {
+        const input = await jsonBody(req);
+        const automationApprovalId = text(input.automationApprovalId, 'automationApprovalId');
+        const session = approvalSessions.get(automationApprovalId);
+        if (!session) throw new TypeError('one-app business decision requires the explicit automation approval session');
+        const observation = session.automation.workflowExecutionObservation;
+        if (!observation) throw new TypeError('one-app business decision requires an existing workflow execution observation');
+        if (!options.businessDecisionExecutor) throw new TypeError('one-app business decision requires a configured trusted decision executor');
+        const decisionRef = text(input.decisionRef, 'decisionRef');
+        if (typeof input.applies !== 'boolean') throw new TypeError('applies must be a boolean');
+        const rule = session.automation.process.rules.find((candidate) => candidate.id === decisionRef);
+        const relation = session.automation.executionReview?.execution.relations.find(
+          (candidate) => candidate.conditionRef === decisionRef,
+        );
+        if (!rule || !relation) {
+          throw new TypeError('one-app business decision must target an exact condition used by the reviewed ExecutionPlan');
+        }
+        const runtime = await options.businessDecisionExecutor({
+          context: session.automation,
+          workflowIdRef: observation.workflowIdRef,
+          runIdRef: observation.runIdRef,
+          decisionRef,
+          applies: input.applies,
+        });
+        json(res, 200, {
+          resolvedDecisionRef: decisionRef,
+          applies: input.applies,
           runtime: publicWorkflowRuntimeState(session.automation, runtime),
           additionalWorkflowStartAuthorized: false,
         });

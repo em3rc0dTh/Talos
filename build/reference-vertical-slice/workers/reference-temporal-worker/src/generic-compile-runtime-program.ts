@@ -4,14 +4,15 @@ import type { ReferenceTemporalMappingBundle } from '../../../packages/temporal-
 import type { ReferenceRuntimePolicyBundle } from '../../../packages/runtime-policy/src/types.ts';
 import type { ReferenceDeploymentBundle } from '../../../packages/deployment/src/types.ts';
 import type { TemporalSdkTarget } from './contracts.ts';
-import type { CompiledGenericRuntimeProgram,GenericRuntimeSemanticSnapshot } from './generic-contracts.ts';
+import type { CompiledGenericRuntimeProgram,GenericRuntimeSemanticInputSnapshot } from './generic-contracts.ts';
+import { compileRuntimeConditionExpression } from './generic-runtime-expression.ts';
 
 export function compileGenericRuntimeProgram(
   execution:GenericResolvedExecutionBundle,
   mapping:ReferenceTemporalMappingBundle,
   policy:ReferenceRuntimePolicyBundle,
   deployment:ReferenceDeploymentBundle,
-  semantics:GenericRuntimeSemanticSnapshot,
+  semantics:GenericRuntimeSemanticInputSnapshot,
   sdkTarget:TemporalSdkTarget,
 ):CompiledGenericRuntimeProgram{
   if(execution.assessment.readiness!=='READY_FOR_TEMPORAL_MAPPING_DESIGN')throw new TypeError('generic runtime compilation requires ready ExecutionPlan');
@@ -20,6 +21,17 @@ export function compileGenericRuntimeProgram(
   if(deployment.assessment.readiness!=='INCOMPLETE_ENVIRONMENT_REALIZATION')throw new TypeError('generic runtime compilation expects unresolved environment realization before Worker proof');
   if(mapping.revision.executionPlanRevisionRef!==execution.revision.id||policy.revision.executionPlanRevisionRef!==execution.revision.id||policy.revision.temporalMappingRevisionRef!==mapping.revision.id||deployment.revision.executionPlanRevisionRef!==execution.revision.id||deployment.revision.temporalMappingRevisionRef!==mapping.revision.id||deployment.revision.runtimePolicyRevisionRef!==policy.revision.id)throw new TypeError('generic runtime compilation upstream lineage mismatch');
   if(semantics.snapshotDigest!==digestDeterministicJson({conditionRules:semantics.conditionRules,waits:semantics.waits}))throw new TypeError('generic runtime semantic snapshot digest mismatch');
+
+  const runtimeConditionRules=semantics.conditionRules.map(rule=>({
+    ref:rule.ref,
+    expression:compileRuntimeConditionExpression(rule.expression,rule.ref),
+  }));
+  const runtimeWaits=semantics.waits.map(wait=>({...wait}));
+  const runtimeSemantics={
+    conditionRules:runtimeConditionRules,
+    waits:runtimeWaits,
+    snapshotDigest:digestDeterministicJson({conditionRules:runtimeConditionRules,waits:runtimeWaits}),
+  };
 
   const incoming=new Map(execution.elements.map(e=>[e.id,0]));
   for(const r of execution.relations)incoming.set(r.targetElementRef,(incoming.get(r.targetElementRef)??0)+1);
@@ -51,10 +63,10 @@ export function compileGenericRuntimeProgram(
   });
   const workflowRetry=policy.retryPolicies.find(x=>x.id===policy.revision.workflowRetryPolicyRef);if(!workflowRetry?.maximumAttempts)throw new TypeError('generic Workflow retry policy missing');
   const waitElements=elements.filter(e=>e.kind==='WAIT_COORDINATION');
-  for(const wait of waitElements){const spec=semantics.waits.find(x=>x.executionElementRef===wait.id);if(!spec||!Number.isFinite(spec.durationMs)||spec.durationMs<0)throw new TypeError(`runtime wait snapshot missing/invalid for ${wait.id}`);}
+  for(const wait of waitElements){const spec=runtimeSemantics.waits.find(x=>x.executionElementRef===wait.id);if(!spec||!Number.isFinite(spec.durationMs)||spec.durationMs<0)throw new TypeError(`runtime wait snapshot missing/invalid for ${wait.id}`);}
   const conditionRefs=new Set(relations.filter(r=>r.relationKind==='CONDITIONAL').map(r=>r.conditionRef).filter(Boolean));
-  for(const ref of conditionRefs)if(!semantics.conditionRules.some(x=>x.ref===ref))throw new TypeError(`runtime condition snapshot missing for ${ref}`);
+  for(const ref of conditionRefs)if(!runtimeSemantics.conditionRules.some(x=>x.ref===ref))throw new TypeError(`runtime condition snapshot missing for ${ref}`);
 
-  const material={sdkTarget,executionPlanRevisionRef:execution.revision.id,temporalMappingRevisionRef:mapping.revision.id,runtimePolicyRevisionRef:policy.revision.id,deploymentRevisionRef:deployment.revision.id,temporalFeatureProfileRef:mapping.featureProfile.id,workflow:{workflowTypeName:deployment.namingIntent.desiredWorkflowTypeName,workflowMaximumAttempts:workflowRetry.maximumAttempts},activity:{activityTypeName:deployment.namingIntent.desiredActivityTypeName,policies:activityPolicies},graph:{entryElementRef:entries[0].id,elements,relations},semantics,deploymentIntent:{environmentClass:deployment.targetProfile.environmentClass as 'DEVELOPMENT'|'TEST'|'STAGING'|'PRODUCTION',desiredNamespaceKey:deployment.namespaceResolution.desiredNamespaceKey,desiredTaskQueueKey:deployment.namingIntent.desiredTaskQueueKey,desiredWorkerLogicalName:deployment.namingIntent.desiredWorkerLogicalName,realizationState:'INCOMPLETE_ENVIRONMENT_REALIZATION' as const}};
+  const material={sdkTarget,executionPlanRevisionRef:execution.revision.id,temporalMappingRevisionRef:mapping.revision.id,runtimePolicyRevisionRef:policy.revision.id,deploymentRevisionRef:deployment.revision.id,temporalFeatureProfileRef:mapping.featureProfile.id,workflow:{workflowTypeName:deployment.namingIntent.desiredWorkflowTypeName,workflowMaximumAttempts:workflowRetry.maximumAttempts},activity:{activityTypeName:deployment.namingIntent.desiredActivityTypeName,policies:activityPolicies},graph:{entryElementRef:entries[0].id,elements,relations},semantics:runtimeSemantics,deploymentIntent:{environmentClass:deployment.targetProfile.environmentClass as 'DEVELOPMENT'|'TEST'|'STAGING'|'PRODUCTION',desiredNamespaceKey:deployment.namespaceResolution.desiredNamespaceKey,desiredTaskQueueKey:deployment.namingIntent.desiredTaskQueueKey,desiredWorkerLogicalName:deployment.namingIntent.desiredWorkerLogicalName,realizationState:'INCOMPLETE_ENVIRONMENT_REALIZATION' as const}};
   return{schemaVersion:'talos.generic-runtime-program.v1',...material,programDigest:digestDeterministicJson(material)};
 }
