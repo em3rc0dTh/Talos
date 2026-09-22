@@ -257,7 +257,7 @@ const product = await startTalosOneAppProduct({
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
-
+    },
     businessDecisionExecutor: async ({ workflowIdRef, runIdRef, decisionRef, applies }) => {
       const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
       const before = await handle.query(getGenericWorkflowState);
@@ -274,7 +274,6 @@ const product = await startTalosOneAppProduct({
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
-    },
     },
   },
 });
