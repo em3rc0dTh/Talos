@@ -47,7 +47,7 @@ export function adaptPreservedCanvas(repo:ImmutableDocumentRepository,source:Pre
   for(const kind of [...planeKinds].sort()){const plane:SourcePlaneDescriptor={id:createOpaqueId('source',`plane:${source.nativeRepresentation.id}:${kind}`),sourceArtifactId:source.artifact.id,kind};planes.set(kind,plane);appendRecord(repo,'SourcePlaneDescriptor',plane,sourceEvidenceCreatedAt,plane.id);}
 
   const evidenceFragmentIds:SourceId[]=[];
-  const writeEvidence=(nativeSourceId:string,propertyPath:string,literalValue:unknown,sourceState?:string):SourceId=>{const id=createOpaqueId('source',`property-evidence:${source.nativeRepresentation.id}:${nativeSourceId}:${propertyPath}`);const descriptor:SourcePropertyEvidenceDescriptor={id,sourceRepresentationId:source.nativeRepresentation.id,nativeSourceId,propertyPath,...(sourceState?{sourceState}:{}),literalValue};appendRecord(repo,'SourcePropertyEvidenceDescriptor',descriptor,sourceEvidenceCreatedAt,id);evidenceFragmentIds.push(id);return id;};
+  const writeEvidence=(nativeSourceId:string,propertyPath:string,literalValue:unknown,sourceState?:string):SourceId=>{const id=createOpaqueId('source',`property-evidence:${source.nativeRepresentation.id}:${nativeSourceId}:${propertyPath}`);const descriptor:SourcePropertyEvidenceDescriptor={id,sourceRepresentationId:source.nativeRepresentation.id,nativeSourceId,propertyPath,...(sourceState?{sourceState}:{}),...(literalValue!==undefined?{literalValue}:{})};appendRecord(repo,'SourcePropertyEvidenceDescriptor',descriptor,sourceEvidenceCreatedAt,id);evidenceFragmentIds.push(id);return id;};
 
   const occurrenceByNative=new Map<string,SourceId>();
   const occurrenceIds:SourceId[]=[];
