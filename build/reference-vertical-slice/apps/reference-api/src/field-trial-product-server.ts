@@ -159,12 +159,12 @@ const product = await startTalosOneAppProduct({
         throw new TypeError(`R1-11 local host supports TalosGenericWorkflow; realized ${workflowType ?? 'none'}`);
       }
 
-      const conditionRefs = new Set(
-        context.executionReview.execution.relations
-          .filter((relation) => relation.relationKind === 'CONDITIONAL')
-          .map((relation) => relation.conditionRef)
-          .filter((ref): ref is string => Boolean(ref)),
-      );
+      const conditionRefs = new Set<string>();
+      for (const relation of context.executionReview.execution.relations) {
+        if (relation.relationKind === 'CONDITIONAL' && relation.conditionRef) {
+          conditionRefs.add(relation.conditionRef);
+        }
+      }
       const conditionRules = [...conditionRefs].map((ref) => {
         const rule = context.process.rules.find((candidate) => candidate.id === ref);
         if (!rule) throw new TypeError(`RUNTIME_CONDITION_SOURCE_MISSING:${ref}`);
