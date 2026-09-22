@@ -18,16 +18,16 @@ const target={
   temporalWebUi:'http://localhost:18233',
 };
 
-test('R1-11G simple product exposes progressive local Temporal run actions without infrastructure forms',async()=>{
+test('R1-11G/R1-13C simple product preserves local Temporal authority actions behind business-facing implementation copy',async()=>{
   const app=await startTalosOneAppProduct({port:0,simpleRuntimeTarget:target,oneApp:{imagePerceptionEnv:{}}});
   try{
     const response=await fetch(app.baseUrl);
     assert.equal(response.status,200);
     const page=await response.text();
-    assert.match(page,/Use recommended runtime/);
-    assert.match(page,/Prepare local deployment/);
-    assert.match(page,/Deploy Worker once/);
-    assert.match(page,/Start workflow once/);
+    assert.match(page,/Prepare execution/);
+    assert.match(page,/Prepare this environment/);
+    assert.match(page,/Make workflow available/);
+    assert.match(page,/Start this process/);
     assert.match(page,/Open Temporal/);
     assert.match(page,/Live business work/);
     assert.match(page,/Mark task completed/);
@@ -35,7 +35,10 @@ test('R1-11G simple product exposes progressive local Temporal run actions witho
     assert.match(page,/api\/automation\/execution\/human-task\/complete/);
     assert.match(page,/Waiting for you/);
     assert.match(page,/Timer running/);
-    assert.match(page,/bounded Activity retries/);
+    assert.match(page,/safe recommended execution settings/);
+    assert.match(page,/Technical details/);
+    assert.match(page,/body:not\(\.r113ImplementationChosen\) #r111dRun\{display:none!important\}/);
+    assert.doesNotMatch(page,/Deploy Worker once/);
     assert.doesNotMatch(page,/r111gRunCard[^]*Artifact digest/);
     const runtime=await (await fetch(`${app.baseUrl}/api/product/runtime-target`)).json() as any;
     assert.equal(runtime.available,true);
