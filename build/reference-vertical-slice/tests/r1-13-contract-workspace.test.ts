@@ -200,7 +200,14 @@ test('R1-13B Talos Canvas persists visual presentation and exports an exact port
     assert.equal(response.status, 201);
     const body = await response.json() as any;
     assert.equal(body.sourceKind, 'TALOS_CANVAS');
-    assert.deepEqual(body.canvasRevision.presentationSnapshot, presentation);
+    assert.deepEqual(body.canvasRevision.presentationSnapshot.viewport, presentation.viewport);
+    assert.equal(body.canvasRevision.presentationSnapshot.zoom, 1);
+    assert.equal(body.canvasRevision.presentationSnapshot.nodeLayouts.length, 3);
+    for (const layout of body.canvasRevision.presentationSnapshot.nodeLayouts) {
+      assert.equal(typeof layout.clientElementId, 'string');
+      assert.equal(typeof layout.canvasElementId, 'string');
+      assert.ok(body.canvasRevision.elementSnapshots.some((element:any) => element.canvasElementId === layout.canvasElementId));
+    }
 
     const exported = await fetch(
       app.baseUrl + '/api/process/canvas/export?revisionId=' + encodeURIComponent(body.canvasRevision.id),
@@ -212,7 +219,7 @@ test('R1-13B Talos Canvas persists visual presentation and exports an exact port
     assert.equal(native.schemaVersion, 'talos-canvas-native-v0.2');
     assert.equal(native.canvasRevision.id, body.canvasRevision.id);
     assert.equal(native.canvasDefinition.id, body.canvasDefinition.id);
-    assert.deepEqual(native.canvasRevision.presentationSnapshot, presentation);
+    assert.deepEqual(native.canvasRevision.presentationSnapshot, body.canvasRevision.presentationSnapshot);
     assert.equal(native.elements.length, 3);
     assert.equal(native.relationships.length, 2);
   } finally {
@@ -327,6 +334,122 @@ test('R1-13C product journey exposes contract readiness independently from execu
     assert.equal(afterImport.readiness.deployed, false);
     assert.equal(afterImport.readiness.executionObserved, false);
     assert.equal(afterImport.automaticAuthorityGranted, false);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+
+test('R1-13D confirmed translation workspace survives restart without rehydrating authority', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-recovery-'));
+  let app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  let canvasBody:any;
+  try {
+    const response = await fetch(app.baseUrl + '/api/input/canvas', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Durable translation workspace',
+        initiatedBy: 'r1-13d-user',
+        elements: [
+          { id: 'start', kind: 'START', label: 'Start' },
+          { id: 'step', kind: 'STEP', label: 'Receive request' },
+          { id: 'end', kind: 'END', label: 'End' },
+        ],
+        connections: [
+          { id: 'c1', from: 'start', to: 'step', kind: 'FLOW' },
+          { id: 'c2', from: 'step', to: 'end', kind: 'FLOW' },
+        ],
+        presentation: {
+          nodeLayouts: [
+            { clientElementId: 'start', x: 25, y: 35 },
+            { clientElementId: 'step', x: 215, y: 35 },
+            { clientElementId: 'end', x: 405, y: 35 },
+          ],
+          viewport: { mode: 'BUSINESS_CANVAS' },
+          zoom: 1,
+        },
+      }),
+    });
+    assert.equal(response.status, 201);
+    canvasBody = await response.json() as any;
+    const confirmation = await fetch(app.baseUrl + '/api/bpmn/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        revisionId: canvasBody.revision.id,
+        canonicalProcessRevisionId: canvasBody.reconciliation.processRevision.id,
+        confirmedBy: 'r1-13d-user',
+        authorityRef: 'authority:r1-13d-confirm',
+      }),
+    });
+    assert.equal(confirmation.status, 201);
+  } finally {
+    await app.close();
+  }
+
+  app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const snapshot = await fetch(app.baseUrl + '/api/product/workspace-snapshot').then((response) => response.json()) as any;
+    assert.equal(snapshot.version, 'talos.contract-workspace-recovery.v1');
+    assert.equal(snapshot.status, 'RECOVERED');
+    assert.equal(snapshot.recoveredFromDurableEvidence, true);
+    assert.equal(snapshot.automaticAuthorityRehydration, false);
+    assert.equal(snapshot.consumableAuthorityRecovered, false);
+    assert.equal(snapshot.confirmation.status, 'CONFIRMED');
+    assert.equal(snapshot.processRevision.id, canvasBody.reconciliation.processRevision.id);
+    assert.equal(snapshot.bpmnRevision.state, 'CONFIRMED');
+    assert.equal(snapshot.bpmnRevision.sourceRoute, 'TALOS_CANVAS');
+    assert.equal(snapshot.canvas.revision.id, canvasBody.canvasRevision.id);
+    assert.deepEqual(
+      snapshot.canvas.revision.presentationSnapshot,
+      canvasBody.canvasRevision.presentationSnapshot,
+    );
+    assert.equal(snapshot.automationApproval, null);
+    assert.equal(snapshot.temporalMapping, null);
+    assert.equal(snapshot.journey.readiness.processReady, true);
+    assert.equal(snapshot.journey.readiness.bpmnReady, true);
+    assert.equal(snapshot.journey.readiness.temporalDesignReady, false);
+
+    const html = await fetch(app.baseUrl).then((response) => response.text());
+    assert.ok(html.includes('/api/product/workspace-snapshot'));
+    assert.ok(html.includes('recoverDurableWorkspace'));
+    assert.ok(html.includes('Recovered from durable Talos history. No execution authority was restored.'));
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test('R1-13D an unconfirmed BPMN draft also restores for review after restart', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-draft-'));
+  let app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  let imported:any;
+  try {
+    const response = await fetch(app.baseUrl + '/api/input/bpmn', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fileName: 'draft-recovery.bpmn', bpmnXml: bpmn, initiatedBy: 'r1-13d-user' }),
+    });
+    assert.equal(response.status, 201);
+    imported = await response.json() as any;
+  } finally {
+    await app.close();
+  }
+
+  app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const snapshot = await fetch(app.baseUrl + '/api/product/workspace-snapshot').then((response) => response.json()) as any;
+    assert.equal(snapshot.status, 'RECOVERED');
+    assert.equal(snapshot.confirmation, null);
+    assert.equal(snapshot.bpmnRevision.id, imported.revision.id);
+    assert.equal(snapshot.bpmnRevision.state, 'DRAFT');
+    assert.equal(snapshot.processRevision.id, imported.reconciliation.processRevision.id);
+    assert.equal(snapshot.automaticAuthorityRehydration, false);
+    assert.equal(snapshot.consumableAuthorityRecovered, false);
+    assert.equal(snapshot.journey.readiness.bpmnReady, true);
+    assert.equal(snapshot.journey.readiness.processReady, false);
   } finally {
     await app.close();
     rmSync(runtimeDir, { recursive: true, force: true });
