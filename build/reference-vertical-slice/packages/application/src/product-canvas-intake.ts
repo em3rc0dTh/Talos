@@ -97,9 +97,10 @@ export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,inpu
     const to=required(item.to,`connections[${index}].to`);
     const source=clientToCanvas.get(from),target=clientToCanvas.get(to);
     if(!source||!target)throw new TypeError('Canvas connection references an unknown step');
-    const requestedKind=(item.kind??'FLOW').toUpperCase();
-    const kind:CanvasRelationshipDraft['kind']=requestedKind==='CONDITION'?'CONDITIONAL_FLOW':requestedKind==='DEFAULT'?'DEFAULT_FLOW':requestedKind==='PARALLEL'?'PARALLEL_FLOW':'CONTROL_FLOW';
     const condition=item.condition?.trim();
+    const requestedKind=(item.kind??(condition?'CONDITION':'FLOW')).toUpperCase();
+    const effectiveKind=requestedKind==='FLOW'&&condition?'CONDITION':requestedKind;
+    const kind:CanvasRelationshipDraft['kind']=effectiveKind==='CONDITION'?'CONDITIONAL_FLOW':effectiveKind==='DEFAULT'?'DEFAULT_FLOW':effectiveKind==='PARALLEL'?'PARALLEL_FLOW':'CONTROL_FLOW';
     return{
       canvasRelationshipId:createOpaqueId('canvas',`product-canvas-relationship:${definitionId}:${item.id??index+1}`),
       kind,
