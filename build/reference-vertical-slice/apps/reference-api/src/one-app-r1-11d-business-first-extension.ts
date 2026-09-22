@@ -123,7 +123,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   function showCanvas(){var p=byId('r111dCanvas');if(p)p.classList.add('open');if(canvasRows().length===0){addStep('START','Start');addStep('END','End')}}
   function canvasPayload(){
     var elements=canvasRows().map(function(row){var kind=row.dataset.kind,label=row.querySelector('.r111dLabel').value.trim();if(!label)throw new Error('Every step needs a name.');var payload={id:row.dataset.id,kind:kind,label:label};if(kind==='WAIT'){payload.waitKind='';}return payload});
-    var connections=Array.from(document.querySelectorAll('.r111dConnection')).map(function(row){return{id:row.dataset.id,from:row.querySelector('.r111dFrom').value,to:row.querySelector('.r111dTo').value,kind:row.querySelector('.r111dConnKind').value,condition:row.querySelector('.r111dCondition').value.trim()}});
+    var connections=Array.from(document.querySelectorAll('.r111dConnection')).map(function(row){var condition=row.querySelector('.r111dCondition').value.trim();var kind=row.querySelector('.r111dConnKind').value;if(condition&&kind==='FLOW')kind='CONDITION';if(kind==='CONDITION'&&!condition)throw new Error('A When... connection needs a condition.');return{id:row.dataset.id,from:row.querySelector('.r111dFrom').value,to:row.querySelector('.r111dTo').value,kind:kind,condition:condition}});
     return{title:byId('r111dCanvasTitle').value.trim()||'My process',initiatedBy:'one-app-product-user',elements:elements,connections:connections};
   }
   async function submitCanvas(){
