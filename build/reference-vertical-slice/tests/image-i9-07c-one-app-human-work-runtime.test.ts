@@ -271,6 +271,8 @@ test('I9-07C One App exposes exact live human work and completes only the curren
     assert.equal(recovery.latestByKind.WorkflowExecutionObservation.executionStatus,'COMPLETED');
     assert.equal(recovery.latestByKind.WorkflowExecutionObservation.workflowIdRef,'talos-r1-11h-test');
     assert.equal(recovery.latestByKind.WorkflowExecutionObservation.runIdRef,'run-r1-11h-test');
+    assert.equal(recovery.lastDurableStage,'WORKFLOW_EXECUTION_COMPLETED');
+    assert.equal(recovery.inFlightRecovery,'COMPLETED_EXECUTION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED');
   }finally{
     await app.close();
   }
