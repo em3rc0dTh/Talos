@@ -10,6 +10,7 @@ import {
   TalosGenericWorkflow,
   completeGenericHumanTask,
   getGenericWorkflowState,
+  resolveGenericDecision,
 } from '../../../workers/reference-temporal-worker/src/generic-workflow.ts';
 import { startTalosOneAppProduct } from './one-app-product-server.ts';
 
@@ -256,6 +257,24 @@ const product = await startTalosOneAppProduct({
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+
+    businessDecisionExecutor: async ({ workflowIdRef, runIdRef, decisionRef, applies }) => {
+      const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
+      const before = await handle.query(getGenericWorkflowState);
+      if (before.currentDecisionRef !== decisionRef) {
+        throw new TypeError(`R1-11 business decision update is stale: workflow expects ${before.currentDecisionRef ?? 'no runtime decision'}`);
+      }
+      await handle.executeUpdate(resolveGenericDecision, {
+        args: [{ decisionRef, applies }],
+      });
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const runtime = await readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+        if (runtime.executionStatus !== 'RUNNING'
+          || runtime.state.currentDecisionRef !== decisionRef) return runtime;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
+    },
     },
   },
 });
