@@ -1,7 +1,8 @@
-import { condition, defineQuery, defineUpdate, proxyActivities, setHandler, sleep } from '@temporalio/workflow';
+import { condition, defineQuery, defineUpdate, patched, proxyActivities, setHandler, sleep } from '@temporalio/workflow';
 import type {
   GenericCapabilityActivityInput,
   GenericCapabilityActivityResult,
+  GenericDecisionOption,
   GenericDecisionSubmission,
   GenericHumanTaskSubmission,
   GenericRuntimeConditionExpression,
@@ -115,6 +116,8 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
   let currentHumanTaskRef:string|null=null;
   let currentDecisionRef:string|null=null;
   let currentDecisionPrompt:string|null=null;
+  let currentDecisionMode:'BOOLEAN'|'CHOICE'|null=null;
+  let currentDecisionOptions:GenericDecisionOption[]=[];
   const context=runtimeContext(input);
   const conditionRules=input.program.semantics.conditionRules.map(rule=>({
     ref:rule.ref,
@@ -123,12 +126,16 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
   const visited:string[]=[],capabilityResults:GenericCapabilityActivityResult[]=[];
   const completedHumanTaskRefs:string[]=[];
   const decisionOutcomes:Record<string,boolean>={};
+  const selectedDecisionRelations:Record<string,string>={};
   const state=():GenericWorkflowState=>({
     executionId:input.executionId,
     currentElementRef:current,
     currentHumanTaskRef,
     currentDecisionRef,
     currentDecisionPrompt,
+    currentDecisionMode,
+    currentDecisionOptions:currentDecisionOptions.map(option=>({...option})),
+    selectedDecisionRelations:{...selectedDecisionRelations},
     visitedElementRefs:[...visited],
     completedHumanTaskRefs:[...completedHumanTaskRefs],
     decisionOutcomes:{...decisionOutcomes},
@@ -156,17 +163,37 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
     resolveGenericDecision,
     (submission)=>{
       if(submission.decisionRef!==currentDecisionRef)throw new TypeError('generic decision update must target the exact current runtime decision');
-      decisionOutcomes[submission.decisionRef]=submission.applies;
-      context.humanOutputs[`decision:${submission.decisionRef}`]={
-        applies:submission.applies,
-        ...(submission.output!==undefined?{output:submission.output}:{}),
-      };
+      if(currentDecisionMode==='CHOICE'){
+        const selected=currentDecisionOptions.find(option=>option.relationRef===submission.selectedRelationRef);
+        if(!selected)throw new TypeError('generic decision choice must select an exact current relation');
+        selectedDecisionRelations[submission.decisionRef]=selected.relationRef;
+        for(const option of currentDecisionOptions)decisionOutcomes[option.decisionRef]=option.relationRef===selected.relationRef;
+        context.humanOutputs[`decision:${submission.decisionRef}`]={
+          selectedRelationRef:selected.relationRef,
+          selectedDecisionRef:selected.decisionRef,
+          label:selected.label,
+          ...(submission.output!==undefined?{output:submission.output}:{}),
+        };
+      }else{
+        if(typeof submission.applies!=='boolean')throw new TypeError('generic boolean decision update requires an applies outcome');
+        decisionOutcomes[submission.decisionRef]=submission.applies;
+        context.humanOutputs[`decision:${submission.decisionRef}`]={
+          applies:submission.applies,
+          ...(submission.output!==undefined?{output:submission.output}:{}),
+        };
+      }
       return state();
     },
     {validator:(submission)=>{
       if(!currentDecisionRef)throw new TypeError('generic workflow is not waiting on a runtime business decision');
       if(submission.decisionRef!==currentDecisionRef)throw new TypeError('generic decision update is stale or targets another condition');
-      if(typeof submission.applies!=='boolean')throw new TypeError('generic decision update requires a boolean applies outcome');
+      if(currentDecisionMode==='CHOICE'){
+        if(typeof submission.selectedRelationRef!=='string'||!currentDecisionOptions.some(option=>option.relationRef===submission.selectedRelationRef)){
+          throw new TypeError('generic decision choice must select one exact current option');
+        }
+      }else if(typeof submission.applies!=='boolean'){
+        throw new TypeError('generic decision update requires a boolean applies outcome');
+      }
     }},
   );
   for(let step=0;step<1000;step++){
@@ -195,34 +222,65 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
     const outgoing=input.program.graph.relations.filter(r=>r.sourceElementRef===element.id);
     if(outgoing.length===0){
       if(element.kind!=='COMPLETION_COORDINATION')throw new TypeError(`runtime graph terminated without completion at ${element.id}`);
-      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults,completedHumanTaskRefs,decisionOutcomes:{...decisionOutcomes}};
+      return{outcome:'COMPLETED',executionId:input.executionId,visitedElementRefs:visited,capabilityResults,completedHumanTaskRefs,decisionOutcomes:{...decisionOutcomes},selectedDecisionRelations:{...selectedDecisionRelations}};
     }
     const conditional=outgoing.filter(r=>r.relationKind==='CONDITIONAL');
     let next:string|undefined;
     if(conditional.length){
+      const choiceOptions:GenericDecisionOption[]=[];
+      let allManual=true;
       for(const relation of conditional){
         if(!relation.conditionRef)throw new TypeError(`conditional relation ${relation.id} has no conditionRef`);
         const rule=conditionRules.find(x=>x.ref===relation.conditionRef);
         if(!rule)throw new TypeError(`condition snapshot missing for ${relation.conditionRef}`);
-        let unresolved=missingDecision(rule.expression,context,decisionOutcomes);
-        while(unresolved){
-          currentDecisionRef=unresolved.decisionRef;
-          currentDecisionPrompt=unresolved.prompt;
-          await condition(()=>Object.prototype.hasOwnProperty.call(decisionOutcomes,unresolved!.decisionRef));
-          currentDecisionRef=null;
-          currentDecisionPrompt=null;
-          unresolved=missingDecision(rule.expression,context,decisionOutcomes);
-        }
+        if(rule.expression.kind!=='DECISION_INPUT'){allManual=false;break;}
+        choiceOptions.push({
+          relationRef:relation.id,
+          decisionRef:rule.expression.decisionRef,
+          label:rule.expression.prompt,
+          targetElementRef:relation.targetElementRef,
+        });
       }
-      const matches=conditional.filter(r=>{
-        if(!r.conditionRef)throw new TypeError(`conditional relation ${r.id} has no conditionRef`);
-        const rule=conditionRules.find(x=>x.ref===r.conditionRef);
-        if(!rule)throw new TypeError(`condition snapshot missing for ${r.conditionRef}`);
-        return evaluate(rule.expression,context,decisionOutcomes);
-      });
-      if(matches.length>1)throw new TypeError(`multiple conditional branches matched at ${element.id}`);
-      if(matches.length===1)next=matches[0].targetElementRef;
-      else{const def=outgoing.find(r=>r.relationKind==='DEFAULT');if(def)next=def.targetElementRef;}
+      const useChoice=patched('R1_11M_SINGLE_CHOICE_DECISIONS')&&allManual&&choiceOptions.length>=2;
+      if(useChoice){
+        const choiceRef=`choice:${element.id}`;
+        currentDecisionRef=choiceRef;
+        currentDecisionPrompt='Choose the business outcome for this decision.';
+        currentDecisionMode='CHOICE';
+        currentDecisionOptions=choiceOptions;
+        await condition(()=>Object.prototype.hasOwnProperty.call(selectedDecisionRelations,choiceRef));
+        const selectedRelationRef=selectedDecisionRelations[choiceRef];
+        const selected=choiceOptions.find(option=>option.relationRef===selectedRelationRef);
+        if(!selected)throw new TypeError(`selected decision relation missing at ${element.id}`);
+        next=selected.targetElementRef;
+        currentDecisionRef=null;
+        currentDecisionPrompt=null;
+        currentDecisionMode=null;
+        currentDecisionOptions=[];
+      }else{
+        for(const relation of conditional){
+          if(!relation.conditionRef)throw new TypeError(`conditional relation ${relation.id} has no conditionRef`);
+          const rule=conditionRules.find(x=>x.ref===relation.conditionRef);
+          if(!rule)throw new TypeError(`condition snapshot missing for ${relation.conditionRef}`);
+          let unresolved=missingDecision(rule.expression,context,decisionOutcomes);
+          while(unresolved){
+            currentDecisionRef=unresolved.decisionRef;
+            currentDecisionPrompt=unresolved.prompt;
+            currentDecisionMode='BOOLEAN';
+            currentDecisionOptions=[];
+            await condition(()=>Object.prototype.hasOwnProperty.call(decisionOutcomes,unresolved!.decisionRef));
+            currentDecisionRef=null;
+            currentDecisionPrompt=null;
+            currentDecisionMode=null;
+            unresolved=missingDecision(rule.expression,context,decisionOutcomes);
+          }
+          if(evaluate(rule.expression,context,decisionOutcomes)){
+            next=relation.targetElementRef;
+            break;
+          }
+        }
+        if(!next){const def=outgoing.find(r=>r.relationKind==='DEFAULT');if(def)next=def.targetElementRef;}
+      }
     }else{
       const deterministic=outgoing.filter(r=>r.relationKind==='SEQUENCE'||r.relationKind==='DEFAULT');
       if(deterministic.length!==1)throw new TypeError(`generic runtime v0.1 requires one deterministic outgoing relation at ${element.id}`);

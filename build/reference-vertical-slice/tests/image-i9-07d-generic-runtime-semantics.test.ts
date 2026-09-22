@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
 import { compileRuntimeConditionExpression, materializeRuntimeConditionSource } from '../workers/reference-temporal-worker/src/generic-runtime-expression.ts';
 import { createGenericTemporalWorker } from '../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
-import { TalosGenericWorkflow, getGenericWorkflowState, resolveGenericDecision } from '../workers/reference-temporal-worker/src/generic-workflow.ts';
+import { TalosGenericWorkflow, completeGenericHumanTask, getGenericWorkflowState, resolveGenericDecision } from '../workers/reference-temporal-worker/src/generic-workflow.ts';
 
 test('R1-11I compiles legacy fact conditions into the generic runtime context',()=>{
   assert.deepEqual(
@@ -196,4 +196,107 @@ test('R1-11L rejects condition rules that have neither executable expression nor
     ()=>materializeRuntimeConditionSource({id:'rule:empty'}),
     /RUNTIME_CONDITION_SOURCE_NOT_EXECUTABLE:rule:empty/,
   );
+});
+
+
+test('R1-11M resolves a multi-outcome business decision with one Update and executes the selected path through a durable timer',async()=>{
+  const temporal=await TestWorkflowEnvironment.createLocal();
+  const taskQueue='r1-11m-choice-timer';
+  const runtime=await createGenericTemporalWorker({
+    connection:temporal.nativeConnection,
+    namespace:temporal.namespace,
+    taskQueue,
+    identity:'r1-11m-choice-worker',
+  });
+  const workerRun=runtime.worker.run();
+  try{
+    const program:any={
+      schemaVersion:'talos.generic-runtime-program.v1',
+      sdkTarget:{family:'TEMPORAL_TYPESCRIPT_SDK',version:'1.22.0'},
+      executionPlanRevisionRef:'exe:r1-11m',
+      temporalMappingRevisionRef:'tmp:r1-11m',
+      runtimePolicyRevisionRef:'rtp:r1-11m',
+      deploymentRevisionRef:'dep:r1-11m',
+      temporalFeatureProfileRef:'tfp:r1-11m',
+      workflow:{workflowTypeName:'TalosGenericWorkflow',workflowMaximumAttempts:1},
+      activity:{activityTypeName:'executeGenericCapability',policies:[]},
+      graph:{
+        entryElementRef:'hello',
+        elements:[
+          {id:'hello',kind:'HUMAN_COORDINATION',constructKinds:['UPDATE_HANDLER'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:hello']},
+          {id:'decision',kind:'COORDINATION_STEP',constructKinds:['WORKFLOW_LOGIC'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:decision']},
+          {id:'booking',kind:'HUMAN_COORDINATION',constructKinds:['UPDATE_HANDLER'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:booking']},
+          {id:'goodbye',kind:'HUMAN_COORDINATION',constructKinds:['UPDATE_HANDLER'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:goodbye']},
+          {id:'wait',kind:'WAIT_COORDINATION',constructKinds:['DURABLE_TIMER'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:wait']},
+          {id:'end',kind:'COMPLETION_COORDINATION',constructKinds:['WORKFLOW_LOGIC'],capabilityUseOccurrenceRefs:[],semanticSubjectRefs:['node:end']},
+        ],
+        relations:[
+          {id:'hello-to-decision',sourceElementRef:'hello',targetElementRef:'decision',relationKind:'SEQUENCE'},
+          {id:'branch-yes',sourceElementRef:'decision',targetElementRef:'booking',relationKind:'CONDITIONAL',conditionRef:'rule:yes'},
+          {id:'branch-no',sourceElementRef:'decision',targetElementRef:'goodbye',relationKind:'CONDITIONAL',conditionRef:'rule:no'},
+          {id:'booking-to-wait',sourceElementRef:'booking',targetElementRef:'wait',relationKind:'SEQUENCE'},
+          {id:'wait-to-end',sourceElementRef:'wait',targetElementRef:'end',relationKind:'SEQUENCE'},
+          {id:'goodbye-to-end',sourceElementRef:'goodbye',targetElementRef:'end',relationKind:'SEQUENCE'},
+        ],
+      },
+      semantics:{
+        conditionRules:[
+          {ref:'rule:yes',expression:{language:'BUSINESS_NATURAL_LANGUAGE',body:'yes'}},
+          {ref:'rule:no',expression:{language:'BUSINESS_NATURAL_LANGUAGE',body:'no'}},
+        ],
+        waits:[{executionElementRef:'wait',durationMs:50,sourceRef:'node:wait',testOnlyTimeScale:0.1}],
+        snapshotDigest:'r1-11m-runtime-test',
+      },
+      deploymentIntent:{environmentClass:'TEST',desiredNamespaceKey:'default',desiredTaskQueueKey:taskQueue,desiredWorkerLogicalName:'r1-11m-choice-worker',realizationState:'INCOMPLETE_ENVIRONMENT_REALIZATION'},
+      programDigest:'r1-11m-program',
+    };
+    const handle=await temporal.client.workflow.start(TalosGenericWorkflow,{
+      workflowId:'r1-11m-choice-timer',
+      taskQueue,
+      args:[{executionId:'R1-11M-EXEC',facts:{},program}],
+      retry:{maximumAttempts:1},
+    });
+
+    let state=await handle.query(getGenericWorkflowState);
+    for(let attempt=0;attempt<40&&state.currentHumanTaskRef!=='hello';attempt+=1){
+      await new Promise(resolve=>setTimeout(resolve,25));
+      state=await handle.query(getGenericWorkflowState);
+    }
+    assert.equal(state.currentHumanTaskRef,'hello');
+    await handle.executeUpdate(completeGenericHumanTask,{args:[{executionElementRef:'hello',outcome:'COMPLETED'}]});
+
+    for(let attempt=0;attempt<40&&state.currentDecisionMode!=='CHOICE';attempt+=1){
+      await new Promise(resolve=>setTimeout(resolve,25));
+      state=await handle.query(getGenericWorkflowState);
+    }
+    assert.equal(state.currentDecisionMode,'CHOICE');
+    assert.ok(state.currentDecisionRef?.startsWith('choice:decision'));
+    assert.deepEqual(state.currentDecisionOptions?.map(option=>option.label),['yes','no']);
+    const choiceRef=state.currentDecisionRef!;
+    await handle.executeUpdate(resolveGenericDecision,{args:[{
+      decisionRef:choiceRef,
+      selectedRelationRef:'branch-yes',
+    }]});
+
+    for(let attempt=0;attempt<40&&state.currentHumanTaskRef!=='booking';attempt+=1){
+      await new Promise(resolve=>setTimeout(resolve,25));
+      state=await handle.query(getGenericWorkflowState);
+    }
+    assert.equal(state.currentHumanTaskRef,'booking');
+    await handle.executeUpdate(completeGenericHumanTask,{args:[{executionElementRef:'booking',outcome:'COMPLETED'}]});
+
+    const result=await handle.result();
+    assert.equal(result.outcome,'COMPLETED');
+    assert.deepEqual(result.completedHumanTaskRefs,['hello','booking']);
+    assert.equal(result.decisionOutcomes['rule:yes'],true);
+    assert.equal(result.decisionOutcomes['rule:no'],false);
+    assert.equal(result.selectedDecisionRelations?.[choiceRef],'branch-yes');
+    assert.ok(result.visitedElementRefs.includes('wait'));
+    assert.ok(!result.visitedElementRefs.includes('goodbye'));
+    assert.equal(result.visitedElementRefs.at(-1),'end');
+  }finally{
+    runtime.worker.shutdown();
+    await workerRun;
+    await temporal.teardown();
+  }
 });

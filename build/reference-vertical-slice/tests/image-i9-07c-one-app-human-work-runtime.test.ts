@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startTalosOneApp } from '../apps/reference-api/src/one-app-server.ts';
+import { buildTalosProductRecoverySnapshot } from '../apps/reference-api/src/product-runtime-recovery.ts';
 
 async function post(baseUrl:string,pathname:string,payload:Record<string,unknown>){
   const response=await fetch(`${baseUrl}${pathname}`,{
@@ -264,6 +265,14 @@ test('I9-07C One App exposes exact live human work and completes only the curren
     assert.equal(completed.body.runtime.currentWork.kind,'COMPLETE');
     assert.equal(completed.body.runtime.progress.humanCompleted,1);
     assert.equal(completed.body.additionalWorkflowStartAuthorized,false);
+    assert.equal(completed.body.workflowExecutionObservation.executionStatus,'COMPLETED');
+
+    const recovery=buildTalosProductRecoverySnapshot(app.runtimeDir);
+    assert.equal(recovery.latestByKind.WorkflowExecutionObservation.executionStatus,'COMPLETED');
+    assert.equal(recovery.latestByKind.WorkflowExecutionObservation.workflowIdRef,'talos-r1-11h-test');
+    assert.equal(recovery.latestByKind.WorkflowExecutionObservation.runIdRef,'run-r1-11h-test');
+    assert.equal(recovery.lastDurableStage,'WORKFLOW_EXECUTION_COMPLETED');
+    assert.equal(recovery.inFlightRecovery,'COMPLETED_EXECUTION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED');
   }finally{
     await app.close();
   }

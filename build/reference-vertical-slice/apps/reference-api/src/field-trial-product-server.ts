@@ -279,14 +279,14 @@ const product = await startTalosOneAppProduct({
       }
       return readGenericWorkflowRuntime(workflowIdRef, runIdRef);
     },
-    businessDecisionExecutor: async ({ workflowIdRef, runIdRef, decisionRef, applies }) => {
+    businessDecisionExecutor: async ({ workflowIdRef, runIdRef, decisionRef, applies, selectedRelationRef }) => {
       const handle = temporalClient.workflow.getHandle(workflowIdRef, runIdRef);
       const before = await handle.query(getGenericWorkflowState);
       if (before.currentDecisionRef !== decisionRef) {
         throw new TypeError(`R1-11 business decision update is stale: workflow expects ${before.currentDecisionRef ?? 'no runtime decision'}`);
       }
       await handle.executeUpdate(resolveGenericDecision, {
-        args: [{ decisionRef, applies }],
+        args: [{ decisionRef, ...(selectedRelationRef ? { selectedRelationRef } : { applies }) }],
       });
       for (let attempt = 0; attempt < 40; attempt += 1) {
         const runtime = await readGenericWorkflowRuntime(workflowIdRef, runIdRef);
