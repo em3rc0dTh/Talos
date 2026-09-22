@@ -104,7 +104,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   function stepOption(select){canvasRows().forEach(function(row){var o=document.createElement('option');o.value=row.dataset.id;o.textContent=row.querySelector('.r111dLabel').value||row.dataset.kind;select.appendChild(o)})}
   function refreshConnectionSelects(){Array.from(document.querySelectorAll('.r111dFrom,.r111dTo')).forEach(function(select){var value=select.value;select.innerHTML='';stepOption(select);if(Array.from(select.options).some(function(o){return o.value===value}))select.value=value})}
   function addStep(kind,label){
-    canvasCounter+=1;var id='step-'+canvasCounter;var host=byId('r111dCanvasRows');var row=document.createElement('div');row.className='r111dCanvasRow';row.draggable=true;row.dataset.id=id;row.dataset.kind=kind;
+    canvasCounter+=1;var id='step-'+canvasCounter;var host=byId('r111dCanvasRows');var row=document.createElement('div');row.className='r111dCanvasRow';row.draggable=true;row.dataset.id=id;row.dataset.kind=kind;row.dataset.waitKind='';row.dataset.expression='';
     row.innerHTML='<select class="r111dKind"><option value="'+kind+'">'+kind.replace('_',' ')+'</option></select><input class="r111dLabel" value="'+(label||'')+'" placeholder="What happens here?"><button type="button">Remove</button>';
     row.querySelector('button').onclick=function(){row.remove();refreshConnectionSelects()};
     row.addEventListener('dragstart',function(){dragId=id});row.addEventListener('dragover',function(e){e.preventDefault()});row.addEventListener('drop',function(e){e.preventDefault();var dragged=document.querySelector('.r111dCanvasRow[data-id="'+dragId+'"]');if(dragged&&dragged!==row)host.insertBefore(dragged,row);refreshConnectionSelects()});
@@ -113,7 +113,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   function addConnection(){
     connectionCounter+=1;var row=document.createElement('div');row.className='r111dConnection';row.dataset.id='connection-'+connectionCounter;
     row.innerHTML='<select class="r111dFrom"></select><select class="r111dTo"></select><select class="r111dConnKind"><option value="FLOW">Then</option><option value="CONDITION">When...</option><option value="DEFAULT">Otherwise</option><option value="PARALLEL">At the same time</option></select><input class="r111dCondition" placeholder="Condition, if needed"><button type="button">Remove</button>';
-    stepOption(row.querySelector('.r111dFrom'));stepOption(row.querySelector('.r111dTo'));row.querySelector('button').onclick=function(){row.remove()};byId('r111dConnections').appendChild(row);
+    stepOption(row.querySelector('.r111dFrom'));stepOption(row.querySelector('.r111dTo'));row.querySelector('button').onclick=function(){row.remove()};byId('r111dConnections').appendChild(row);return row;
   }
   function installCanvas(sourceCard){
     if(byId('r111dCanvas'))return;var panel=document.createElement('section');panel.id='r111dCanvas';panel.className='r111dCanvas';
@@ -122,9 +122,11 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   }
   function showCanvas(){var p=byId('r111dCanvas');if(p)p.classList.add('open');if(canvasRows().length===0){addStep('START','Start');addStep('END','End')}}
   function canvasPayload(){
-    var elements=canvasRows().map(function(row){var kind=row.dataset.kind,label=row.querySelector('.r111dLabel').value.trim();if(!label)throw new Error('Every step needs a name.');var payload={id:row.dataset.id,kind:kind,label:label};if(kind==='WAIT'){payload.waitKind='';}return payload});
+    var elements=canvasRows().map(function(row){var kind=row.dataset.kind,label=row.querySelector('.r111dLabel').value.trim();if(!label)throw new Error('Every step needs a name.');var payload={id:row.dataset.id,kind:kind,label:label};if(kind==='WAIT'){payload.waitKind=(row.dataset.waitKind||'').trim();if((row.dataset.expression||'').trim())payload.expression=row.dataset.expression.trim()}return payload});
     var connections=Array.from(document.querySelectorAll('.r111dConnection')).map(function(row){var condition=row.querySelector('.r111dCondition').value.trim();var kind=row.querySelector('.r111dConnKind').value;if(condition&&kind==='FLOW')kind='CONDITION';if(kind==='CONDITION'&&!condition)throw new Error('A When... connection needs a condition.');return{id:row.dataset.id,from:row.querySelector('.r111dFrom').value,to:row.querySelector('.r111dTo').value,kind:kind,condition:condition}});
-    return{title:byId('r111dCanvasTitle').value.trim()||'My process',initiatedBy:'one-app-product-user',elements:elements,connections:connections};
+    var payload={title:byId('r111dCanvasTitle').value.trim()||'My process',initiatedBy:'one-app-product-user',elements:elements,connections:connections};
+    if(window.talosCanvasPresentationSnapshot&&typeof window.talosCanvasPresentationSnapshot==='function'){var presentation=window.talosCanvasPresentationSnapshot();if(presentation&&typeof presentation==='object')payload.presentation=presentation}
+    return payload;
   }
   async function submitCanvas(){
     var state=byId('r111dCanvasState');var button=byId('r111dReviewCanvas');button.disabled=true;state.className='r111dCanvasState';state.textContent='Preparing your process for review…';
@@ -378,6 +380,18 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     var open=byId('r105Open');if(open)open.textContent='Let Talos prepare an automation proposal';
     var design=byId('r105AutomationDesign');if(design){var h3=design.querySelector('h3');if(h3)h3.textContent='Prepare automation';var intro=design.querySelector('p');if(intro)intro.textContent='Talos will propose a safe automation draft from the process you already confirmed. You review the proposal, not every internal binding.'}
   }
+  function resetCanvas(){
+    canvasRows().forEach(function(row){row.remove()});Array.from(document.querySelectorAll('.r111dConnection')).forEach(function(row){row.remove()});canvasCounter=0;connectionCounter=0;refreshConnectionSelects();
+  }
+  window.talosProductCanvas={
+    show:showCanvas,
+    addStep:addStep,
+    addConnection:addConnection,
+    reset:resetCanvas,
+    payload:canvasPayload,
+    refresh:refreshConnectionSelects
+  };
+  window.talosProductJourney={setStage:setStage,selectMode:selectMode};
   installJourney();installSourceChooser();installContinue();installAutomationGuide();installRun();installCopy();setStage('process');
   window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(event){hasCandidate=true;var detail=event&&event.detail;renderProductCandidate(detail&&detail.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');setStage('review')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){hasCandidate=true;setStage('automate')});
