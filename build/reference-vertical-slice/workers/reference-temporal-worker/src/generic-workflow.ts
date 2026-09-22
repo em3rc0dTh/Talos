@@ -11,6 +11,7 @@ import type {
   GenericWorkflowResult,
   GenericWorkflowState,
 } from './generic-contracts.ts';
+import { compileRuntimeConditionExpression } from './generic-runtime-expression.ts';
 
 type GenericActivities={executeGenericCapability(input:GenericCapabilityActivityInput):Promise<GenericCapabilityActivityResult>};
 export const completeGenericHumanTask = defineUpdate<GenericWorkflowState,[GenericHumanTaskSubmission]>('completeGenericHumanTask');
@@ -115,6 +116,10 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
   let currentDecisionRef:string|null=null;
   let currentDecisionPrompt:string|null=null;
   const context=runtimeContext(input);
+  const conditionRules=input.program.semantics.conditionRules.map(rule=>({
+    ref:rule.ref,
+    expression:compileRuntimeConditionExpression((rule as {expression:unknown}).expression,rule.ref),
+  }));
   const visited:string[]=[],capabilityResults:GenericCapabilityActivityResult[]=[];
   const completedHumanTaskRefs:string[]=[];
   const decisionOutcomes:Record<string,boolean>={};
@@ -197,7 +202,7 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
     if(conditional.length){
       for(const relation of conditional){
         if(!relation.conditionRef)throw new TypeError(`conditional relation ${relation.id} has no conditionRef`);
-        const rule=input.program.semantics.conditionRules.find(x=>x.ref===relation.conditionRef);
+        const rule=conditionRules.find(x=>x.ref===relation.conditionRef);
         if(!rule)throw new TypeError(`condition snapshot missing for ${relation.conditionRef}`);
         let unresolved=missingDecision(rule.expression,context,decisionOutcomes);
         while(unresolved){
@@ -211,7 +216,7 @@ export async function TalosGenericWorkflow(input:GenericWorkflowInput):Promise<G
       }
       const matches=conditional.filter(r=>{
         if(!r.conditionRef)throw new TypeError(`conditional relation ${r.id} has no conditionRef`);
-        const rule=input.program.semantics.conditionRules.find(x=>x.ref===r.conditionRef);
+        const rule=conditionRules.find(x=>x.ref===r.conditionRef);
         if(!rule)throw new TypeError(`condition snapshot missing for ${r.conditionRef}`);
         return evaluate(rule.expression,context,decisionOutcomes);
       });
