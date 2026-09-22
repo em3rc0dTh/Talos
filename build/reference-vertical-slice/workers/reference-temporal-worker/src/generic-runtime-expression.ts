@@ -172,3 +172,20 @@ export function compileRuntimeConditionExpression(
     : 'UNKNOWN';
   throw new TypeError(`RUNTIME_EXPRESSION_NOT_EXECUTABLE:${ruleRef}:${language}`);
 }
+
+export function materializeRuntimeConditionSource(rule:{
+  id:string;
+  naturalLanguage?:string;
+  expression?:unknown;
+}):{ref:string;expression:unknown}{
+  if(rule.expression!==undefined)return{ref:rule.id,expression:rule.expression};
+  const prompt=typeof rule.naturalLanguage==='string'?rule.naturalLanguage.trim():'';
+  if(!prompt)throw new TypeError(`RUNTIME_CONDITION_SOURCE_NOT_EXECUTABLE:${rule.id}`);
+  return{
+    ref:rule.id,
+    expression:{
+      language:'BUSINESS_NATURAL_LANGUAGE',
+      body:prompt,
+    },
+  };
+}
