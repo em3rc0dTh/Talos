@@ -103,12 +103,15 @@ async function proxy(
     ...(body === undefined ? {} : { body }),
   });
   const responseContentType = response.headers.get('content-type') ?? 'application/json; charset=utf-8';
+  const responseContentDisposition = response.headers.get('content-disposition');
   let bytes = Buffer.from(await response.arrayBuffer());
   if (response.ok) bytes = normalizeProductApiResponse(url.pathname, responseContentType, bytes);
   res.writeHead(response.status, {
     'content-type': responseContentType,
     'content-length': bytes.byteLength,
     'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    ...(responseContentDisposition ? { 'content-disposition': responseContentDisposition } : {}),
   });
   res.end(bytes);
 }
