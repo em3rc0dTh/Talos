@@ -128,7 +128,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   }
   async function submitCanvas(){
     var state=byId('r111dCanvasState');var button=byId('r111dReviewCanvas');button.disabled=true;state.className='r111dCanvasState';state.textContent='Preparing your process for review…';
-    try{var response=await fetch('/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasPayload())});var body=await response.json();if(!response.ok)throw new Error(body.userMessage||body.error||('HTTP '+response.status));if(body.status!=='BPMN_READY_FOR_PROCESS_REVIEW')throw new Error(body.userMessage||'Talos saved the process but cannot review it yet.');state.className='r111dCanvasState good';state.textContent='Process ready for review.';hasCandidate=true;setStage('review')}
+    try{var response=await fetch('/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasPayload())});var body=await response.json();if(!response.ok)throw new Error(body.userMessage||body.error||('HTTP '+response.status));if(body.status!=='BPMN_READY_FOR_PROCESS_REVIEW')throw new Error(body.userMessage||'Talos saved the process but cannot review it yet.');state.className='r111dCanvasState good';state.textContent='Process ready for review.';hasCandidate=true;renderProductCandidate(body.reconciliation,'READY · NOT CONFIRMED');setStage('review')}
     catch(error){state.className='r111dCanvasState bad';state.textContent=error instanceof Error?error.message:String(error)}
     finally{button.disabled=false}
   }
@@ -354,10 +354,20 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     try{var button=byId('r111dPrepareTemporal');if(button)button.disabled=true;var body=await post('/api/automation/temporal-mapping',{approvalId:simpleApproval.id,useRecommendedMapping:true,allowDurableRecovery:true,decidedBy:'one-app-product-user',authorityRef:authority('temporal-mapping'),rationale:'User explicitly requested Talos to prepare the recommended technical Temporal mapping from already approved process and automation semantics.'});simpleMapping=body.mapping;if(body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('Talos refused an unsafe authority transition.');state.className='r111dRunState good';state.textContent=body.durableRecoveryApplied?'Temporal design recovered from your durable approved plan. Nothing has been deployed or started.':'Temporal design prepared from the information you already confirmed. Nothing has been deployed or started.';if(button){button.textContent='Temporal design ready';button.disabled=true}var target=await loadRuntimeTarget();byId('r111gRuntimeSummary').textContent='TEST runtime · up to 3 Activity attempts · 30s Activity timeout · one Workflow attempt · target '+target.namespace;openRunCard('r111gRuntimeCard');window.dispatchEvent(new CustomEvent('talos:r1-11d-temporal-ready',{detail:{mapping:simpleMapping}}))}
     catch(error){var button=byId('r111dPrepareTemporal');if(button)button.disabled=false;var message=error instanceof Error?error.message:String(error);state.className='r111dRunState bad';state.textContent=message.indexOf('RECOMMENDED_TEMPORAL_MAPPING_NEEDS_EXPLICIT_WAIT_DECISION')>=0?'One wait has execution semantics that cannot be safely selected automatically. Talos should ask only for that specific wait.':'Talos could not safely reconstruct one approved execution detail. Your approved process is unchanged.'}
   }
+  function renderReviewList(containerId,items,className,formatter){
+    var box=byId(containerId);if(!box)return;box.innerHTML='';
+    if(!items||!items.length){var empty=document.createElement('div');empty.className=className;empty.textContent='None';box.appendChild(empty);return}
+    items.slice(0,12).forEach(function(item){var row=document.createElement('div');row.className=className;row.textContent=formatter(item);box.appendChild(row)})
+  }
   function renderProductCandidate(reconciliation,badgeText){
     var process=reconciliation&&reconciliation.processRevision;if(!process)return;
+    var validation=reconciliation.validation||{};
     var host=byId('nodes');if(host){host.innerHTML='';(process.nodes||[]).forEach(function(node){var row=document.createElement('div');row.className='node';var name=document.createElement('strong');name.textContent=node.name||node.kind||'Process step';var meta=document.createElement('span');var details=node.details||{};var timing=node.kind==='WAIT'&&details.expression?' · '+details.expression:'';meta.textContent=(node.kind||'NODE')+timing+' · '+(node.truthClass||'INFERRED');row.appendChild(name);row.appendChild(meta);host.appendChild(row)})}
+    renderReviewList('questions',validation.questions||[],'question',function(q){return(q.code?q.code+' · ':'')+(q.question||q.prompt||q.description||'Reviewer input required')});
+    renderReviewList('findings',validation.findings||[],'finding',function(f){return(f.code?f.code+' · ':'')+(f.title||f.description||'Validation finding')});
+    var metaHost=byId('meta');if(metaHost){metaHost.innerHTML='';[['Canonical revision',process.id||'—'],['Semantic status',process.semanticStatus||'INFERRED'],['Execution readiness',validation.assessment?validation.assessment.executionReadiness:'NOT AUTHORIZED']].forEach(function(pair){var item=document.createElement('div');item.className='metric';var key=document.createElement('div');key.className='k';key.textContent=pair[0];var value=document.createElement('div');value.className='v';value.textContent=pair[1];item.appendChild(key);item.appendChild(value);metaHost.appendChild(item)})}
     var badge=byId('reviewBadge');if(badge&&badgeText){badge.textContent=badgeText;badge.className='badge corrected'}
+    var review=byId('review');if(review)review.className='review open';
   }
   function installCopy(){
     var h=document.querySelector('.top h1');if(h)h.textContent='Show Talos how your business works.';
@@ -381,7 +391,8 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
         response.clone().json().then(function(body){
           if(body&&body.revision&&body.reconciliation&&body.reconciliation.status==='RECONCILED'){
             hasCandidate=true;
-            if(clarified)renderProductCandidate(body.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');
+            if(sourceInput)renderProductCandidate(body.reconciliation,'READY · NOT CONFIRMED');
+            else if(clarified)renderProductCandidate(body.reconciliation,'UPDATED · RECONFIRMATION REQUIRED');
             else if(confirmed)renderProductCandidate(body.reconciliation,'CONFIRMED · AUTOMATION NOT AUTHORIZED');
             if(sourceInput||clarified)setStage('review');
           }
