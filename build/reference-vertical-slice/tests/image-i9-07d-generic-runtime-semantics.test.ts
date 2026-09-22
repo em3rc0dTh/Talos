@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
-import { compileRuntimeConditionExpression } from '../workers/reference-temporal-worker/src/generic-runtime-expression.ts';
+import { compileRuntimeConditionExpression, materializeRuntimeConditionSource } from '../workers/reference-temporal-worker/src/generic-runtime-expression.ts';
 import { createGenericTemporalWorker } from '../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
 import { TalosGenericWorkflow, getGenericWorkflowState, resolveGenericDecision } from '../workers/reference-temporal-worker/src/generic-workflow.ts';
 
@@ -160,4 +160,40 @@ test('R1-11I replays a legacy business-language condition and waits for an expli
     await workerRun;
     await temporal.teardown();
   }
+});
+
+
+test('R1-11L materializes canonical natural-language branch rules before deterministic runtime digest',()=>{
+  assert.deepEqual(
+    materializeRuntimeConditionSource({
+      id:'rule:branch-yes',
+      naturalLanguage:'yes',
+    }),
+    {
+      ref:'rule:branch-yes',
+      expression:{
+        language:'BUSINESS_NATURAL_LANGUAGE',
+        body:'yes',
+      },
+    },
+  );
+});
+
+test('R1-11L preserves an explicit executable expression instead of replacing it',()=>{
+  const expression={fact:'approved',operator:'EQUALS',value:true};
+  assert.deepEqual(
+    materializeRuntimeConditionSource({
+      id:'rule:approved',
+      naturalLanguage:'approved',
+      expression,
+    }),
+    {ref:'rule:approved',expression},
+  );
+});
+
+test('R1-11L rejects condition rules that have neither executable expression nor business language',()=>{
+  assert.throws(
+    ()=>materializeRuntimeConditionSource({id:'rule:empty'}),
+    /RUNTIME_CONDITION_SOURCE_NOT_EXECUTABLE:rule:empty/,
+  );
 });
