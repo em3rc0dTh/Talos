@@ -17,6 +17,15 @@ export interface TalosProductJourneyState{
   title:string;
   description:string;
   primaryAction:string;
+  readiness:{
+    processReady:boolean;
+    bpmnReady:boolean;
+    temporalDesignReady:boolean;
+    temporalExportReady:boolean;
+    temporalExecutionReady:boolean;
+    deployed:boolean;
+    executionObserved:boolean;
+  };
   technicalDetailsAvailable:true;
   automaticAuthorityGranted:false;
 }
@@ -43,5 +52,15 @@ export function buildTalosProductJourneyState(recovery:TalosProductRecoverySnaps
     AUTOMATE:{title:'Prepare the automation',description:'Choose how the confirmed business process should be automated.',primaryAction:'PREPARE_AUTOMATION'},
     RUN:{title:'Run and monitor',description:'Test or run the approved automation while Talos keeps execution evidence.',primaryAction:'CONTINUE_RUN'},
   };
-  return{version:'talos.product-journey.v1',stage,stages,inputModes:['IMAGE','BPMN','CANVAS'],...copy[stage],technicalDetailsAvailable:true,automaticAuthorityGranted:false};
+  const counts=recovery.aggregateCounts;
+  const readiness={
+    processReady:(counts.BusinessProcessConfirmationRecord??0)>0,
+    bpmnReady:(counts.BpmnProcessRevision??0)>0,
+    temporalDesignReady:(counts.TemporalMappingRevision??0)>0,
+    temporalExportReady:(counts.TemporalMappingRevision??0)>0&&(counts.AutomationDesignApprovalRecord??0)>0&&(counts.BpmnProcessRevision??0)>0,
+    temporalExecutionReady:(counts.RuntimePolicyRevision??0)>0&&(counts.EnvironmentBindingRealization??0)>0&&(counts.WorkerArtifactBinding??0)>0,
+    deployed:(counts.DeploymentAttempt??0)>0,
+    executionObserved:(counts.WorkflowExecutionObservation??0)>0,
+  };
+  return{version:'talos.product-journey.v1',stage,stages,inputModes:['IMAGE','BPMN','CANVAS'],...copy[stage],readiness,technicalDetailsAvailable:true,automaticAuthorityGranted:false};
 }
