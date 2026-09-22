@@ -6,6 +6,7 @@ import { digestDeterministicJson } from '../../../packages/foundation/src/digest
 import { compileGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-compile-runtime-program.ts';
 import type { CompiledGenericRuntimeProgram } from '../../../workers/reference-temporal-worker/src/generic-contracts.ts';
 import { connectGenericTemporalWorker } from '../../../workers/reference-temporal-worker/src/generic-worker-runtime.ts';
+import { materializeRuntimeConditionSource } from '../../../workers/reference-temporal-worker/src/generic-runtime-expression.ts';
 import {
   TalosGenericWorkflow,
   completeGenericHumanTask,
@@ -158,7 +159,17 @@ const product = await startTalosOneAppProduct({
         throw new TypeError(`R1-11 local host supports TalosGenericWorkflow; realized ${workflowType ?? 'none'}`);
       }
 
-      const conditionRules = context.process.rules.map((rule) => ({ ref: rule.id, expression: rule.expression }));
+      const conditionRefs = new Set(
+        context.executionReview.execution.relations
+          .filter((relation) => relation.relationKind === 'CONDITIONAL')
+          .map((relation) => relation.conditionRef)
+          .filter((ref): ref is string => Boolean(ref)),
+      );
+      const conditionRules = [...conditionRefs].map((ref) => {
+        const rule = context.process.rules.find((candidate) => candidate.id === ref);
+        if (!rule) throw new TypeError(`RUNTIME_CONDITION_SOURCE_MISSING:${ref}`);
+        return materializeRuntimeConditionSource(rule);
+      });
       const semantics = {
         conditionRules,
         waits,
