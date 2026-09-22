@@ -164,3 +164,108 @@ test('R1-13 portable Temporal export emits portable artifacts and never grants d
   assert.ok(archiveText.includes('TalosPortableWorkflow'));
   assert.ok(archiveText.includes('Exporting this package does **not** deploy a Worker'));
 });
+
+
+test('R1-13B Talos Canvas persists visual presentation and exports an exact portable native source', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13b-canvas-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const presentation = {
+      nodeLayouts: [
+        { clientElementId: 'start', x: 30, y: 40 },
+        { clientElementId: 'wait', x: 220, y: 40 },
+        { clientElementId: 'end', x: 410, y: 40 },
+      ],
+      viewport: { mode: 'BUSINESS_CANVAS' },
+      zoom: 1,
+    };
+    const response = await fetch(app.baseUrl + '/api/input/canvas', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Portable visual Canvas',
+        initiatedBy: 'r1-13b-user',
+        elements: [
+          { id: 'start', kind: 'START', label: 'Start' },
+          { id: 'wait', kind: 'WAIT', label: 'Wait 30 seconds', waitKind: 'DURATION', expression: '30 seconds' },
+          { id: 'end', kind: 'END', label: 'End' },
+        ],
+        connections: [
+          { id: 'c1', from: 'start', to: 'wait', kind: 'FLOW' },
+          { id: 'c2', from: 'wait', to: 'end', kind: 'FLOW' },
+        ],
+        presentation,
+      }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json() as any;
+    assert.equal(body.sourceKind, 'TALOS_CANVAS');
+    assert.deepEqual(body.canvasRevision.presentationSnapshot, presentation);
+
+    const exported = await fetch(
+      app.baseUrl + '/api/process/canvas/export?revisionId=' + encodeURIComponent(body.canvasRevision.id),
+    );
+    assert.equal(exported.status, 200);
+    assert.match(exported.headers.get('content-type') ?? '', /application\/json/);
+    assert.match(exported.headers.get('content-disposition') ?? '', /talos-process\.talos\.json/);
+    const native = await exported.json() as any;
+    assert.equal(native.schemaVersion, 'talos-canvas-native-v0.2');
+    assert.equal(native.canvasRevision.id, body.canvasRevision.id);
+    assert.equal(native.canvasDefinition.id, body.canvasDefinition.id);
+    assert.deepEqual(native.canvasRevision.presentationSnapshot, presentation);
+    assert.equal(native.elements.length, 3);
+    assert.equal(native.relationships.length, 2);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test('R1-13B product errors are human-readable while technical evidence stays available', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13b-errors-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const response = await fetch(app.baseUrl + '/api/automation/temporal-export', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        approvalId: 'missing-approval',
+        temporalMappingRevisionId: 'missing-mapping',
+      }),
+    });
+    assert.ok(response.status >= 400);
+    const body = await response.json() as any;
+    assert.match(body.userMessage, /could not safely prepare the Temporal translation/i);
+    assert.match(body.userMessage, /Nothing was deployed or started/i);
+    assert.equal(body.safeState.confirmedProcessChanged, false);
+    assert.equal(body.safeState.deploymentAutomaticallyAuthorized, false);
+    assert.equal(body.safeState.workflowAutomaticallyStarted, false);
+    assert.equal(typeof body.error, 'string');
+    assert.ok(body.error.length > 0);
+    assert.doesNotMatch(body.userMessage, /ExecutionPlanRevision|TemporalMappingRevision|undefined is not deterministic JSON/i);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+test('R1-13B HTML exposes safe visual correction, wait inspector and Canvas portability controls', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13b-html-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const html = await fetch(app.baseUrl).then((response) => response.text());
+    for (const marker of [
+      'Edit visually',
+      'Copy Canvas JSON',
+      'Download .talos.json',
+      'Wait type',
+      'Wait value',
+      'talosCanvasPresentationSnapshot',
+      'talosProductCanvas',
+      'Your confirmed process is unchanged until you review and confirm a new revision.',
+    ]) assert.ok(html.includes(marker), marker);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});

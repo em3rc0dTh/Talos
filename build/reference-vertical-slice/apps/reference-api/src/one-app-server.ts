@@ -616,6 +616,39 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/process/canvas/export') {
+        const revisionId = text(url.searchParams.get('revisionId'), 'revisionId');
+        const revisionDocument = repo.get<any>(revisionId as OpaqueId);
+        if (!revisionDocument || revisionDocument.aggregateKind !== 'CanvasRevision') {
+          throw new TypeError('Canvas export revision not found');
+        }
+        const revision = revisionDocument.payload;
+        const definitions = repo.listByKind<any>('CanvasDefinitionState')
+          .map((document) => document.payload)
+          .filter((definition) => definition.id === revision.canvasDefinitionId);
+        const definition = [...definitions].reverse().find((candidate) => candidate.latestRevisionId === revision.id)
+          ?? definitions.at(-1);
+        if (!definition) throw new TypeError('Canvas export definition not found');
+        const native = {
+          schemaVersion: 'talos-canvas-native-v0.2',
+          canvasDefinition: definition,
+          canvasRevision: revision,
+          elements: revision.elementSnapshots ?? [],
+          relationships: revision.relationshipSnapshots ?? [],
+          containerMemberships: revision.containerMemberships ?? [],
+          semanticDigestAlgorithmVersion: revision.digestAlgorithmVersion,
+          nativeDigestAlgorithmVersion: revision.digestAlgorithmVersion,
+        };
+        bytes(
+          res,
+          200,
+          JSON.stringify(native, null, 2) + '\n',
+          'application/json; charset=utf-8',
+          'talos-process.talos.json',
+        );
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/input/image') {
         const input = await jsonBody(req);
         const pngBytes = Buffer.from(text(input.imageBase64, 'imageBase64'), 'base64');

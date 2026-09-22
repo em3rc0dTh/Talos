@@ -69,17 +69,40 @@ function json(res: http.ServerResponse, status: number, payload: unknown): void 
   res.end(body);
 }
 
-function normalizeProductApiResponse(pathname: string, contentType: string, bytes: Buffer): Buffer {
+function productUserMessage(pathname:string):string {
+  if (pathname.startsWith('/api/input/') || pathname.startsWith('/api/bpmn/')) {
+    return 'Talos could not safely prepare this process for review. Your existing confirmed process was not changed.';
+  }
+  if (pathname.includes('/temporal-mapping') || pathname.includes('/temporal-export')) {
+    return 'Talos could not safely prepare the Temporal translation. Nothing was deployed or started.';
+  }
+  if (pathname.includes('/deployment/')) {
+    return 'Talos could not complete this deployment step safely. No additional workflow was started.';
+  }
+  if (pathname.includes('/execution/')) {
+    return 'Talos could not complete this execution step safely. Talos did not authorize an additional workflow start.';
+  }
+  return 'Talos could not complete this step safely. Your confirmed process and existing authority were not changed.';
+}
+
+function normalizeProductApiResponse(pathname: string, contentType: string, bytes: Buffer, ok:boolean): Buffer {
   if (!contentType.includes('application/json')) return bytes;
-  if (pathname !== '/api/automation/deployment/approve' && pathname !== '/api/automation/execution/approve') return bytes;
   try {
     const parsed = JSON.parse(bytes.toString('utf8')) as Record<string, any>;
-    if (pathname === '/api/automation/deployment/approve' && parsed.deploymentApproval) {
+    if (ok && pathname === '/api/automation/deployment/approve' && parsed.deploymentApproval) {
       parsed.authorizedAttemptCount = parsed.deploymentApproval.authorizedAttemptCount;
     }
-    if (pathname === '/api/automation/execution/approve' && parsed.workflowExecutionApproval) {
+    if (ok && pathname === '/api/automation/execution/approve' && parsed.workflowExecutionApproval) {
       parsed.workflowExecutionAuthorized = parsed.workflowExecutionApproval.createsWorkflowExecutionAuthority === true;
       parsed.authorizedWorkflowStartCount = parsed.workflowExecutionApproval.authorizedWorkflowStartCount;
+    }
+    if (!ok && typeof parsed.userMessage !== 'string') {
+      parsed.userMessage = productUserMessage(pathname);
+      parsed.safeState = {
+        confirmedProcessChanged: false,
+        deploymentAutomaticallyAuthorized: false,
+        workflowAutomaticallyStarted: false,
+      };
     }
     return Buffer.from(JSON.stringify(parsed));
   } catch {
@@ -105,7 +128,7 @@ async function proxy(
   const responseContentType = response.headers.get('content-type') ?? 'application/json; charset=utf-8';
   const responseContentDisposition = response.headers.get('content-disposition');
   let bytes = Buffer.from(await response.arrayBuffer());
-  if (response.ok) bytes = normalizeProductApiResponse(url.pathname, responseContentType, bytes);
+  bytes = normalizeProductApiResponse(url.pathname, responseContentType, bytes, response.ok);
   res.writeHead(response.status, {
     'content-type': responseContentType,
     'content-length': bytes.byteLength,
@@ -214,6 +237,12 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
       json(res, 400, {
         error: error instanceof Error ? error.message : String(error),
         code: 'R1_PRODUCT_REQUEST_REJECTED',
+        userMessage: 'Talos could not complete this step safely. Your confirmed process and existing authority were not changed.',
+        safeState: {
+          confirmedProcessChanged: false,
+          deploymentAutomaticallyAuthorized: false,
+          workflowAutomaticallyStarted: false,
+        },
       });
     }
   });
