@@ -104,8 +104,16 @@ function summarize(document:any):TalosRecoveryDocumentSummary{
 
 function has(counts:Record<string,number>,kind:string):boolean{return(counts[kind]??0)>0;}
 
-function recoveryClassification(counts:Record<string,number>):{stage:string;nextSafeAction:string;inFlightRecovery:string}{
-  if(has(counts,'WorkflowExecutionObservation'))return{stage:'WORKFLOW_EXECUTION_OBSERVED',nextSafeAction:'REVIEW_EXECUTION_HISTORY_OR_BEGIN_NEW_EXPLICIT_REVISION',inFlightRecovery:'COMPLETED_EXECUTION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED'};
+function recoveryClassification(
+  counts:Record<string,number>,
+  latestByKind:Record<string,TalosRecoveryDocumentSummary>,
+):{stage:string;nextSafeAction:string;inFlightRecovery:string}{
+  if(has(counts,'WorkflowExecutionObservation')){
+    const status=(latestByKind.WorkflowExecutionObservation?.executionStatus??'UNKNOWN').toUpperCase();
+    if(status==='COMPLETED')return{stage:'WORKFLOW_EXECUTION_COMPLETED',nextSafeAction:'REVIEW_EXECUTION_HISTORY_OR_BEGIN_NEW_EXPLICIT_REVISION',inFlightRecovery:'COMPLETED_EXECUTION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED'};
+    if(status==='RUNNING')return{stage:'WORKFLOW_EXECUTION_RUNNING',nextSafeAction:'REVIEW_LIVE_EXECUTION_STATUS_OR_HISTORY',inFlightRecovery:'RUNNING_EXECUTION_OBSERVATION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED'};
+    return{stage:`WORKFLOW_EXECUTION_${status}`,nextSafeAction:'REVIEW_EXECUTION_HISTORY_OR_BEGIN_NEW_EXPLICIT_REVISION',inFlightRecovery:`${status}_EXECUTION_OBSERVATION_IS_DURABLE; NO EXECUTION AUTHORITY IS REHYDRATED`};
+  }
   if(has(counts,'WorkflowExecutionApprovalRecord'))return{stage:'WORKFLOW_EXECUTION_APPROVED_NOT_OBSERVED',nextSafeAction:'REAUTHORIZE_WORKFLOW_EXECUTION_FROM_DURABLE_EVIDENCE',inFlightRecovery:'UNOBSERVED START IS TREATED AS UNKNOWN; DO NOT AUTO-START AFTER RESTART'};
   if(has(counts,'DeploymentAttempt'))return{stage:'DEPLOYMENT_ATTEMPT_RECORDED',nextSafeAction:'REAUTHORIZE_WORKFLOW_EXECUTION_FROM_DURABLE_EVIDENCE',inFlightRecovery:'DEPLOYMENT RESULT IS DURABLE; EXECUTION AUTHORITY MUST BE RECREATED EXPLICITLY'};
   if(has(counts,'DeploymentApprovalRecord'))return{stage:'DEPLOYMENT_APPROVED_NOT_ATTEMPTED',nextSafeAction:'REAUTHORIZE_DEPLOYMENT_FROM_DURABLE_EVIDENCE',inFlightRecovery:'UNCONSUMED IN-MEMORY DEPLOYMENT AUTHORITY IS NOT REHYDRATED AFTER RESTART'};
@@ -135,7 +143,7 @@ export function buildTalosProductRecoverySnapshot(runtimeDir:string):TalosProduc
     const aggregateCounts:Record<string,number>={};
     const latestByKind:Record<string,TalosRecoveryDocumentSummary>={};
     for(const item of timeline){aggregateCounts[item.aggregateKind]=(aggregateCounts[item.aggregateKind]??0)+1;latestByKind[item.aggregateKind]=item;}
-    const classification=recoveryClassification(aggregateCounts);
+    const classification=recoveryClassification(aggregateCounts,latestByKind);
     return{runtimeSchemaVersion:manifest.schemaVersion,compatibilityFamily:manifest.compatibilityFamily,recoveryMode:'DURABLE_EVIDENCE_RECONSTRUCTION',automaticAuthorityRehydration:false,explicitReauthorizationRequired:true,durableDocumentCount:timeline.length,aggregateCounts,lastDurableStage:classification.stage,nextSafeAction:classification.nextSafeAction,inFlightRecovery:classification.inFlightRecovery,latestByKind,timeline};
   }finally{repo.close();}
 }
