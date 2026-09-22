@@ -83,13 +83,17 @@ export interface GenericWorkflowInput {
   program:CompiledGenericRuntimeProgram;
 }
 export interface GenericHumanTaskSubmission { executionElementRef:string; outcome:'COMPLETED'; output?:unknown; }
-export interface GenericDecisionSubmission { decisionRef:string; applies:boolean; output?:unknown; }
+export interface GenericDecisionOption { relationRef:string; decisionRef:string; label:string; targetElementRef:string; }
+export interface GenericDecisionSubmission { decisionRef:string; applies?:boolean; selectedRelationRef?:string; output?:unknown; }
 export interface GenericWorkflowState {
   executionId:string;
   currentElementRef:string|null;
   currentHumanTaskRef:string|null;
   currentDecisionRef:string|null;
   currentDecisionPrompt:string|null;
+  currentDecisionMode?:'BOOLEAN'|'CHOICE'|null;
+  currentDecisionOptions?:GenericDecisionOption[];
+  selectedDecisionRelations?:Record<string,string>;
   visitedElementRefs:string[];
   completedHumanTaskRefs:string[];
   decisionOutcomes:Record<string,boolean>;
@@ -104,4 +108,4 @@ export interface GenericCapabilityActivityResult {
   externalEffectRef?:string;
   evidenceRefs?:string[];
 }
-export interface GenericWorkflowResult { outcome:'COMPLETED'; executionId:string; visitedElementRefs:string[]; capabilityResults:GenericCapabilityActivityResult[]; completedHumanTaskRefs:string[]; decisionOutcomes:Record<string,boolean>; }
+export interface GenericWorkflowResult { outcome:'COMPLETED'; executionId:string; visitedElementRefs:string[]; capabilityResults:GenericCapabilityActivityResult[]; completedHumanTaskRefs:string[]; decisionOutcomes:Record<string,boolean>; selectedDecisionRelations?:Record<string,string>; }
