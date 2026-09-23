@@ -105,3 +105,70 @@ test('R1-13D reconstructs the translation workspace after restart without rehydr
     assert.match(page,/Import saved Canvas/);
   }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
 });
+
+
+test('R1-13D blocks ambiguous Canvas decisions and exact duplicate connections before BPMN review',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-decision-guard-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const ambiguous={...canvasInput(),elements:[
+      {id:'start',kind:'START',label:'Start'},
+      {id:'decision',kind:'DECISION',label:'Customer answer?'},
+      {id:'yes',kind:'STEP',label:'Register booking'},
+      {id:'no',kind:'STEP',label:'Say goodbye'},
+      {id:'end',kind:'END',label:'End'},
+    ],connections:[
+      {id:'c1',from:'start',to:'decision',kind:'FLOW'},
+      {id:'c2',from:'decision',to:'yes',kind:'FLOW'},
+      {id:'c3',from:'decision',to:'no',kind:'FLOW'},
+      {id:'c4',from:'yes',to:'end',kind:'FLOW'},
+      {id:'c5',from:'no',to:'end',kind:'FLOW'},
+    ]};
+    const rejected=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(ambiguous)});
+    assert.ok(rejected.status>=400);
+    const rejectedBody=await rejected.json() as any;
+    assert.match(rejectedBody.error,/needs an outcome on every outgoing branch/i);
+
+    const duplicate={...canvasInput(),connections:[
+      {id:'c1',from:'start',to:'human',kind:'FLOW'},
+      {id:'c2',from:'human',to:'wait',kind:'FLOW'},
+      {id:'c2b',from:'human',to:'wait',kind:'FLOW'},
+      {id:'c3',from:'wait',to:'end',kind:'FLOW'},
+    ]};
+    const duplicateResponse=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(duplicate)});
+    assert.ok(duplicateResponse.status>=400);
+    const duplicateBody=await duplicateResponse.json() as any;
+    assert.match(duplicateBody.error,/same connection more than once/i);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+test('R1-13D valid decision outcomes project to a BPMN exclusive gateway with named branches',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-bpmn-decision-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const input={title:'Decision process',initiatedBy:'r1-13d-user',elements:[
+      {id:'start',kind:'START',label:'Start'},
+      {id:'decision',kind:'DECISION',label:'Customer answer?'},
+      {id:'yes',kind:'STEP',label:'Register booking'},
+      {id:'no',kind:'STEP',label:'Say goodbye'},
+      {id:'wait',kind:'WAIT',label:'Wait',waitKind:'DURATION',expression:'30 seconds'},
+      {id:'end',kind:'END',label:'End'},
+    ],connections:[
+      {id:'c1',from:'start',to:'decision',kind:'FLOW'},
+      {id:'c2',from:'decision',to:'yes',kind:'CONDITION',condition:'Yes'},
+      {id:'c3',from:'decision',to:'no',kind:'CONDITION',condition:'No'},
+      {id:'c4',from:'yes',to:'wait',kind:'FLOW'},
+      {id:'c5',from:'wait',to:'end',kind:'FLOW'},
+      {id:'c6',from:'no',to:'end',kind:'FLOW'},
+    ]};
+    const response=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+    assert.equal(response.status,201);
+    const body=await response.json() as any;
+    assert.equal(body.projectionDiagnostics.filter((item:any)=>item.severity==='ERROR').length,0);
+    assert.equal(body.unprojectableCanonicalRefs.length,0);
+    assert.match(body.revision.bpmnXml,/<bpmn:exclusiveGateway[^>]+name="Customer answer\?"/);
+    assert.match(body.revision.bpmnXml,/name="Yes"/);
+    assert.match(body.revision.bpmnXml,/name="No"/);
+    assert.match(body.revision.bpmnXml,/<bpmn:timerEventDefinition><bpmn:timeDuration[^>]*>PT30S<\/bpmn:timeDuration><\/bpmn:timerEventDefinition>/);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});

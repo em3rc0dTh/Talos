@@ -1489,6 +1489,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           throw new TypeError('Temporal package export must pin the exact approved TemporalMappingRevision');
         }
         const bundle = buildTemporalWorkflowExport(session.automation, exactBpmnXmlForSession(repo, session));
+        if (!bundle.readiness.temporalExportReady) {
+          throw new TypeError(`Temporal package export is blocked until the workflow graph is unambiguous: ${bundle.readiness.blockers.join(', ')}`);
+        }
         bytes(
           res,
           200,

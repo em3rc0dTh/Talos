@@ -52,6 +52,39 @@ export function compileGenericRuntimeProgram(
     if(element.constructKinds.length===0)throw new TypeError(`generic runtime element ${element.id} has no Temporal construct mapping`);
   }
   const relations=execution.relations.map(r=>({id:r.id,sourceElementRef:r.sourceElementRef,targetElementRef:r.targetElementRef,relationKind:r.relationKind,...(r.conditionRef?{conditionRef:r.conditionRef}:{})}));
+  const elementIds=new Set(elements.map((element)=>element.id));
+  const exactRelations=new Set<string>();
+  for(const relation of relations){
+    if(!elementIds.has(relation.sourceElementRef)||!elementIds.has(relation.targetElementRef)){
+      throw new TypeError(`generic runtime relation ${relation.id} references an unknown execution element`);
+    }
+    const key=JSON.stringify([relation.sourceElementRef,relation.targetElementRef,relation.relationKind,relation.conditionRef??null]);
+    if(exactRelations.has(key))throw new TypeError(`generic runtime contains a duplicate relation at ${relation.sourceElementRef} -> ${relation.targetElementRef}`);
+    exactRelations.add(key);
+  }
+  for(const element of elements){
+    const outgoing=relations.filter((relation)=>relation.sourceElementRef===element.id);
+    if(element.kind==='COMPLETION_COORDINATION'){
+      if(outgoing.length)throw new TypeError(`generic runtime completion element ${element.id} must not have outgoing relations`);
+      continue;
+    }
+    if(outgoing.length===0)throw new TypeError(`generic runtime non-terminal element ${element.id} has no outgoing relation`);
+    const conditional=outgoing.filter((relation)=>relation.relationKind==='CONDITIONAL');
+    if(conditional.length){
+      if(outgoing.some((relation)=>relation.relationKind!=='CONDITIONAL'&&relation.relationKind!=='DEFAULT')){
+        throw new TypeError(`generic runtime conditional routing at ${element.id} cannot mix conditional/default and sequence relations`);
+      }
+      if(outgoing.filter((relation)=>relation.relationKind==='DEFAULT').length>1){
+        throw new TypeError(`generic runtime conditional routing at ${element.id} has multiple default relations`);
+      }
+      for(const relation of conditional)if(!relation.conditionRef)throw new TypeError(`generic runtime conditional relation ${relation.id} has no conditionRef`);
+    }else{
+      const deterministic=outgoing.filter((relation)=>relation.relationKind==='SEQUENCE'||relation.relationKind==='DEFAULT');
+      if(deterministic.length!==1||deterministic.length!==outgoing.length){
+        throw new TypeError(`generic runtime v0.1 requires one deterministic outgoing relation at ${element.id}`);
+      }
+    }
+  }
 
   const activityUnits=mapping.units.filter(unit=>unit.constructKind==='ACTIVITY');
   const activityUses=execution.capabilityUses.filter(use=>activityUnits.some(unit=>unit.executionSubjectRefs.includes(use.id)));

@@ -21,8 +21,8 @@ export interface TemporalWorkflowExportBundle {
   temporalMappingRevisionId:string;
   temporalMappingDigest:string;
   readiness:{
-    temporalDesignReady:true;
-    temporalExportReady:true;
+    temporalDesignReady:boolean;
+    temporalExportReady:boolean;
     temporalExecutionReady:boolean;
     blockers:string[];
   };
@@ -81,6 +81,73 @@ function compiledConditions(context:OneAppAutomationContext){
   });
 }
 
+function portableGraphBlockers(
+  elements:Array<{id:string;kind:string}>,
+  relations:Array<{id:string;sourceElementRef:string;targetElementRef:string;relationKind:string;conditionRef:string|null}>,
+  conditionRefs:Set<string>,
+):string[]{
+  const blockers:string[]=[];
+  const ids=new Set(elements.map((element)=>element.id));
+  const exact=new Set<string>();
+  const incoming=new Map(elements.map((element)=>[element.id,0]));
+  for(const relation of relations){
+    if(!ids.has(relation.sourceElementRef))blockers.push(`RELATION_SOURCE_MISSING:${relation.id}`);
+    if(!ids.has(relation.targetElementRef))blockers.push(`RELATION_TARGET_MISSING:${relation.id}`);
+    if(ids.has(relation.targetElementRef))incoming.set(relation.targetElementRef,(incoming.get(relation.targetElementRef)??0)+1);
+    const key=JSON.stringify([relation.sourceElementRef,relation.targetElementRef,relation.relationKind,relation.conditionRef]);
+    if(exact.has(key))blockers.push(`DUPLICATE_RELATION:${relation.id}`);
+    exact.add(key);
+  }
+  const entries=elements.filter((element)=>(incoming.get(element.id)??0)===0);
+  if(entries.length!==1)blockers.push(`GRAPH_ENTRY_COUNT:${entries.length}`);
+  for(const element of elements){
+    const outgoing=relations.filter((relation)=>relation.sourceElementRef===element.id);
+    if(element.kind==='COMPLETION_COORDINATION'){
+      if(outgoing.length)blockers.push(`COMPLETION_HAS_OUTGOING:${element.id}`);
+      continue;
+    }
+    if(outgoing.length===0){
+      blockers.push(`NON_TERMINAL_WITHOUT_OUTGOING:${element.id}`);
+      continue;
+    }
+    const conditional=outgoing.filter((relation)=>relation.relationKind==='CONDITIONAL');
+    if(conditional.length){
+      if(outgoing.some((relation)=>relation.relationKind!=='CONDITIONAL'&&relation.relationKind!=='DEFAULT')){
+        blockers.push(`MIXED_CONDITIONAL_ROUTING:${element.id}`);
+      }
+      if(outgoing.filter((relation)=>relation.relationKind==='DEFAULT').length>1){
+        blockers.push(`MULTIPLE_DEFAULT_RELATIONS:${element.id}`);
+      }
+      for(const relation of conditional){
+        if(!relation.conditionRef)blockers.push(`CONDITIONAL_WITHOUT_RULE:${relation.id}`);
+        else if(!conditionRefs.has(relation.conditionRef))blockers.push(`CONDITION_RULE_NOT_COMPILED:${relation.id}`);
+      }
+      if(element.kind==='DECISION_COORDINATION'&&outgoing.length<2){
+        blockers.push(`DECISION_OUTCOME_COUNT:${element.id}`);
+      }
+    }else{
+      const deterministic=outgoing.filter((relation)=>['SEQUENCE','DEFAULT','WAIT_RESUME'].includes(relation.relationKind));
+      if(deterministic.length!==1||deterministic.length!==outgoing.length){
+        blockers.push(`AMBIGUOUS_ROUTING:${element.id}`);
+      }
+    }
+  }
+  if(entries.length===1){
+    const visited=new Set<string>();
+    const queue=[entries[0]!.id];
+    while(queue.length){
+      const current=queue.shift()!;
+      if(visited.has(current))continue;
+      visited.add(current);
+      for(const relation of relations.filter((candidate)=>candidate.sourceElementRef===current)){
+        if(ids.has(relation.targetElementRef)&&!visited.has(relation.targetElementRef))queue.push(relation.targetElementRef);
+      }
+    }
+    for(const element of elements)if(!visited.has(element.id))blockers.push(`UNREACHABLE_ELEMENT:${element.id}`);
+  }
+  return [...new Set(blockers)].sort();
+}
+
 function manifestFor(context:OneAppAutomationContext){
   const execution=context.executionReview?.execution;
   const mapping=context.mapping;
@@ -91,7 +158,7 @@ function manifestFor(context:OneAppAutomationContext){
     throw new TypeError('Temporal export mapping/execution lineage mismatch');
   }
   const conditions=compiledConditions(context);
-  const blockers:string[]=[];
+  const executionBlockers:string[]=[];
   const elements=execution.elements.map((element)=>{
     const subjectRef=element.semanticSubjectRefs[0];
     const node=subjectRef?context.process.nodes.find((candidate)=>candidate.id===subjectRef):undefined;
@@ -106,15 +173,16 @@ function manifestFor(context:OneAppAutomationContext){
         }
       : null;
     if(element.kind==='WAIT_COORDINATION'&&constructs.includes('DURABLE_TIMER')&&wait?.durationMs===null){
-      blockers.push(`WAIT_DURATION_NOT_PORTABLE:${element.id}`);
+      executionBlockers.push(`WAIT_DURATION_NOT_PORTABLE:${element.id}`);
     }
     if(element.kind==='CAPABILITY_INVOCATION'){
-      for(const useRef of element.capabilityUseRefs)blockers.push(`ACTIVITY_ADAPTER_REQUIRED:${useRef}`);
+      for(const useRef of element.capabilityUseRefs)executionBlockers.push(`ACTIVITY_ADAPTER_REQUIRED:${useRef}`);
     }
     return {
       id:element.id,
       kind:element.kind,
       businessName:node?.name??node?.kind??element.kind,
+      semanticKind:node?.kind??null,
       semanticSubjectRefs:[...element.semanticSubjectRefs],
       capabilityUseRefs:[...element.capabilityUseRefs],
       constructKinds:constructs,
@@ -135,7 +203,12 @@ function manifestFor(context:OneAppAutomationContext){
   const incoming=new Map(elements.map((element)=>[element.id,0]));
   for(const relation of relations)incoming.set(relation.targetElementRef,(incoming.get(relation.targetElementRef)??0)+1);
   const entries=elements.filter((element)=>(incoming.get(element.id)??0)===0);
-  if(entries.length!==1)blockers.push(`GRAPH_ENTRY_COUNT:${entries.length}`);
+  const structuralBlockers=portableGraphBlockers(elements,relations,new Set(conditions.map((condition)=>condition.ref)));
+  const blockers=[...new Set([...structuralBlockers,...executionBlockers])].sort();
+  const temporalDesignReady=structuralBlockers.length===0;
+  const temporalExportReady=temporalDesignReady;
+  const temporalExecutionReady=temporalExportReady&&executionBlockers.length===0;
+  const activityElementIds=new Set(elements.filter((element)=>element.kind==='CAPABILITY_INVOCATION').map((element)=>element.id));
   return {
     schemaVersion:'talos.portable-temporal-manifest.v1',
     processRevisionId:context.process.id,
@@ -146,22 +219,24 @@ function manifestFor(context:OneAppAutomationContext){
     workflow:{workflowTypeName:'TalosPortableWorkflow',entryElementRef:entries[0]?.id??null},
     graph:{elements,relations},
     conditions,
-    activities:execution.capabilityUses.map((use)=>({
-      capabilityUseRef:use.id,
-      executionElementRef:use.executionElementRef,
-      semanticSubjectRefs:[...use.semanticSubjectRefs],
-      adapter:'REQUIRED',
-    })),
+    activities:execution.capabilityUses
+      .filter((use)=>activityElementIds.has(use.executionElementRef))
+      .map((use)=>({
+        capabilityUseRef:use.id,
+        executionElementRef:use.executionElementRef,
+        semanticSubjectRefs:[...use.semanticSubjectRefs],
+        adapter:'REQUIRED',
+      })),
     authority:{
       deploymentAuthorized:false,
       executionAuthorized:false,
       automaticAuthorityGranted:false,
     },
     readiness:{
-      temporalDesignReady:true,
-      temporalExportReady:true,
-      temporalExecutionReady:blockers.length===0,
-      blockers:[...new Set(blockers)].sort(),
+      temporalDesignReady,
+      temporalExportReady,
+      temporalExecutionReady,
+      blockers,
     },
   };
 }
@@ -400,8 +475,8 @@ This package was generated from an explicitly confirmed Talos process and its ap
 
 ## Readiness
 
-- Temporal design ready: **YES**
-- Temporal export ready: **YES**
+- Temporal design ready: **${manifest.readiness.temporalDesignReady?'YES':'NO'}**
+- Temporal export ready: **${manifest.readiness.temporalExportReady?'YES':'NO'}**
 - Temporal execution ready: **${manifest.readiness.temporalExecutionReady?'YES':'NO'}**
 
 ${blockers.length?`Execution blockers:\n\n${blockers.map((item)=>`- \`${item}\``).join('\n')}`:'No portable execution blockers were detected.'}

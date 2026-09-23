@@ -147,6 +147,29 @@ function outgoing(process: ProcessRevision, nodeId: CanonicalId): ProcessEdge[] 
   return process.edges.filter((edge) => edge.sourceNodeId === nodeId);
 }
 
+function waitDurationText(node: ProcessNode): string | undefined {
+  const value = node.details?.duration ?? node.details?.expression;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function waitDurationIso(node: ProcessNode): string | undefined {
+  const expression = waitDurationText(node);
+  if (!expression) return undefined;
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(milliseconds?|ms|seconds?|secs?|segundos?|minutes?|mins?|minutos?|hours?|hrs?|horas?|days?|d[ií]as?)\s*$/i.exec(expression);
+  if (!match) return undefined;
+  const amount = Number(match[1]!.replace(',', '.'));
+  const unit = match[2]!.toLowerCase();
+  const factor = /^(millisecond|ms)/.test(unit) ? 0.001
+    : /^(second|sec|segundo)/.test(unit) ? 1
+      : /^(hour|hr|hora)/.test(unit) ? 3_600
+        : /^(day|d[ií]a)/.test(unit) ? 86_400
+          : 60;
+  const seconds = amount * factor;
+  if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+  const normalized = Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
+  return `PT${normalized}S`;
+}
+
 function chooseNodeKind(
   process: ProcessRevision,
   node: ProcessNode,
@@ -181,12 +204,14 @@ function chooseNodeKind(
     case 'JOIN':
       return 'parallelGateway';
     case 'WAIT':
-      diagnostics.push({
-        code: 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED',
-        targetRef: node.id,
-        severity: 'INFO',
-        message: 'WAIT is rendered for business review without a BPMN timerEventDefinition. Executable timing belongs to later automation design.',
-      });
+      if (!waitDurationIso(node)) {
+        diagnostics.push({
+          code: 'WAIT_EXECUTION_TIMING_NOT_MATERIALIZED',
+          targetRef: node.id,
+          severity: 'INFO',
+          message: 'WAIT is rendered as an intermediate catch event, but its timing could not be losslessly materialized as a BPMN timer duration.',
+        });
+      }
       return 'intermediateCatchEvent';
     case 'SUBPROCESS':
       return 'subProcess';
@@ -282,7 +307,13 @@ function renderNode(node: ProjectedNode, defaultFlowBySource: Map<string, string
   if (node.kind === 'subProcess') {
     return `<bpmn:subProcess id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:subProcess>`;
   }
-  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}</bpmn:${node.kind}>`;
+  const timerDuration = node.kind === 'intermediateCatchEvent' && node.canonical.kind === 'WAIT'
+    ? waitDurationIso(node.canonical)
+    : undefined;
+  const timer = timerDuration
+    ? `<bpmn:timerEventDefinition><bpmn:timeDuration xsi:type="bpmn:tFormalExpression">${timerDuration}</bpmn:timeDuration></bpmn:timerEventDefinition>`
+    : '';
+  return `<bpmn:${node.kind} id="${node.bpmnId}"${name}${defaultAttr}>${ext}${timer}</bpmn:${node.kind}>`;
 }
 
 function renderRule(edge: ProjectedEdge): string {
@@ -294,7 +325,8 @@ function renderRule(edge: ProjectedEdge): string {
 }
 
 function renderEdge(edge: ProjectedEdge): string {
-  const name = edge.canonical.label ? ` name="${xmlEscape(edge.canonical.label)}"` : '';
+  const displayLabel = edge.canonical.label ?? edge.rule?.naturalLanguage;
+  const name = displayLabel ? ` name="${xmlEscape(displayLabel)}"` : '';
   return `<bpmn:sequenceFlow id="${edge.bpmnId}" sourceRef="${edge.sourceBpmnId}" targetRef="${edge.targetBpmnId}"${name}>${renderRule(edge)}</bpmn:sequenceFlow>`;
 }
 
