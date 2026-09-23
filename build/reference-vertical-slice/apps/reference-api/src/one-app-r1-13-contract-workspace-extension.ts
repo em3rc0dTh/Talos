@@ -14,13 +14,14 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   body.r111dSimple.r113ImplementationChosen #r111dPrepareTemporal{display:none!important}
   .r113SourceVisual{margin-top:12px;border:1px solid #2d465d;border-radius:14px;background:#071019;padding:12px}.r113SourceVisualTop{display:flex;justify-content:space-between;align-items:center;gap:10px}.r113SourceVisualTop strong{font-size:12px}.r113SourceTools{display:flex;gap:6px;flex-wrap:wrap}.r113SourceTools button{font-size:9px;padding:6px 8px;background:#18283a;color:#dce9f4;border:1px solid #344b63}.r113SourceTools button.danger{border-color:#70404a;background:#2a1117;color:#ffd7dd}.r113SourceTools button:disabled{opacity:.42;cursor:not-allowed}.r113SourceBoard{position:relative;height:360px;margin-top:10px;border:1px solid #203448;border-radius:12px;background:radial-gradient(circle at 1px 1px,#1c2c3c 1px,transparent 1px);background-size:20px 20px;overflow:auto}.r113SourceEdges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.r113SourceNode{position:absolute;width:140px;min-height:52px;border:1px solid #3b536c;border-radius:11px;background:#111e2b;padding:9px;color:#edf6ff;font-size:10px;cursor:move;user-select:none;box-sizing:border-box}.r113SourceNode strong{display:block;font-size:10px;line-height:1.25}.r113SourceNode small{display:block;margin-top:4px;color:#86a0b7;font-size:8px;letter-spacing:.06em}.r113SourceNode.selected{outline:2px solid #66e4bd}.r113SourceNode[data-kind=DECISION]{border-color:#8b70d0}.r113SourceNode[data-kind=WAIT]{border-color:#b08742}.r113SourceNode[data-kind=START],.r113SourceNode[data-kind=END]{border-radius:999px;text-align:center;width:92px}.r113Inspector{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;margin-top:10px;padding:10px;border:1px solid #263d52;border-radius:10px;background:#0a151f}.r113Inspector label{font-size:10px;color:#9db0c2}.r113Inspector input,.r113Inspector select{width:100%;background:#0e1823;color:#eef5fb;border:1px solid #334a63;border-radius:8px;padding:8px}.r113InspectorHint{grid-column:1/-1;font-size:9px;color:#7f93a7}.r113Advanced{margin-top:9px;border:1px solid #24384c;border-radius:9px;padding:8px}.r113Advanced summary{cursor:pointer;font-size:10px;color:#98acc0}
   body.r111dSimple .r113Advanced .r111dCanvasRows,body.r111dSimple .r113Advanced .r111dConnections{display:grid!important}
-  @media(max-width:800px){.r113Head{display:block}.r113Status{display:inline-block;margin-top:8px}.r113Readiness{grid-template-columns:1fr}.r113GraphInner{min-width:720px}}
+  .r113ResumeWrap{display:flex;align-items:center;gap:8px}.r113Resume{display:none;border:1px solid #36516b;border-radius:9px;background:#132235;color:#dcecff;padding:8px 10px;font:inherit;cursor:pointer}.r113Resume.show{display:inline-block}
+  @media(max-width:800px){.r113Head{display:block}.r113Status{display:inline-block;margin-top:8px}.r113ResumeWrap{margin-top:8px}.r113Readiness{grid-template-columns:1fr}.r113GraphInner{min-width:720px}}
 </style>
 <script>
 (function(){
   'use strict';
   var priorFetch=window.fetch.bind(window);
-  var latestRevision=null,latestProcess=null,latestMapping=null,latestApprovalId=null,latestTemporalExport=null,latestCanvasRevision=null,latestSourceKind=null,sourceRequestPending=false;
+  var latestRevision=null,latestProcess=null,latestMapping=null,latestApprovalId=null,latestTemporalExport=null,latestCanvasRevision=null,latestSourceKind=null,sourceRequestPending=false,recoveredWorkspaceCandidate=null;
   var sourcePositions={},sourceSelected=null,sourceConnectFrom=null,dragOffset=null;
 
   function byId(id){return document.getElementById(id)}
@@ -32,13 +33,14 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     if(byId('r113Workspace'))return;
     var run=byId('r111dRun'),host=run&&run.parentNode?run.parentNode:document.body;
     var box=document.createElement('section');box.id='r113Workspace';box.className='r113Workspace';
-    box.innerHTML='<div class="r113Head"><div><h2>Process translation workspace</h2><p>One confirmed business process, three useful representations. Export BPMN or Temporal and stop whenever you want. Implementation is optional.</p></div><span id="r113Status" class="r113Status">Waiting for process</span></div>'+
+    box.innerHTML='<div class="r113Head"><div><h2>Process translation workspace</h2><p>One confirmed business process, three useful representations. Export BPMN or Temporal and stop whenever you want. Implementation is optional.</p></div><div class="r113ResumeWrap"><span id="r113Status" class="r113Status">Waiting for process</span><button id="r113ResumePrevious" class="r113Resume" type="button">Resume previous process</button></div></div>'+
       '<div class="r113Tabs"><button class="r113Tab active" data-view="canvas">Business Canvas</button><button class="r113Tab" data-view="bpmn">BPMN</button><button class="r113Tab" data-view="temporal">Temporal</button></div>'+
       '<section id="r113CanvasPanel" class="r113Panel active"><div class="r113PanelTop"><div><strong>Business Canvas</strong><span> · confirmed business meaning</span></div><div class="r113Actions"><button id="r113EditVisual" disabled>Edit visually</button><button id="r113CopyCanvas" disabled>Copy Canvas JSON</button><button id="r113DownloadCanvas" disabled>Download .talos.json</button></div></div><div id="r113CanvasGraph" class="r113Graph"><div class="r113Empty">Bring a process into Talos to see the visual business model.</div></div><div id="r113CanvasState" style="font-size:10px;color:#91a5b8;margin-top:7px"></div></section>'+
       '<section id="r113BpmnPanel" class="r113Panel"><div class="r113PanelTop"><div><strong>BPMN</strong><span> · standards-based representation</span></div><div class="r113Actions"><button id="r113CopyBpmn" disabled>Copy XML</button><button id="r113DownloadBpmn" disabled>Download .bpmn</button></div></div><div id="r113BpmnGraph" class="r113Graph"><div class="r113Empty">BPMN becomes available from the reviewed process lineage.</div></div><pre id="r113BpmnXml" class="r113Xml">No BPMN XML yet.</pre><div id="r113BpmnState" style="font-size:10px;color:#91a5b8;margin-top:7px"></div></section>'+
       '<section id="r113TemporalPanel" class="r113Panel"><div class="r113PanelTop"><div><strong>Temporal Workflow</strong><span> · exportable before implementation</span></div><div class="r113Actions"><button id="r113PrepareTemporal" disabled>Prepare Temporal design</button><button id="r113CopyWorkflow" disabled>Copy workflow</button><button id="r113DownloadTemporal" disabled>Download package</button><button id="r113Implement" class="primary" disabled>Implement with Temporal</button></div></div><div id="r113TemporalReadiness" class="r113Readiness"></div><div id="r113TemporalGraph" class="r113Graph"><div class="r113Empty">Approve the automation design, then prepare a Temporal translation. Nothing is deployed by preparing or exporting it.</div></div><pre id="r113WorkflowSource" class="r113Xml">No Temporal workflow source yet.</pre><div id="r113TemporalState" style="font-size:10px;color:#91a5b8;margin-top:7px"></div></section>';
     if(run&&run.parentNode)run.parentNode.insertBefore(box,run);else host.appendChild(box);
     Array.from(box.querySelectorAll('.r113Tab')).forEach(function(button){button.addEventListener('click',function(){selectTab(this.dataset.view)})});
+    byId('r113ResumePrevious').onclick=function(){resumeRecoveredWorkspace()};
     byId('r113EditVisual').onclick=function(){seedEditableCanvasFromProcess()};
     byId('r113CopyCanvas').onclick=function(){loadCanvasExport().then(function(value){if(value)copyText(JSON.stringify(value,null,2)+'\\n','r113CanvasState')})};
     byId('r113DownloadCanvas').onclick=function(){
@@ -56,6 +58,32 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     var steps=Array.from(document.querySelectorAll('.r111dStep'));if(steps[3])steps[3].innerHTML='<strong>4 · Translate</strong>Prepare outputs';if(steps[4])steps[4].innerHTML='<strong>5 · Implement</strong>Optional';
   }
 
+  function hideResumePrevious(){
+    var button=byId('r113ResumePrevious');if(button)button.classList.remove('show');
+  }
+
+  function offerRecoveredWorkspace(body){
+    recoveredWorkspaceCandidate=body;
+    var status=byId('r113Status');if(status)status.textContent='Previous process available';
+    var button=byId('r113ResumePrevious');if(button)button.classList.add('show');
+    var state=byId('r113CanvasState');if(state)state.textContent='A previous process exists in durable history. It is not loaded into this new session unless you choose Resume previous process.';
+  }
+
+  async function resumeRecoveredWorkspace(){
+    if(sourceRequestPending)return;
+    var body=recoveredWorkspaceCandidate;
+    if(!body){await recoverTranslationWorkspace();body=recoveredWorkspaceCandidate}
+    if(!body||!body.available)return;
+    hideResumePrevious();
+    latestApprovalId=body.automation&&body.automation.approvalId||null;
+    latestMapping=body.automation&&body.automation.temporalMappingRevisionId?{revision:{id:body.automation.temporalMappingRevisionId}}:null;
+    updateProcess({revision:body.bpmnRevision,reconciliation:{processRevision:body.process},sourceKind:body.sourceKind,canvasRevision:body.canvasRevision});
+    var status=byId('r113Status');if(status)status.textContent='RESUMED · '+((body.confirmation&&body.confirmation.status)||'REVIEW');
+    var state=byId('r113CanvasState');if(state)state.textContent='Resumed from durable Talos history. No deployment or execution authority was restored.';
+    if(latestApprovalId){var prepare=byId('r113PrepareTemporal');if(prepare)prepare.disabled=false}
+    if(latestApprovalId&&latestMapping)await loadTemporalExport();
+  }
+
   function sourceLabel(path){
     if(path.indexOf('/api/input/image')!==-1)return'image';
     if(path.indexOf('/api/input/bpmn')!==-1)return'BPMN';
@@ -64,7 +92,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   }
 
   function resetTranslationWorkspaceForSource(path){
-    sourceRequestPending=true;
+    sourceRequestPending=true;recoveredWorkspaceCandidate=null;hideResumePrevious();
     latestRevision=null;latestProcess=null;latestMapping=null;latestApprovalId=null;latestTemporalExport=null;latestCanvasRevision=null;latestSourceKind=null;
     installWorkspace();
     var label=sourceLabel(path),status=byId('r113Status');if(status)status.textContent='NEW '+label.toUpperCase()+' · PREPARING';
@@ -159,6 +187,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   }
 
   function updateProcess(body){
+    hideResumePrevious();recoveredWorkspaceCandidate=null;
     if(body&&body.revision&&typeof body.revision.bpmnXml==='string')latestRevision=body.revision;
     if(body&&body.sourceKind)latestSourceKind=body.sourceKind;
     if(body&&body.canvasRevision){
@@ -374,16 +403,13 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     if(sourceRequestPending)return;
     try{
       var response=await priorFetch('/api/product/workspace-state');if(!response.ok)return;var body=await response.json();if(!body.available)return;
-      updateProcess({revision:body.bpmnRevision,reconciliation:{processRevision:body.process},sourceKind:body.sourceKind,canvasRevision:body.canvasRevision});
-      var state=byId('r113CanvasState');if(state)state.textContent='Recovered from durable Talos history. No deployment or execution authority was restored.';
-      if(body.automation&&body.automation.approvalId&&body.automation.temporalMappingRevisionId){
-        latestApprovalId=body.automation.approvalId;latestMapping={revision:{id:body.automation.temporalMappingRevisionId}};
-        var prepare=byId('r113PrepareTemporal');if(prepare)prepare.disabled=false;await loadTemporalExport();
-      }
-    }catch(error){var state=byId('r113CanvasState');if(state)state.textContent='Talos could not reconstruct the previous workspace view. Durable records were not changed.'}
+      offerRecoveredWorkspace(body);
+    }catch(error){
+      var state=byId('r113CanvasState');if(state)state.textContent='Talos could not check previous durable history. Start a new process normally.';
+    }
   }
 
-  installWorkspace();setTimeout(function(){installVisualSourceCanvas();recoverTranslationWorkspace()},0);setTimeout(recoverDurableWorkspace,0);
+  installWorkspace();setTimeout(function(){installVisualSourceCanvas();recoverTranslationWorkspace()},0);
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){var ws=byId('r113Workspace');if(ws)ws.classList.add('open');var status=byId('r113Status');if(status)status.textContent='CONFIRMED PROCESS'});
   window.addEventListener('talos:r1-06-automation-approved',function(event){latestApprovalId=event&&event.detail&&event.detail.approvalId||latestApprovalId;var button=byId('r113PrepareTemporal');if(button)button.disabled=!latestApprovalId;var ws=byId('r113Workspace');if(ws){ws.classList.add('open');ws.scrollIntoView({behavior:'smooth',block:'start'})}selectTab('temporal')});
   window.addEventListener('talos:r1-11d-temporal-ready',function(event){latestMapping=event&&event.detail&&event.detail.mapping||null;if(latestMapping)loadTemporalExport()});

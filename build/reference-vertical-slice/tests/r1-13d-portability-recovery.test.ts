@@ -214,3 +214,21 @@ test('R1-13D product workspace does not render durable history as the output of 
     rmSync(runtimeDir, { recursive: true, force: true });
   }
 });
+
+
+test('R1-13D fresh product session keeps durable history behind an explicit Resume previous process action',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-explicit-resume-'));
+  let app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const created=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasInput())});
+    assert.equal(created.status,201);
+  }finally{await app.close()}
+  app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const html=await fetch(app.baseUrl).then((response)=>response.text());
+    assert.match(html,/Resume previous process/);
+    assert.match(html,/A previous process exists in durable history\. It is not loaded into this new session unless you choose Resume previous process\./);
+    assert.match(html,/offerRecoveredWorkspace\(body\)/);
+    assert.doesNotMatch(html,/setTimeout\(recoverDurableWorkspace,0\)/);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
