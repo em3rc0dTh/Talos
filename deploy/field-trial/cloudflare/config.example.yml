@@ -1,0 +1,9 @@
+# Copy is not required when using scripts/start-cloudflare-field-trial.ps1.
+# This file documents the intended ingress shape only.
+tunnel: <TUNNEL_UUID>
+credentials-file: C:/Users/YOUR_WINDOWS_USER/.cloudflared/<TUNNEL_UUID>.json
+
+ingress:
+  - hostname: talos-test.vtkall.com
+    service: http://localhost:8787
+  - service: http_status:404
