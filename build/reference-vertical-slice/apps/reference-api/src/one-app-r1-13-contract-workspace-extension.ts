@@ -187,7 +187,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   }
 
   function updateProcess(body){
-    hideResumePrevious();recoveredWorkspaceCandidate=null;
+    sourceRequestPending=false;hideResumePrevious();recoveredWorkspaceCandidate=null;
     if(body&&body.revision&&typeof body.revision.bpmnXml==='string')latestRevision=body.revision;
     if(body&&body.sourceKind)latestSourceKind=body.sourceKind;
     if(body&&body.canvasRevision){
@@ -199,6 +199,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     if(!latestProcess)return;
     installWorkspace();var ws=byId('r113Workspace');if(ws)ws.classList.add('open');var status=byId('r113Status');if(status)status.textContent=(latestProcess.semanticStatus||'PROCESS')+' · '+(body&&body.revision&&body.revision.state==='CONFIRMED'?'CONFIRMED':'REVIEW');
     renderGraph('r113CanvasGraph',latestProcess,'canvas');if(latestRevision&&latestRevision.bpmnXml)renderBpmnXmlDiagram(latestRevision.bpmnXml,latestProcess);else renderGraph('r113BpmnGraph',latestProcess,'bpmn');
+    var canvasState=byId('r113CanvasState');if(canvasState)canvasState.textContent='Current translation is based on the active process source.';
     var edit=byId('r113EditVisual');if(edit)edit.disabled=false;
     var portable=Boolean(latestCanvasRevision);var copyCanvas=byId('r113CopyCanvas'),downloadCanvas=byId('r113DownloadCanvas');if(copyCanvas)copyCanvas.disabled=!portable;if(downloadCanvas)downloadCanvas.disabled=!portable;
     if(latestRevision){var xml=byId('r113BpmnXml');if(xml)xml.textContent=latestRevision.bpmnXml||'';byId('r113CopyBpmn').disabled=false;byId('r113DownloadBpmn').disabled=false}

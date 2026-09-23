@@ -189,6 +189,13 @@ function materializeCommonEvidence(
     const target = resolvedEndpoint(relation.targetEndpointCandidates);
     const relationCandidateRef = relationCandidateIdByKey.get(relation.providerRelationKey)!;
     const role = preferredRole(relation);
+    const guardTexts = (relation.guardTextObservationKeys ?? [])
+      .map((key) => observationByKey.get(key)?.observedValue)
+      .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+      .map((value) => value.trim());
+    const guardObservationRefs = (relation.guardTextObservationKeys ?? [])
+      .map((key) => observationIdByKey.get(key))
+      .filter((id): id is SourceId => Boolean(id));
     const sourceExtensionRefs = unique([
       relationCandidateRef,
       ...relation.strokeObservationKeys.map((key) => observationIdByKey.get(key)).filter((id): id is SourceId => Boolean(id)),
@@ -196,6 +203,7 @@ function materializeCommonEvidence(
       ...(relation.roleAlternativeSetKey && alternativeSetIdByKey.get(relation.roleAlternativeSetKey)
         ? [alternativeSetIdByKey.get(relation.roleAlternativeSetKey)!]
         : []),
+      ...guardObservationRefs,
     ]);
     const descriptor: SourceRelationshipDescriptor = {
       sourceOccurrenceId: createOpaqueId('source', `image-relationship:${attemptId}:${relation.providerRelationKey}`),
@@ -208,6 +216,7 @@ function materializeCommonEvidence(
         candidates: relation.directionCandidates,
         perceptionRelationCandidateRef: relationCandidateRef,
       },
+      ...(guardTexts.length ? { conditionEvidence: { literalText: guardTexts.join(' / '), observationRefs: guardObservationRefs } } : {}),
       propertyEvidenceRefs: [],
       sourceExtensionRefs,
     };

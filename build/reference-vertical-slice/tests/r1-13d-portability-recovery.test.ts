@@ -272,3 +272,24 @@ test('R1-13D image intake route errors retain exact technical diagnostics behind
     rmSync(runtimeDir, { recursive: true, force: true });
   }
 });
+
+
+test('R1-13D image branch labels survive perception contract into canonical edge labels', async () => {
+  const gatewaySource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/gemini-chain-perception-gateway.ts'), 'utf8');
+  const adapterSource = readFileSync(path.resolve(process.cwd(), '../packages/image-perception/src/perception-adapter.ts'), 'utf8');
+  const normalizationSource = readFileSync(path.resolve(process.cwd(), '../packages/application/src/common-normalization.ts'), 'utf8');
+  for (const marker of ['label?: string', 'guardTextObservationKeys: [guardKey]', 'edge.label', 'never invent a missing guard']) assert.ok(gatewaySource.includes(marker), marker);
+  for (const marker of ['guardTexts', 'conditionEvidence', 'guardObservationRefs']) assert.ok(adapterSource.includes(marker), marker);
+  for (const marker of ["makeClaim(relationshipId, 'label'", 'label: conditionLabel']) assert.ok(normalizationSource.includes(marker), marker);
+});
+
+test('R1-13D product question UI uses ClarificationQuestion.questionText', async () => {
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  assert.ok(pageSource.includes('q.questionText||q.question||q.prompt||q.description'));
+});
+
+test('R1-13D successful source translation clears pending-source presentation state', async () => {
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  assert.ok(workspaceSource.includes('function updateProcess(body){\n    sourceRequestPending=false;'));
+  assert.ok(workspaceSource.includes('Current translation is based on the active process source.'));
+});

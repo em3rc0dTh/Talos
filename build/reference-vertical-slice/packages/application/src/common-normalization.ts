@@ -280,8 +280,15 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
     makeClaim(relationshipId, 'targetEndpointState', descriptor.targetEndpointState ?? 'UNKNOWN', fragment, makeLink(relationshipId, fragment, sourceOccurrenceId, 'targetEndpointState'));
 
     const edgeKind = mapRelationshipRole(descriptor.candidateRelationshipRole, descriptor.sourceAssertedRole);
+    const conditionLabel = typeof descriptor.conditionEvidence === 'string'
+      ? descriptor.conditionEvidence.trim()
+      : descriptor.conditionEvidence && typeof descriptor.conditionEvidence === 'object' && !Array.isArray(descriptor.conditionEvidence)
+        && typeof (descriptor.conditionEvidence as Record<string, unknown>).literalText === 'string'
+          ? String((descriptor.conditionEvidence as Record<string, unknown>).literalText).trim()
+          : '';
+    if (conditionLabel) makeClaim(relationshipId, 'label', conditionLabel, fragment, makeLink(relationshipId, fragment, sourceOccurrenceId, 'label'));
     if (edgeKind && sourceCanonical && targetCanonical && nodes.some((node) => node.id === sourceCanonical) && nodes.some((node) => node.id === targetCanonical)) {
-      edges.push({ id: relationshipId, sourceNodeId: sourceCanonical, targetNodeId: targetCanonical, kind: edgeKind, truthClass: profile.defaultTruthClass, provenanceRefs: [baseLink.id], sourceExtensionRefs: [] });
+      edges.push({ id: relationshipId, sourceNodeId: sourceCanonical, targetNodeId: targetCanonical, kind: edgeKind, ...(conditionLabel ? { label: conditionLabel } : {}), truthClass: profile.defaultTruthClass, provenanceRefs: [baseLink.id], sourceExtensionRefs: [] });
     } else if (edgeKind) {
       const extensionId = createOpaqueId('canonical', `common-incomplete-relationship:${relationshipId}`);
       extensions.push({ id: extensionId, notation: profile.sourceFamily, extensionType: 'INCOMPLETE_RELATIONSHIP', sourceArtifactId: artifact.id, sourceElementRefs: [String(descriptor.sourceOccurrenceId)], payload: { candidateRelationshipRole: descriptor.candidateRelationshipRole, sourceEndpointState: descriptor.sourceEndpointState, targetEndpointState: descriptor.targetEndpointState, ...(sourceCanonical ? { canonicalSourceRef: sourceCanonical } : {}), ...(targetCanonical ? { canonicalTargetRef: targetCanonical } : {}) }, preservationClass: 'SEMANTIC' });
