@@ -255,10 +255,13 @@ function publicAutomationWorkspace(context: OneAppAutomationContext) {
       ...bundle.workspace,
       requirements: bundle.workspace.requirements.map((requirement) => {
         const subject = context.process.nodes.find((node) => requirement.semanticSubjectRefs.includes(node.id));
+        const actor = context.process.actors.find((candidate) => subject?.actorRefs.includes(candidate.id));
         return {
           ...requirement,
           businessStepName: subject?.name ?? null,
           businessStepKind: subject?.kind ?? null,
+          businessActorLabel: actor?.name ?? null,
+          businessActorKind: actor?.kind ?? null,
         };
       }),
     },
