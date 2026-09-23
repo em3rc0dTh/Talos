@@ -232,3 +232,21 @@ test('R1-13D fresh product session keeps durable history behind an explicit Resu
     assert.doesNotMatch(html,/setTimeout\(recoverDurableWorkspace,0\)/);
   }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
 });
+
+
+test('R1-13D image safe-stop contract exposes provider decision details instead of a generic dead end', async () => {
+  const serverSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-server.ts'), 'utf8');
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  for (const marker of [
+    'providerStatus',
+    'reasonCodes',
+    'providerDiagnostics',
+    'SAFE_STOP_PROVIDER_FAILURE',
+    'vision model returned no reviewable business-process evidence',
+  ]) assert.ok(serverSource.includes(marker), marker);
+  for (const marker of [
+    "metric('Provider status',data.providerStatus)",
+    "metric('Reason',data.reasonCodes.join(', '))",
+    'data.userMessage||',
+  ]) assert.ok(pageSource.includes(marker), marker);
+});

@@ -743,6 +743,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         );
 
         if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          const perceptionDecision = result.perception.admission.decision;
+          const reasonCodes = result.perception.admission.reasonCodes;
+          const providerStatus = result.perception.admission.providerStatus;
+          const userMessage = perceptionDecision === 'SAFE_STOP_PROVIDER_FAILURE'
+            ? 'Talos preserved the image, but the vision provider failed before it could produce process evidence. Check the configured provider/authentication and retry.'
+            : 'Talos preserved and analyzed the image, but the vision model returned no reviewable business-process evidence. Try a clearer crop containing the process diagram, or use BPMN/Canvas.';
           json(res, 200, {
             status: result.status,
             sourceArtifactId: result.intake.artifact.id,
@@ -751,8 +757,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             width: result.intake.coordinateSpace.width,
             height: result.intake.coordinateSpace.height,
             mediaType: 'image/png',
-            perceptionDecision: result.perception.admission.decision,
+            perceptionDecision,
+            providerStatus,
+            reasonCodes,
+            providerDiagnostics: result.perception.providerResult.diagnostics,
             diagnostics: result.perception.attempt.diagnostics,
+            userMessage,
             automaticConfirmationAuthorized: false,
             automaticFreezeAuthorized: false,
             automaticExecutionAuthorized: false,
