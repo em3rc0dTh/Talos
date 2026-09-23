@@ -190,9 +190,23 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
 
   function installVisualSourceCanvas(){
     var canvas=byId('r111dCanvas');if(!canvas||byId('r113SourceVisual'))return;
-    var visual=document.createElement('section');visual.id='r113SourceVisual';visual.className='r113SourceVisual';visual.innerHTML='<div class="r113SourceVisualTop"><strong>Visual Canvas</strong><div class="r113SourceTools"><button id="r113Connect" type="button">Connect selected</button><button id="r113AutoLayout" type="button">Auto layout</button></div></div><div id="r113SourceBoard" class="r113SourceBoard"><svg id="r113SourceEdges" class="r113SourceEdges"></svg></div><div class="r113Inspector"><label>Selected step</label><input id="r113InspectorLabel" placeholder="Select a block"><label id="r113WaitKindLabel" style="display:none">Wait type</label><select id="r113InspectorWaitKind" style="display:none"><option value="DURATION">Duration</option><option value="CONDITION">Until condition</option><option value="SCHEDULE">Schedule</option><option value="DEADLINE">Deadline</option></select><label id="r113WaitExpressionLabel" style="display:none">Wait value</label><input id="r113InspectorWaitExpression" style="display:none" placeholder="e.g. 30 seconds"><div class="r113InspectorHint">Drag blocks to arrange them. Select a block, choose “Connect selected”, then click the target block. Detailed conditions remain available below.</div></div>';
+    var visual=document.createElement('section');visual.id='r113SourceVisual';visual.className='r113SourceVisual';visual.innerHTML='<div class="r113SourceVisualTop"><strong>Visual Canvas</strong><div class="r113SourceTools"><button id="r113ImportCanvas" type="button">Import saved Canvas</button><input id="r113ImportCanvasFile" type="file" accept=".json,.talos.json,application/json" hidden><button id="r113Connect" type="button">Connect selected</button><button id="r113AutoLayout" type="button">Auto layout</button></div></div><div id="r113SourceBoard" class="r113SourceBoard"><svg id="r113SourceEdges" class="r113SourceEdges"></svg></div><div class="r113Inspector"><label>Selected step</label><input id="r113InspectorLabel" placeholder="Select a block"><label id="r113WaitKindLabel" style="display:none">Wait type</label><select id="r113InspectorWaitKind" style="display:none"><option value="DURATION">Duration</option><option value="CONDITION">Until condition</option><option value="SCHEDULE">Schedule</option><option value="DEADLINE">Deadline</option></select><label id="r113WaitExpressionLabel" style="display:none">Wait value</label><input id="r113InspectorWaitExpression" style="display:none" placeholder="e.g. 30 seconds"><div class="r113InspectorHint">Drag blocks to arrange them. Select a block, choose “Connect selected”, then click the target block. Detailed conditions remain available below.</div></div>';
     var rows=canvas.querySelector('.r111dCanvasRows');canvas.insertBefore(visual,rows);
     var advanced=document.createElement('details');advanced.className='r113Advanced';advanced.innerHTML='<summary>Advanced structure & connection conditions</summary>';canvas.insertBefore(advanced,rows);advanced.appendChild(rows);var connections=canvas.querySelector('.r111dConnections');if(connections)advanced.appendChild(connections);
+    byId('r113ImportCanvas').onclick=function(){var input=byId('r113ImportCanvasFile');if(input)input.click()};
+    byId('r113ImportCanvasFile').addEventListener('change',async function(){
+      var file=this.files&&this.files[0],state=byId('r111dCanvasState');if(!file)return;
+      try{
+        if(state){state.className='r111dCanvasState';state.textContent='Verifying saved Canvas…'}
+        var nativeSource=JSON.parse(await file.text());
+        var response=await window.fetch('/api/input/canvas-native',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({nativeSource:nativeSource,initiatedBy:'one-app-product-user'})});
+        var body=await response.json();if(!response.ok)throw new Error(body.userMessage||body.error||('HTTP '+response.status));
+        if(body.status!=='BPMN_READY_FOR_PROCESS_REVIEW')throw new Error(body.userMessage||'Talos imported the Canvas but cannot review it yet.');
+        if(window.talosProductCanvas&&window.talosProductCanvas.acceptInputResult)window.talosProductCanvas.acceptInputResult(body);
+        if(state){state.className='r111dCanvasState good';state.textContent='Saved Canvas imported and ready for review.'}
+      }catch(error){if(state){state.className='r111dCanvasState bad';state.textContent=error instanceof Error?error.message:String(error)}}
+      finally{this.value=''}
+    });
     byId('r113Connect').onclick=function(){if(!sourceSelected)return;sourceConnectFrom=sourceSelected;this.textContent='Choose target…'};
     byId('r113AutoLayout').onclick=function(){sourcePositions={};renderSourceCanvas()};
     byId('r113InspectorLabel').addEventListener('input',function(){if(!sourceSelected)return;var row=document.querySelector('.r111dCanvasRow[data-id="'+CSS.escape(sourceSelected)+'"]');if(row){var input=row.querySelector('.r111dLabel');input.value=this.value;input.dispatchEvent(new Event('input',{bubbles:true}));renderSourceCanvas()}});
@@ -221,7 +235,19 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     ensureSourcePositions();
     return{nodeLayouts:sourceRows().map(function(row){var pos=sourcePositions[row.dataset.id]||{x:0,y:0};return{clientElementId:row.dataset.id,x:Math.round(pos.x),y:Math.round(pos.y)}}),viewport:{mode:'BUSINESS_CANVAS'},zoom:1};
   };
-  installWorkspace();setTimeout(installVisualSourceCanvas,0);setTimeout(recoverDurableWorkspace,0);
+  async function recoverTranslationWorkspace(){
+    try{
+      var response=await priorFetch('/api/product/workspace-state');if(!response.ok)return;var body=await response.json();if(!body.available)return;
+      updateProcess({revision:body.bpmnRevision,reconciliation:{processRevision:body.process},sourceKind:body.sourceKind,canvasRevision:body.canvasRevision});
+      var state=byId('r113CanvasState');if(state)state.textContent='Recovered from durable Talos history. No deployment or execution authority was restored.';
+      if(body.automation&&body.automation.approvalId&&body.automation.temporalMappingRevisionId){
+        latestApprovalId=body.automation.approvalId;latestMapping={revision:{id:body.automation.temporalMappingRevisionId}};
+        var prepare=byId('r113PrepareTemporal');if(prepare)prepare.disabled=false;await loadTemporalExport();
+      }
+    }catch(error){var state=byId('r113CanvasState');if(state)state.textContent='Talos could not reconstruct the previous workspace view. Durable records were not changed.'}
+  }
+
+  installWorkspace();setTimeout(function(){installVisualSourceCanvas();recoverTranslationWorkspace()},0);setTimeout(recoverDurableWorkspace,0);
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){var ws=byId('r113Workspace');if(ws)ws.classList.add('open')});
   window.addEventListener('talos:r1-06-automation-approved',function(event){latestApprovalId=event&&event.detail&&event.detail.approvalId||latestApprovalId;var button=byId('r113PrepareTemporal');if(button)button.disabled=!latestApprovalId;var ws=byId('r113Workspace');if(ws){ws.classList.add('open');ws.scrollIntoView({behavior:'smooth',block:'start'})}selectTab('temporal')});
   window.addEventListener('talos:r1-11d-temporal-ready',function(event){latestMapping=event&&event.detail&&event.detail.mapping||null;if(latestMapping)loadTemporalExport()});

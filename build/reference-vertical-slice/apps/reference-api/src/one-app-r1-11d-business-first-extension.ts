@@ -130,7 +130,7 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   }
   async function submitCanvas(){
     var state=byId('r111dCanvasState');var button=byId('r111dReviewCanvas');button.disabled=true;state.className='r111dCanvasState';state.textContent='Preparing your process for review…';
-    try{var response=await fetch('/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasPayload())});var body=await response.json();if(!response.ok)throw new Error(body.userMessage||body.error||('HTTP '+response.status));if(body.status!=='BPMN_READY_FOR_PROCESS_REVIEW')throw new Error(body.userMessage||'Talos saved the process but cannot review it yet.');state.className='r111dCanvasState good';state.textContent='Process ready for review.';hasCandidate=true;renderProductCandidate(body.reconciliation,'READY · NOT CONFIRMED');setStage('review')}
+    try{var response=await fetch('/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasPayload())});var body=await response.json();if(!response.ok)throw new Error(body.userMessage||body.error||('HTTP '+response.status));if(body.status!=='BPMN_READY_FOR_PROCESS_REVIEW')throw new Error(body.userMessage||'Talos saved the process but cannot review it yet.');state.className='r111dCanvasState good';state.textContent='Process ready for review.';acceptCanvasInputResult(body)}
     catch(error){state.className='r111dCanvasState bad';state.textContent=error instanceof Error?error.message:String(error)}
     finally{button.disabled=false}
   }
@@ -380,6 +380,11 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     var open=byId('r105Open');if(open)open.textContent='Let Talos prepare an automation proposal';
     var design=byId('r105AutomationDesign');if(design){var h3=design.querySelector('h3');if(h3)h3.textContent='Prepare automation';var intro=design.querySelector('p');if(intro)intro.textContent='Talos will propose a safe automation draft from the process you already confirmed. You review the proposal, not every internal binding.'}
   }
+  function acceptCanvasInputResult(body){
+    if(!body||body.status!=='BPMN_READY_FOR_PROCESS_REVIEW'||!body.reconciliation)throw new Error('Talos Canvas result is not ready for review.');
+    hasCandidate=true;renderProductCandidate(body.reconciliation,'READY · NOT CONFIRMED');setStage('review');
+  }
+
   function resetCanvas(){
     canvasRows().forEach(function(row){row.remove()});Array.from(document.querySelectorAll('.r111dConnection')).forEach(function(row){row.remove()});canvasCounter=0;connectionCounter=0;refreshConnectionSelects();
   }
@@ -389,7 +394,8 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
     addConnection:addConnection,
     reset:resetCanvas,
     payload:canvasPayload,
-    refresh:refreshConnectionSelects
+    refresh:refreshConnectionSelects,
+    acceptInputResult:acceptCanvasInputResult
   };
   window.talosProductJourney={setStage:setStage,selectMode:selectMode};
   installJourney();installSourceChooser();installContinue();installAutomationGuide();installRun();installCopy();setStage('process');

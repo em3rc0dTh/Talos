@@ -18,3 +18,4 @@ export * from './image-process-confirmation.ts';
 export * from './semantic-resolution.ts';
 
 export * from './product-canvas-intake.ts';
+export * from './product-canvas-native-import.ts';

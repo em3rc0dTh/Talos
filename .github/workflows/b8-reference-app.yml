@@ -2,6 +2,7 @@ name: B8 Tryable Talos reference app
 
 on:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/b8-reference-app.yml'
       - 'build/reference-vertical-slice/apps/reference-api/**'

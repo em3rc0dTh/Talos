@@ -20,6 +20,7 @@ import {
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
   prepareProductCanvasSource,
+  productCanvasInputFromNativeSource,
   persistOneAppWorkflowExecutionObservation,
   proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
@@ -393,6 +394,64 @@ function exactBpmnXmlForSession(repo:SqliteDocumentStore,session:OneAppSession):
   return candidates[0].bpmnXml;
 }
 
+function latestPayloadByKind<T>(
+  repo: SqliteDocumentStore,
+  aggregateKind: string,
+  predicate: (payload: T) => boolean = () => true,
+): T | undefined {
+  const documents = repo.listByKind<T>(aggregateKind);
+  for (let index = documents.length - 1; index >= 0; index -= 1) {
+    if (predicate(documents[index]!.payload)) return documents[index]!.payload;
+  }
+  return undefined;
+}
+
+function buildTranslationWorkspaceState(repo: SqliteDocumentStore) {
+  const bpmnRevision = latestPayloadByKind<any>(repo, 'BpmnProcessRevision',
+    (revision) => Boolean(revision?.canonicalProcessRevisionId && revision?.bpmnXml));
+  if (!bpmnRevision) {
+    return {
+      version: 'talos.translation-workspace-state.v1',
+      available: false,
+      automaticAuthorityGranted: false,
+      authorityRehydrated: false,
+    };
+  }
+  const processDocument = repo.get<any>(bpmnRevision.canonicalProcessRevisionId as OpaqueId);
+  const process = processDocument?.aggregateKind === 'ProcessRevision' ? processDocument.payload : undefined;
+  if (!process) throw new TypeError('Translation workspace lost the Canonical ProcessRevision pinned by BPMN');
+  const confirmation = latestPayloadByKind<any>(repo, 'BusinessProcessConfirmationRecord',
+    (candidate) => candidate?.bpmnRevisionId === bpmnRevision.id && candidate?.status === 'CONFIRMED');
+  const automationApproval = latestPayloadByKind<any>(repo, 'AutomationDesignApprovalRecord',
+    (candidate) => candidate?.processRevisionRef === process.id);
+  const temporalMapping = automationApproval
+    ? latestPayloadByKind<any>(repo, 'TemporalMappingRevision',
+        (candidate) => candidate?.executionPlanRevisionRef === automationApproval.executionPlanRevisionRef)
+    : undefined;
+  const canvasRevision = bpmnRevision.sourceRoute === 'TALOS_CANVAS'
+    ? latestPayloadByKind<any>(repo, 'CanvasRevision',
+        (candidate) => typeof candidate?.createdAt === 'string' && candidate.createdAt <= bpmnRevision.createdAt)
+    : undefined;
+  return {
+    version: 'talos.translation-workspace-state.v1',
+    available: true,
+    sourceKind: bpmnRevision.sourceRoute,
+    process,
+    bpmnRevision,
+    ...(canvasRevision ? { canvasRevision } : {}),
+    confirmation: {
+      status: confirmation ? 'CONFIRMED' : 'REVIEW',
+      confirmationId: confirmation?.id ?? null,
+    },
+    automation: {
+      approvalId: automationApproval?.id ?? null,
+      temporalMappingRevisionId: temporalMapping?.id ?? null,
+    },
+    automaticAuthorityGranted: false,
+    authorityRehydrated: false,
+  };
+}
+
 const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
 
 
@@ -608,6 +667,11 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/product/workspace-state') {
+        json(res, 200, buildTranslationWorkspaceState(repo));
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/api/process/bpmn/export') {
         const revisionId = text(url.searchParams.get('revisionId'), 'revisionId');
         const revision = workspace.getRevision(revisionId);
@@ -729,6 +793,60 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
           automaticConfirmationAuthorized: false,
           automaticFreezeAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/input/canvas-native') {
+        const input = await jsonBody(req);
+        const initiatedBy = typeof input.initiatedBy === 'string' && input.initiatedBy.trim() ? input.initiatedBy : 'one-app-user';
+        const converted = productCanvasInputFromNativeSource(input.nativeSource, initiatedBy);
+        const result = prepareProductCanvasSource(repo, converted);
+        if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          json(res, 200, {
+            status: result.status,
+            sourceKind: 'TALOS_CANVAS',
+            sourceArtifactId: result.preserved.artifact.id,
+            sourceRepresentationId: result.preserved.nativeRepresentation.id,
+            userMessage: 'Talos verified and imported the saved Canvas, but it could not prepare the review yet.',
+            automaticConfirmationAuthorized: false,
+            automaticAutomationDesignAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+        const review = initializeReview(repo, result.normalized.processRevision, result.validation, {
+          createdBy: initiatedBy,
+          sourceRepresentationRefs: [result.preserved.nativeRepresentation.id],
+          adapterResultContextRefs: [result.attempt.result!.id],
+        });
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: result.projection.bpmnRevision,
+          alignedBpmnRevision: result.projection.bpmnRevision,
+          processDefinition: result.normalized.processDefinition,
+          processRevision: result.normalized.processRevision,
+          validation: result.validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(result.projection.bpmnRevision.id, binding);
+        json(res, 201, {
+          status: 'BPMN_READY_FOR_PROCESS_REVIEW',
+          sourceKind: 'TALOS_CANVAS',
+          importedPortableCanvas: true,
+          canvasDefinition: result.definition,
+          canvasRevision: result.revision,
+          sourceArtifactId: result.preserved.artifact.id,
+          sourceRepresentationId: result.preserved.nativeRepresentation.id,
+          revision: result.projection.bpmnRevision,
+          reconciliation: publicReconciliation(binding),
+          projectionDiagnostics: result.projection.diagnostics,
+          unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticAutomationDesignAuthorized: false,
           automaticExecutionAuthorized: false,
         });
         return;
