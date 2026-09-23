@@ -135,3 +135,62 @@ test('R1-11C reconnects reconfirmation and freeze-blocker UX instead of a dead-e
   assert.match(source, /guidedResolutionAvailable/);
   assert.match(source, /automaticAuthorityGranted: false/);
 });
+
+
+test('R1-11C guided resolution can assign missing actor responsibility without inventing it', () => {
+  const processId = createOpaqueId('canonical', 'r1-11c:actor-process');
+  const start = createOpaqueId('canonical', 'r1-11c:actor-start');
+  const review = createOpaqueId('canonical', 'r1-11c:actor-review');
+  const end = createOpaqueId('canonical', 'r1-11c:actor-end');
+  const revision: ProcessRevision = {
+    id: createOpaqueId('canonical', 'r1-11c:actor-revision:1'),
+    processDefinitionId: processId,
+    revision: 1,
+    createdAt: '2026-09-23T17:30:00.000Z',
+    parentRevisionIds: [],
+    derivationKind: 'IMPORT',
+    sourceArtifactIds: [],
+    nodes: [
+      { id: start, kind: 'EVENT', name: 'Inicio', actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], truthClass: 'CONFIRMED', provenanceRefs: [], sourceExtensionRefs: [] },
+      { id: review, kind: 'HUMAN_INTERACTION', name: 'Revisar solicitud', actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], details: { responsibilityState: 'UNKNOWN', sourceProperties: {} }, truthClass: 'CONFIRMED', provenanceRefs: [], sourceExtensionRefs: [] },
+      { id: end, kind: 'END', name: 'Fin', actorRefs: [], inputRefs: [], outputRefs: [], ruleRefs: [], truthClass: 'CONFIRMED', provenanceRefs: [], sourceExtensionRefs: [] },
+    ],
+    edges: [
+      { id: createOpaqueId('canonical', 'r1-11c:actor-e1'), sourceNodeId: start, targetNodeId: review, kind: 'SEQUENCE', truthClass: 'CONFIRMED', provenanceRefs: [], sourceExtensionRefs: [] },
+      { id: createOpaqueId('canonical', 'r1-11c:actor-e2'), sourceNodeId: review, targetNodeId: end, kind: 'SEQUENCE', truthClass: 'CONFIRMED', provenanceRefs: [], sourceExtensionRefs: [] },
+    ],
+    actors: [], variables: [], dataObjects: [], rules: [], semanticClaims: [], conflictRecords: [], annotations: [], provenanceLinks: [], sourceExtensions: [],
+    semanticStatus: 'NORMALIZED', executionReadiness: 'NOT_ASSESSED', validationFindingRefs: [],
+  };
+  const validation = validateProcessRevision(revision);
+  const finding = validation.findings.find((item) => item.code === 'SV-ACT-001')!;
+  const question = validation.questions.find((item) => item.findingRefs.includes(finding.id))!;
+  const proposal = proposeGuidedSemanticResolution({
+    processRevision: revision,
+    validation,
+    answers: [{ kind: 'ACTOR_RESPONSIBILITY', questionRef: question.id, findingRef: finding.id, targetRef: review, actorName: 'Purchasing Manager', actorKind: 'HUMAN_ROLE' }],
+    authority: { answeredBy: 'business-user', authorityRef: 'ui:r1-11c:actor-answer', rationale: 'Purchasing Manager reviews requests.', answeredAt: '2026-09-23T17:31:00.000Z' },
+  });
+  const decision = decideGuidedSemanticResolution({
+    proposal, processRevision: revision, validation, decision: 'ACCEPT', decidedBy: 'business-user',
+    authorityRef: 'ui:r1-11c:actor-accept', rationale: 'Apply the confirmed responsibility.', decidedAt: '2026-09-23T17:32:00.000Z',
+  });
+  assert.equal(decision.decision, 'ACCEPT');
+  if (decision.decision !== 'ACCEPT') return;
+  const resolved = decision.resolvedRevision.nodes.find((item) => item.id === review)!;
+  assert.equal(resolved.actorRefs.length, 1);
+  assert.equal(decision.resolvedRevision.actors[0]?.name, 'Purchasing Manager');
+  assert.equal(decision.resolvedRevision.actors[0]?.kind, 'HUMAN_ROLE');
+  assert.equal((resolved.details?.sourceProperties as any)?.['propertyValues.actor']?.value, 'Purchasing Manager');
+  assert.equal(decision.validation.findings.some((item) => item.code === 'SV-ACT-001'), false);
+  assert.equal(decision.requiresProcessReconfirmation, true);
+  assert.equal(decision.authorizesAutomationDesign, false);
+});
+
+test('R1-11C simple UX exposes guided actor responsibility fields', () => {
+  const page = renderR111CGuidedResolutionUxPage(ONE_APP_PRODUCT_PAGE);
+  assert.match(page, /SV-ACT-001/);
+  assert.match(page, /ACTOR_RESPONSIBILITY/);
+  assert.match(page, /Responsible role, person, team, or system/);
+  assert.match(page, /Human role/);
+});

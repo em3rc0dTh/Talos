@@ -234,7 +234,7 @@ function publicFreezeBlockers(binding: ReconciledBinding) {
       blockerClass: finding.blockerClass,
       resolutionRoute: finding.resolutionRoute,
       question: questionsByFinding.get(finding.id) ?? null,
-      guidedResolutionSupported: ['SV-CFL-001', 'SV-SUB-002', 'SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code),
+      guidedResolutionSupported: ['SV-ACT-001', 'SV-CFL-001', 'SV-SUB-002', 'SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code),
     }));
   return {
     readiness: binding.validation.assessment.executionReadiness,
