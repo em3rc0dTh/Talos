@@ -293,3 +293,16 @@ test('R1-13D successful source translation clears pending-source presentation st
   assert.ok(workspaceSource.includes('function updateProcess(body){\n    sourceRequestPending=false;'));
   assert.ok(workspaceSource.includes('Current translation is based on the active process source.'));
 });
+
+
+test('R1-13D confirmed review refresh and BPMN label placement stay product-visible', async () => {
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  const confirmationSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-04-confirmation-extension.ts'), 'utf8');
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  assert.ok(pageSource.includes('window.talosProductRenderCandidate=renderCandidate'));
+  assert.ok(pageSource.includes("mode==='CONFIRMED'"));
+  assert.ok(pageSource.includes('reviewQuestionText(q,validation,process)'));
+  assert.ok(confirmationSource.includes("window.talosProductRenderCandidate(body.revision,body.reconciliation,'CONFIRMED')"));
+  assert.ok(workspaceSource.includes('function polylineMidpoint(points)'));
+  assert.ok(workspaceSource.includes('var mid=polylineMidpoint(edge.points)'));
+});

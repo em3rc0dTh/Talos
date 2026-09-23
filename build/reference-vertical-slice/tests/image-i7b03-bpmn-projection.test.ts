@@ -244,3 +244,30 @@ test('I7B-03 unsupported canonical meaning is surfaced instead of silently dropp
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === 'UNPROJECTABLE_EDGE_ENDPOINT'));
   assert.doesNotMatch(result.bpmnRevision.bpmnXml, /Inventory stable/);
 });
+
+
+test('I7B-03 explicit canonical branch labels are preserved in BPMN sequenceFlow names', () => {
+  const start = node('label-start', 'EVENT', 'Inicio');
+  const decision = node('label-decision', 'DECISION', '¿Solicitud aprobada?');
+  const yes = node('label-yes', 'ACTION', 'Generar orden de compra');
+  const no = node('label-no', 'ACTION', 'Notificar rechazo');
+  const end = node('label-end', 'END', 'Fin');
+  const yesRule = rule('label-rule-yes', 'approved', true);
+  const noRule = rule('label-rule-no', 'approved', false);
+  const yesEdge = { ...edge('label-e-yes', decision, yes, 'CONDITIONAL', yesRule.id), label: 'Sí' };
+  const noEdge = { ...edge('label-e-no', decision, no, 'CONDITIONAL', noRule.id), label: 'No' };
+  const process = revision({
+    seed: 'branch-labels',
+    nodes: [start, decision, yes, no, end],
+    rules: [yesRule, noRule],
+    edges: [edge('label-e-start', start, decision), yesEdge, noEdge, edge('label-e-yes-end', yes, end), edge('label-e-no-end', no, end)],
+  });
+  const result = projectCanonicalProcessToBpmn({
+    processRevision: process,
+    sourceRoute: 'IMAGE_INTERPRETATION',
+    createdAt: '2026-09-23T17:20:00.000Z',
+    createdBy: 'talos-bpmn-projector',
+  });
+  assert.match(result.bpmnRevision.bpmnXml, /<bpmn:sequenceFlow[^>]+name="Sí"/);
+  assert.match(result.bpmnRevision.bpmnXml, /<bpmn:sequenceFlow[^>]+name="No"/);
+});

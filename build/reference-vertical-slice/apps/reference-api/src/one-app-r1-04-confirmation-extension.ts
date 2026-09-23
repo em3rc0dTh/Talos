@@ -56,6 +56,7 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
       confirmed=true;
       candidate={revisionId:body.revision.id,canonicalProcessRevisionId:body.confirmation.canonicalProcessRevisionId};
       setLocked(true);
+      if(body.reconciliation&&typeof window.talosProductRenderCandidate==='function')window.talosProductRenderCandidate(body.revision,body.reconciliation,'CONFIRMED');
       var badge=byId('reviewBadge');if(badge){badge.textContent='CONFIRMED · AUTOMATION NOT AUTHORIZED';badge.className='badge corrected'}
       truthStep(3,'pass','Exact business process confirmed');
       truthStep(4,'blocked','Separate authority still required');
