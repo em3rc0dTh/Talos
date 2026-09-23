@@ -204,7 +204,7 @@ export function normalizeCommonAdapterResult(repo: ImmutableDocumentRepository, 
     const props: Record<string, unknown> = {};
     for (const ref of descriptor.propertyEvidenceRefs) {
       const evidence = propertyEvidence.get(String(ref));
-      if (evidence) props[evidence.propertyPath] = evidence.literalValue;
+      if (evidence && evidence.literalValue !== undefined) props[evidence.propertyPath] = evidence.literalValue;
     }
     return props;
   };

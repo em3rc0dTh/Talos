@@ -172,3 +172,45 @@ test('R1-13D valid decision outcomes project to a BPMN exclusive gateway with na
     assert.match(body.revision.bpmnXml,/<bpmn:timerEventDefinition><bpmn:timeDuration[^>]*>PT30S<\/bpmn:timeDuration><\/bpmn:timerEventDefinition>/);
   }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
 });
+
+
+test('R1-13D optional SourcePropertyEvidence literalValue is omitted instead of breaking deterministic persistence', async () => {
+  const { SqliteDocumentStore } = await import('../packages/persistence-sqlite/src/sqlite-document-store.ts');
+  const { appendRecord } = await import('../packages/source-intake/src/store.ts');
+  const { createOpaqueId } = await import('../packages/foundation/src/ids.ts');
+  const repo = new SqliteDocumentStore(':memory:');
+  try {
+    const id = createOpaqueId('source', 'r1-13d-optional-literal');
+    assert.doesNotThrow(() => appendRecord(repo, 'SourcePropertyEvidenceDescriptor', {
+      id,
+      sourceRepresentationId: createOpaqueId('source', 'r1-13d-representation'),
+      nativeSourceId: 'node-1',
+      propertyPath: 'propertyValues.optional',
+      sourceState: 'UNKNOWN',
+      literalValue: undefined,
+    }, '2026-09-23T15:00:00.000Z', id));
+    const stored = repo.get<any>(id)?.payload;
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, 'literalValue'), false);
+    assert.equal(stored.sourceState, 'UNKNOWN');
+  } finally {
+    repo.close();
+  }
+});
+
+test('R1-13D product workspace does not render durable history as the output of a new failed source', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-source-switch-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const html = await fetch(app.baseUrl).then((response) => response.text());
+    for (const marker of [
+      'resetTranslationWorkspaceForSource',
+      'Previous durable process preserved · new source pending.',
+      'The previous process remains in history and is intentionally not rendered as this source.',
+      'The previous durable process was not changed and is not being shown as the output of this source.',
+      'body.userMessage||body.error',
+    ]) assert.ok(html.includes(marker), marker);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});

@@ -2,9 +2,18 @@ import type { ImmutableDocumentRepository } from '../../foundation/src/repositor
 import { createOpaqueId, type OpaqueId } from '../../foundation/src/ids.ts';
 import type { AdapterAttemptCompletion,AdapterAttemptStart,AdapterAttemptView,AdapterDiagnostic,AdapterResult,SourceId } from './types.ts';
 
+function normalizeAppendPayload<T>(aggregateKind:string,payload:T):T{
+  if(aggregateKind!=='SourcePropertyEvidenceDescriptor'||!payload||typeof payload!=='object'||Array.isArray(payload))return payload;
+  const record=payload as Record<string,unknown>;
+  if(!Object.prototype.hasOwnProperty.call(record,'literalValue')||record.literalValue!==undefined)return payload;
+  const {literalValue:_omitted,...rest}=record;
+  return rest as T;
+}
+
 export function appendRecord<T>(repo:ImmutableDocumentRepository, aggregateKind:string, payload:T, createdAt:string, documentId?:OpaqueId, parentId?:OpaqueId):OpaqueId {
   const id=documentId??createOpaqueId('source');
-  repo.append({id,aggregateKind,schemaVersion:'reference-v1',payload,...(parentId?{parentId}:{}),createdAt});
+  const normalizedPayload=normalizeAppendPayload(aggregateKind,payload);
+  repo.append({id,aggregateKind,schemaVersion:'reference-v1',payload:normalizedPayload,...(parentId?{parentId}:{}),createdAt});
   return id;
 }
 

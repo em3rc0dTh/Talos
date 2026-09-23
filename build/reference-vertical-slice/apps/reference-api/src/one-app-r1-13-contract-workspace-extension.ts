@@ -20,7 +20,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
 (function(){
   'use strict';
   var priorFetch=window.fetch.bind(window);
-  var latestRevision=null,latestProcess=null,latestMapping=null,latestApprovalId=null,latestTemporalExport=null,latestCanvasRevision=null,latestSourceKind=null;
+  var latestRevision=null,latestProcess=null,latestMapping=null,latestApprovalId=null,latestTemporalExport=null,latestCanvasRevision=null,latestSourceKind=null,sourceRequestPending=false;
   var sourcePositions={},sourceSelected=null,sourceConnectFrom=null,dragOffset=null;
 
   function byId(id){return document.getElementById(id)}
@@ -54,6 +54,44 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     };
     byId('r113Implement').onclick=function(){document.body.classList.add('r113ImplementationChosen');var state=byId('r113TemporalState');if(state)state.textContent='Implementation selected. Export remains available and no deployment or process start happens until you explicitly authorize those steps.';var runPanel=byId('r111dRun');if(runPanel){runPanel.classList.add('open');runPanel.scrollIntoView({behavior:'smooth',block:'start'})}};
     var steps=Array.from(document.querySelectorAll('.r111dStep'));if(steps[3])steps[3].innerHTML='<strong>4 · Translate</strong>Prepare outputs';if(steps[4])steps[4].innerHTML='<strong>5 · Implement</strong>Optional';
+  }
+
+  function sourceLabel(path){
+    if(path.indexOf('/api/input/image')!==-1)return'image';
+    if(path.indexOf('/api/input/bpmn')!==-1)return'BPMN';
+    if(path.indexOf('/api/input/canvas')!==-1)return'Canvas';
+    return'source';
+  }
+
+  function resetTranslationWorkspaceForSource(path){
+    sourceRequestPending=true;
+    latestRevision=null;latestProcess=null;latestMapping=null;latestApprovalId=null;latestTemporalExport=null;latestCanvasRevision=null;latestSourceKind=null;
+    installWorkspace();
+    var label=sourceLabel(path),status=byId('r113Status');if(status)status.textContent='NEW '+label.toUpperCase()+' · PREPARING';
+    var canvas=byId('r113CanvasGraph');if(canvas)canvas.innerHTML='<div class="r113Empty">Talos is preparing the new '+esc(label)+' source. The previous process remains in durable history but is not shown as the result of this input.</div>';
+    var bpmn=byId('r113BpmnGraph');if(bpmn)bpmn.innerHTML='<div class="r113Empty">Waiting for a BPMN review candidate from the new source.</div>';
+    var temporal=byId('r113TemporalGraph');if(temporal)temporal.innerHTML='<div class="r113Empty">Temporal translation belongs to the new process only after review and confirmation.</div>';
+    var xml=byId('r113BpmnXml');if(xml)xml.textContent='No BPMN XML for the new source yet.';
+    var workflow=byId('r113WorkflowSource');if(workflow)workflow.textContent='No Temporal workflow for the new source yet.';
+    var readiness=byId('r113TemporalReadiness');if(readiness)readiness.innerHTML='';
+    ['r113EditVisual','r113CopyCanvas','r113DownloadCanvas','r113CopyBpmn','r113DownloadBpmn','r113PrepareTemporal','r113CopyWorkflow','r113DownloadTemporal','r113Implement'].forEach(function(id){var button=byId(id);if(button)button.disabled=true});
+    var state=byId('r113CanvasState');if(state)state.textContent='Previous durable process preserved · new source pending.';
+  }
+
+  function finishSourceWithoutCandidate(path,body){
+    sourceRequestPending=false;
+    var label=sourceLabel(path),status=byId('r113Status');if(status)status.textContent='NEW '+label.toUpperCase()+' · NO REVIEW CANDIDATE';
+    var message=body&&body.userMessage||'This source did not produce a reviewable process.';
+    var canvas=byId('r113CanvasGraph');if(canvas)canvas.innerHTML='<div class="r113Empty">'+esc(message)+' The previous process remains in history and is intentionally not rendered as this source.</div>';
+    var state=byId('r113CanvasState');if(state)state.textContent='No process translation was created from this source.';
+  }
+
+  function failSourceRequest(path,body){
+    sourceRequestPending=false;
+    var label=sourceLabel(path),status=byId('r113Status');if(status)status.textContent='NEW '+label.toUpperCase()+' · FAILED';
+    var message=body&&body.userMessage||'Talos could not safely prepare this source for review.';
+    var canvas=byId('r113CanvasGraph');if(canvas)canvas.innerHTML='<div class="r113Empty">'+esc(message)+' The previous durable process was not changed and is not being shown as the output of this source.</div>';
+    var state=byId('r113CanvasState');if(state)state.textContent=message;
   }
 
   function selectTab(view){
@@ -190,6 +228,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   }
 
   async function recoverDurableWorkspace(){
+    if(sourceRequestPending)return;
     try{
       var response=await priorFetch('/api/product/workspace-snapshot'),snapshot=await response.json();
       if(!response.ok||!snapshot||snapshot.status!=='RECOVERED'||!snapshot.processRevision||!snapshot.bpmnRevision)return;
@@ -332,6 +371,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     return{nodeLayouts:sourceRows().map(function(row){var pos=sourcePositions[row.dataset.id]||{x:0,y:0};return{clientElementId:row.dataset.id,x:Math.round(pos.x),y:Math.round(pos.y)}}),viewport:{mode:'BUSINESS_CANVAS'},zoom:1};
   };
   async function recoverTranslationWorkspace(){
+    if(sourceRequestPending)return;
     try{
       var response=await priorFetch('/api/product/workspace-state');if(!response.ok)return;var body=await response.json();if(!body.available)return;
       updateProcess({revision:body.bpmnRevision,reconciliation:{processRevision:body.process},sourceKind:body.sourceKind,canvasRevision:body.canvasRevision});
@@ -350,12 +390,24 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
 
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'',method=String((init&&init.method)||'GET').toUpperCase();
+    var isSource=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1);
+    if(isSource)resetTranslationWorkspaceForSource(path);
     return priorFetch(input,init).then(function(response){
-      if(response.ok&&method==='POST'&&(path.indexOf('/api/input/')!==-1||path.indexOf('/api/semantic-resolution/decide')!==-1||path.indexOf('/api/bpmn/confirm')!==-1)){
+      if(isSource){
+        response.clone().json().then(function(body){
+          if(response.ok&&body&&body.revision&&body.reconciliation&&body.reconciliation.processRevision){
+            sourceRequestPending=false;updateProcess(body);
+          }else if(response.ok){
+            finishSourceWithoutCandidate(path,body);
+          }else{
+            failSourceRequest(path,body);
+          }
+        }).catch(function(){if(!response.ok)failSourceRequest(path,null)});
+      }else if(response.ok&&method==='POST'&&(path.indexOf('/api/semantic-resolution/decide')!==-1||path.indexOf('/api/bpmn/confirm')!==-1)){
         response.clone().json().then(updateProcess).catch(function(){});
       }
       return response;
-    });
+    }).catch(function(error){if(isSource)failSourceRequest(path,{userMessage:error instanceof Error?error.message:String(error)});throw error});
   };
 })();
 </script>`;
