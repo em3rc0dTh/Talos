@@ -1927,8 +1927,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor|workflow start|execution input/i.test(message);
+      const diagnosticId = createOpaqueId('source', `one-app-route-error:${req.method ?? 'UNKNOWN'}:${req.url ?? '/'}:${message}`);
+      console.error(`[talos-one-app] diagnostic=${diagnosticId} method=${req.method ?? 'UNKNOWN'} path=${req.url ?? '/'} error=${message}`);
+      if (error instanceof Error && error.stack) console.error(error.stack);
       json(res, conflict ? 409 : 400, {
         error: message,
+        technicalError: message,
+        diagnosticId,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
       });
     }

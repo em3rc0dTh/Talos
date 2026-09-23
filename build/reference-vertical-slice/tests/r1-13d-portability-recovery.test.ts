@@ -250,3 +250,25 @@ test('R1-13D image safe-stop contract exposes provider decision details instead 
     'data.userMessage||',
   ]) assert.ok(pageSource.includes(marker), marker);
 });
+
+
+test('R1-13D image intake route errors retain exact technical diagnostics behind the safe product message', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-route-diagnostic-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const response = await fetch(app.baseUrl + '/api/input/image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ imageBase64: 'definitely-not-a-valid-png', fileName: 'broken.png', initiatedBy: 'r1-13d-test' }),
+    });
+    assert.ok(response.status >= 400);
+    const body = await response.json() as any;
+    assert.equal(typeof body.error, 'string');
+    assert.equal(typeof body.technicalError, 'string');
+    assert.equal(typeof body.diagnosticId, 'string');
+    assert.ok(body.diagnosticId.length > 0);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});

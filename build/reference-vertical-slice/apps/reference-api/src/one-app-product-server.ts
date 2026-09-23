@@ -105,6 +105,9 @@ function normalizeProductApiResponse(pathname: string, contentType: string, byte
         workflowAutomaticallyStarted: false,
       };
     }
+    if (!ok && typeof parsed.technicalError !== 'string' && typeof parsed.error === 'string') {
+      parsed.technicalError = parsed.error;
+    }
     return Buffer.from(JSON.stringify(parsed));
   } catch {
     return bytes;
