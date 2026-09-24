@@ -1,0 +1,275 @@
+name: R1-11 real Ollama qwen2.5vl
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/r1-11-real-ollama-qwen2-5vl.yml'
+      - 'build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
+      - 'build/reference-vertical-slice/packages/image-perception/**'
+
+permissions:
+  contents: read
+
+jobs:
+  real-ollama-image-e2e:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Show runner resources
+        run: |
+          set -euo pipefail
+          uname -a
+          free -h
+          df -h /
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact Talos lock and PNG renderer
+        run: |
+          set -euo pipefail
+          cd build/reference-vertical-slice
+          npm ci
+          python -m pip install --disable-pip-version-check 'Pillow==12.3.0'
+
+      - name: Install Ollama and start local server
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup env OLLAMA_HOST=127.0.0.1:11434 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/ollama.pid"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:11434/api/tags > /tmp/ollama-tags.json; then
+              cat /tmp/ollama-tags.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/ollama.log"
+          exit 1
+
+      - name: Pull exact production-primary vision model
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen2.5vl:7b
+          curl --fail --silent http://127.0.0.1:11434/api/tags | tee /tmp/ollama-tags-after-pull.json
+          grep -q 'qwen2.5vl:7b' /tmp/ollama-tags-after-pull.json
+          free -h
+          df -h /
+
+      - name: Warm exact Qwen model and keep it resident
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/ollama-warm.json <<'JSON'
+          {
+            "model": "qwen2.5vl:7b",
+            "messages": [{"role": "user", "content": "Reply with exactly OK."}],
+            "stream": false,
+            "keep_alive": "30m",
+            "options": {"temperature": 0, "num_predict": 2}
+          }
+          JSON
+          curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/ollama-warm.json \
+            http://127.0.0.1:11434/api/chat | tee /tmp/ollama-warm-response.json
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/ollama-warm-response.json','utf8'));
+          if (!r?.message?.content) throw new Error('Qwen warm-up did not return a model response');
+          NODE
+
+      - name: Render deterministic process PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="$RUNNER_TEMP/r1-11-real-ollama-process.png"
+          export IMAGE
+          python - <<'PY'
+          import hashlib, os
+          from PIL import Image, ImageDraw, ImageFont
+          path=os.environ['IMAGE']
+          img=Image.new('RGB',(1280,420),'white')
+          d=ImageDraw.Draw(img)
+          line=6
+          font=ImageFont.load_default(size=38)
+          small=ImageFont.load_default(size=28)
+          d.ellipse((70,145,170,245),outline='black',width=line)
+          d.text((77,270),'START',fill='black',font=small)
+          boxes=[(285,105,565,285,'RECEIVE REQUEST'),(715,105,995,285,'REVIEW REQUEST')]
+          for x1,y1,x2,y2,label in boxes:
+              d.rounded_rectangle((x1,y1,x2,y2),radius=22,outline='black',width=line)
+              bb=d.textbbox((0,0),label,font=font)
+              d.text(((x1+x2-(bb[2]-bb[0]))/2,(y1+y2-(bb[3]-bb[1]))/2),label,fill='black',font=font)
+          d.ellipse((1110,145,1210,245),outline='black',width=line)
+          d.ellipse((1120,155,1200,235),outline='black',width=3)
+          d.text((1127,270),'END',fill='black',font=small)
+          arrows=[(170,195,285,195),(565,195,715,195),(995,195,1110,195)]
+          for x1,y1,x2,y2 in arrows:
+              d.line((x1,y1,x2,y2),fill='black',width=line)
+              d.polygon([(x2,y2),(x2-24,y2-15),(x2-24,y2+15)],fill='black')
+          img.save(path,format='PNG',optimize=False)
+          raw=open(path,'rb').read()
+          print(f'PNG={path} bytes={len(raw)} sha256={hashlib.sha256(raw).hexdigest()}')
+          PY
+          echo "TALOS_REAL_OLLAMA_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Start real Talos perception gateway against Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/reference-vertical-slice
+          nohup env \
+            HOST=127.0.0.1 \
+            PORT=8790 \
+            OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+            OLLAMA_MODEL=qwen2.5vl:7b \
+            OLLAMA_TIMEOUT_MS=300000 \
+            OLLAMA_MAX_ATTEMPTS=1 \
+            GEMINI_API_KEY='' \
+            node --experimental-strip-types ./apps/reference-api/src/ollama-gemini-perception-gateway.ts \
+            > "$RUNNER_TEMP/perception-gateway.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/perception-gateway.pid"
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8790/health > /tmp/perception-health.json; then
+              cat /tmp/perception-health.json
+              node - <<'NODE'
+          const fs=require('node:fs');
+          const h=JSON.parse(fs.readFileSync('/tmp/perception-health.json','utf8'));
+          if (h.status !== 'READY') throw new Error(`gateway status=${h.status}`);
+          if (h.primary?.provider !== 'OLLAMA' || h.primary?.model !== 'qwen2.5vl:7b' || h.primary?.ready !== true) throw new Error('real Ollama qwen2.5vl primary is not ready');
+          if (h.fallback?.configured !== false) throw new Error('this certification must not use Gemini fallback');
+          NODE
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/perception-gateway.log"
+          exit 1
+
+      - name: Start executable Talos One-App product host with real gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/reference-vertical-slice
+          mkdir -p "$RUNNER_TEMP/talos-r1-11-real-ollama"
+          nohup env \
+            HOST=127.0.0.1 \
+            PORT=8787 \
+            TALOS_RUNTIME_DIR="$RUNNER_TEMP/talos-r1-11-real-ollama" \
+            TALOS_IMAGE_PERCEPTION_PROVIDER_URL=http://127.0.0.1:8790/perceive \
+            TALOS_IMAGE_PERCEPTION_PROVIDER_ID=TALOS_OLLAMA_GEMINI_GATEWAY \
+            TALOS_IMAGE_PERCEPTION_PROVIDER_VERSION=1.0.0 \
+            TALOS_IMAGE_PERCEPTION_MODEL_REF=router:ollama-primary-gemini-fallback \
+            TALOS_IMAGE_PERCEPTION_MODEL_VERSION=r1-11-v1 \
+            TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION=talos-r1-11-local-vision-v0.1 \
+            TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=330000 \
+            TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS=MODEL_PROVIDER \
+            TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE=MODEL_INFERENCE \
+            node --experimental-strip-types ./apps/reference-api/src/one-app-product-server.ts \
+            > "$RUNNER_TEMP/one-app.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/one-app.pid"
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:8787/api/status > /tmp/talos-status.json; then
+              cat /tmp/talos-status.json
+              node - <<'NODE'
+          const fs=require('node:fs');
+          const s=JSON.parse(fs.readFileSync('/tmp/talos-status.json','utf8'));
+          if (s.status !== 'READY') throw new Error(`status=${s.status}`);
+          if (s.image?.liveVisionInterpretation !== true) throw new Error('live vision is not active');
+          if (!Array.isArray(s.inputRoutes) || !s.inputRoutes.includes('IMAGE_PNG')) throw new Error('IMAGE_PNG route is not active');
+          if (s.image?.provider?.providerId !== 'TALOS_OLLAMA_GEMINI_GATEWAY') throw new Error('wrong image provider');
+          NODE
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/one-app.log"
+          exit 1
+
+      - name: Certify real PNG through product host to real Qwen and Talos review
+        shell: bash
+        run: |
+          set -euo pipefail
+          export IMAGE="$TALOS_REAL_OLLAMA_IMAGE"
+          python - <<'PY'
+          import base64, json, os
+          raw=open(os.environ['IMAGE'],'rb').read()
+          payload={'fileName':'r1-11-real-ollama-process.png','initiatedBy':'r1-11-real-ollama-ci','imageBase64':base64.b64encode(raw).decode('ascii')}
+          open('/tmp/talos-image-request.json','w').write(json.dumps(payload))
+          PY
+          HTTP_CODE="$(curl --silent --show-error --output /tmp/talos-image-response.json --write-out '%{http_code}' \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/talos-image-request.json \
+            http://127.0.0.1:8787/api/input/image)"
+          echo "HTTP=$HTTP_CODE"
+          cat /tmp/talos-image-response.json
+          [[ "$HTTP_CODE" == "201" ]] || { echo "Expected HTTP 201 from real image review path"; exit 1; }
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/talos-image-response.json','utf8'));
+          if (r.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') throw new Error(`real Qwen path did not reach process review: ${r.status}`);
+          if (!r.revision?.id) throw new Error('missing BPMN revision');
+          if (!r.reconciliation?.processRevision?.id) throw new Error('missing canonical process revision');
+          if (r.automaticConfirmationAuthorized !== false) throw new Error('image perception must not auto-confirm');
+          if (r.automaticExecutionAuthorized !== false) throw new Error('image perception must not auto-authorize execution');
+          fs.writeFileSync('/tmp/talos-real-revision-id.txt', String(r.revision.id));
+          NODE
+
+      - name: Fetch exact Process Review candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          REV="$(cat /tmp/talos-real-revision-id.txt)"
+          curl --fail --silent --show-error "http://127.0.0.1:8787/api/process-review?revisionId=$REV" | tee /tmp/talos-process-review.json
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/talos-process-review.json','utf8'));
+          if (r.status !== 'PROCESS_REVIEW_REQUIRED') throw new Error(`review status=${r.status}`);
+          if (r.state !== 'ACTIVE') throw new Error(`review state=${r.state}`);
+          if (!r.reconciliation?.processRevision?.id) throw new Error('review is not pinned to a canonical process revision');
+          if (r.automaticConfirmationAuthorized !== false || r.automaticExecutionAuthorized !== false) throw new Error('review authority boundary changed');
+          NODE
+
+      - name: Surface diagnostic logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo '--- OLLAMA ---'
+          cat "$RUNNER_TEMP/ollama.log" || true
+          echo '--- GATEWAY ---'
+          cat "$RUNNER_TEMP/perception-gateway.log" || true
+          echo '--- ONE APP PRODUCT ---'
+          cat "$RUNNER_TEMP/one-app.log" || true
+          echo '--- IMAGE RESPONSE ---'
+          cat /tmp/talos-image-response.json || true
+          echo '--- RESOURCES ---'
+          free -h || true
+          df -h / || true
+
+      - name: Stop local processes
+        if: always()
+        shell: bash
+        run: |
+          for f in "$RUNNER_TEMP/one-app.pid" "$RUNNER_TEMP/perception-gateway.pid" "$RUNNER_TEMP/ollama.pid"; do
+            if [[ -f "$f" ]]; then kill "$(cat "$f")" 2>/dev/null || true; fi
+          done
