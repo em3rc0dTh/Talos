@@ -403,6 +403,14 @@ export const R1_11D_BUSINESS_FIRST_EXTENSION=String.raw`
   window.talosProductJourney={setStage:setStage,selectMode:selectMode};
   window.talosBusinessAutomation={
     restoreApprovedDesign:function(approval){simpleApproval=approval;updateRun()},
+    restoreReviewedDesign:function(body){latestDesign={workspaceId:body.workspaceId,processRevisionRef:body.processRevisionRef};simpleReview=body.executionReview;simpleApproval=null;capabilitySelectionRecorded=true;window.dispatchEvent(new CustomEvent('talos:execution-plan-reviewed',{detail:simpleReview}))},
+    resolveQuestions:async function(answers){
+      if(!simpleReview||!latestDesign)throw new Error('Prepare the current proposal before answering execution questions.');
+      var review=simpleReview,design=latestDesign;
+      var resolved=await post('/api/automation/execution-plan/review',{workspaceId:design.workspaceId,reviewId:review.review.id,answers:answers,authorityRef:authority('execution-design-answers'),decidedBy:'one-app-product-user',rationale:'User explicitly answered the named pending coordination questions in the main workspace.'});
+      if(review!==simpleReview||design!==latestDesign)throw new Error('The process changed while these answers were being prepared.');
+      simpleReview=resolved;window.dispatchEvent(new CustomEvent('talos:execution-plan-reviewed',{detail:resolved}));return resolved;
+    },
     applyProposal:async function(proposal){
       if(simpleReview)return simpleReview;
       if(!latestDesign||latestDesign.processRevisionRef!==proposal.processRevisionRef)throw new Error('This proposal no longer matches the active process.');

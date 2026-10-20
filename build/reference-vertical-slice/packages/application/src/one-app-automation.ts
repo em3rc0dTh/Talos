@@ -183,7 +183,16 @@ export function reviewOneAppExecutionPlan(
     context.selection,
     decisions,
     createdAt,
+    context.executionReview?.execution.revision.id,
   );
+  // The definition is an immutable creation record, not a mutable revision
+  // index. Subsequent revisions point to it and to their prior revision.
+  const storedDefinition=repo.get<typeof executionReview.execution.definition>(executionReview.execution.definition.id as any);
+  if(storedDefinition){
+    if(storedDefinition.aggregateKind!=='ExecutionPlanDefinition'||storedDefinition.payload.processDefinitionId!==context.process.processDefinitionId)throw new TypeError('ExecutionPlan definition lineage mismatch');
+    executionReview.execution.definition=storedDefinition.payload;
+  }
+  if(context.executionReview)executionReview.execution.revision.revision=context.executionReview.execution.revision.revision+1;
   persistAutomationExecutionPlanReview(repo, executionReview);
   return { ...context, executionReview };
 }

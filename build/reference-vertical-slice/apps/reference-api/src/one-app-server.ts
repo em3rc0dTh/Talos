@@ -2,6 +2,7 @@ import http from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describeExecutionPlanClarifications, resolveExecutionPlanClarifications, recoverReviewedExecutionDesign } from '../../../packages/application/src/execution-plan-clarifications.ts';
 import {
   BpmnWorkspaceService,
   NativeBpmnCanonicalReconciliationService,
@@ -146,6 +147,7 @@ interface OneAppSession {
   binding: ReconciledBinding;
   automation: OneAppAutomationContext;
   capabilitySelectionInput?: string;
+  executionAnswerReplies?:Map<string,AutomationExecutionPlanReviewBundle>;
 }
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -1239,7 +1241,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (exactConfirmation.bpmnRevisionId !== revisionId || exactConfirmation.canonicalProcessRevisionId !== binding.processRevision.id || exactConfirmation.status !== 'CONFIRMED') {
           throw new TypeError('automation design requires the exact confirmed process lineage');
         }
-        const existingDesign = [...automationSessions.values()].find(session => session.revisionId === revisionId && session.automation.process.id === binding.processRevision.id);
+        const existingDesign = [...automationSessions.values()].find(session => session.revisionId === revisionId && session.automation.process.id === binding.processRevision.id && session.automation.workspace);
         if (existingDesign) {
           json(res, 200, { automationDesignOpened: true, automationDesign: publicAutomationWorkspace(existingDesign.automation), capabilitySelectionCreated: false, deploymentAuthorized: false, executionAuthorized: false, idempotentReplay: true });
           return;
@@ -1373,12 +1375,33 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if(req.method==='GET'&&url.pathname==='/api/automation/execution-plan/recover'){
+        const recovered=recoverReviewedExecutionDesign(repo,text(url.searchParams.get('reviewId'),'reviewId'));
+        if(recovered.context.process.id!==url.searchParams.get('processRevisionId'))throw new TypeError('Reviewed recovery requires the exact process revision');
+        const binding=[...bindings.values()].find(item=>item.processRevision.id===recovered.context.process.id);
+        const confirmation=latestPayloadByKind<any>(repo,'BusinessProcessConfirmationRecord',item=>item.canonicalProcessRevisionId===recovered.context.process.id&&item.status==='CONFIRMED');
+        if(!confirmation)throw new TypeError('Reviewed recovery requires durable business confirmation');
+        const session:OneAppSession={revisionId:confirmation.bpmnRevisionId,binding:binding??({processRevision:recovered.context.process} as ReconciledBinding),automation:recovered.context};
+        automationSessions.set(recovered.workspaceId,session);reviewSessions.set(recovered.executionReview.review.id,session);
+        json(res,200,{workspaceId:recovered.workspaceId,processRevisionRef:recovered.context.process.id,executionReview:{...recovered.executionReview,clarifications:describeExecutionPlanClarifications(recovered.context.process,recovered.executionReview)},acceptedSteps:recovered.acceptedSteps,deploymentAuthorized:false,executionAuthorized:false,consumableAuthorityRecovered:false});return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/automation/execution-plan/review') {
         const input = await jsonBody(req);
         const workspaceId = text(input.workspaceId, 'workspaceId');
         const session = automationSessions.get(workspaceId);
         if (!session) throw new TypeError('one-app ExecutionPlan review requires an existing Automation Design Workspace');
-        const decisions = input.decisions && typeof input.decisions === 'object' ? input.decisions as any : {};
+        let decisions = input.decisions && typeof input.decisions === 'object' ? input.decisions as any : {};
+        let answerKey:string|undefined;
+        if(input.answers!==undefined){
+          const answers=array(input.answers,'answers') as Array<{questionId:string;choice:string}>;
+          answerKey=JSON.stringify({reviewId:input.reviewId,answers:answers.map(item=>({questionId:item.questionId,choice:item.choice})).sort((a,b)=>String(a.questionId).localeCompare(String(b.questionId)))});
+          const previous=session.executionAnswerReplies?.get(answerKey);
+          if(previous){json(res,200,{...previous,clarifications:describeExecutionPlanClarifications(session.automation.process,previous),idempotentReplay:true});return}
+          const current=session.automation.executionReview;
+          if(!current||input.reviewId!==current.review.id)throw new TypeError('Execution answers require the exact current plan review');
+          if(session.automation.approval)throw new TypeError('Approved execution design cannot be changed; prepare a new design revision');
+          decisions=resolveExecutionPlanClarifications(session.automation.process,current,answers,{authorityRef:text(input.authorityRef,'authorityRef'),decidedBy:text(input.decidedBy,'decidedBy'),rationale:text(input.rationale,'rationale')});
+        }
         session.automation = reviewOneAppExecutionPlan(
           repo,
           session.automation,
@@ -1388,7 +1411,8 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const review = session.automation.executionReview;
         if (!review) throw new TypeError('one-app ExecutionPlan review was not created');
         reviewSessions.set(review.review.id, session);
-        json(res, 201, review);
+        if(answerKey){session.executionAnswerReplies??=new Map();session.executionAnswerReplies.set(answerKey,review)}
+        json(res, 201, { ...review, clarifications:describeExecutionPlanClarifications(session.automation.process,review) });
         return;
       }
 

@@ -18,11 +18,12 @@ export const GUIDED_TRANSLATION_EXTENSION = String.raw`
     if(el('talosProposal'))return;
     var panel=el('r113TemporalPanel');if(!panel)return;
     var box=document.createElement('section');box.id='talosProposal';box.className='talosProposal';box.hidden=true;
-    box.innerHTML='<h3 id="talosProposalTitle">Preparing your automation proposal</h3><p id="talosProposalIntro"></p><div id="talosProposalRows" class="talosProposalRows"></div><div id="talosProposalState" class="talosProposalState" role="status" aria-live="polite"></div><div class="r113Actions"><button id="talosUseProposal" type="button" hidden>Use this proposal</button><button id="talosApproveProposal" type="button" hidden>Approve design & prepare Temporal</button><button id="talosRetryProposal" type="button" hidden>Retry preparation</button></div>';
+    box.innerHTML='<h3 id="talosProposalTitle">Preparing your automation proposal</h3><p id="talosProposalIntro"></p><div id="talosProposalRows" class="talosProposalRows"></div><div id="talosExecutionQuestions" class="talosProposalRows"></div><div id="talosProposalState" class="talosProposalState" role="status" aria-live="polite"></div><div class="r113Actions"><button id="talosUseProposal" type="button" hidden>Use this proposal</button><button id="talosApplyExecutionAnswers" type="button" hidden>Apply answers & update design</button><button id="talosReviewProcessDetails" type="button" hidden>Review missing business details</button><button id="talosApproveProposal" type="button" hidden>Approve design & prepare Temporal</button><button id="talosRetryProposal" type="button" hidden>Retry preparation</button></div>';
     panel.insertBefore(box,panel.firstChild);
     [['r113WorkflowSource','View generated workflow source'],['r113BpmnXml','View BPMN XML']].forEach(function(pair){var source=el(pair[0]);if(source){var details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=pair[1];source.parentNode.insertBefore(details,source);details.appendChild(summary);details.appendChild(source)}});
     el('talosUseProposal').onclick=useProposal;el('talosApproveProposal').onclick=approve;
-    el('talosRetryProposal').onclick=function(){if(approved)window.talosBusinessAutomation.prepareTemporal();else if(plan)approve();else if(proposal)useProposal();else if(active)prepare(active)};
+    el('talosApplyExecutionAnswers').onclick=applyExecutionAnswers;el('talosReviewProcessDetails').onclick=reviewProcessDetails;
+    el('talosRetryProposal').onclick=function(){if(approved)window.talosBusinessAutomation.prepareTemporal();else if(plan&&plan.review.state==='READY_FOR_AUTOMATION_APPROVAL')approve();else if(plan)applyExecutionAnswers();else if(proposal)useProposal();else if(active)prepare(active)};
   }
   function state(title,message,error){
     install();var box=el('talosProposal');if(!box)return;box.hidden=false;box.setAttribute('aria-busy',busy?'true':'false');el('talosProposalTitle').textContent=title;
@@ -30,12 +31,12 @@ export const GUIDED_TRANSLATION_EXTENSION = String.raw`
     el('talosRetryProposal').hidden=!error;el('talosUseProposal').disabled=busy;el('talosApproveProposal').disabled=busy;
     var messageNode=el('r113TemporalState');if(messageNode)messageNode.textContent=message;
   }
-  function reset(){epoch+=1;active=null;proposal=null;plan=null;approved=false;busy=false;install();el('talosProposal').hidden=true;el('talosUseProposal').hidden=true;el('talosApproveProposal').hidden=true;el('talosProposalRows').replaceChildren()}
+  function reset(){epoch+=1;active=null;proposal=null;plan=null;approved=false;busy=false;install();el('talosProposal').hidden=true;el('talosUseProposal').hidden=true;el('talosApproveProposal').hidden=true;el('talosApplyExecutionAnswers').hidden=true;el('talosReviewProcessDetails').hidden=true;el('talosExecutionQuestions').replaceChildren();el('talosProposalRows').replaceChildren()}
   function ready(){return proposal&&proposal.steps.every(function(step){return step.family&&(step.family!=='HUMAN_INTERACTION'||step.participantLabel)})}
   function updateReady(){el('talosUseProposal').disabled=busy||!ready()}
   function renderProposal(){
     var host=el('talosProposalRows');host.replaceChildren();
-    el('talosProposalIntro').textContent='Talos prepared '+proposal.steps.length+' activities and '+proposal.decisionCount+' decisions. Suggested services remain implementation requirements until connected. Review the proposal and answer only what is still unknown.';
+    el('talosProposalIntro').textContent='Talos prepared '+proposal.steps.length+' activities and '+proposal.decisionCount+' decision'+(proposal.decisionCount===1?'':'s')+'. Suggested services remain implementation requirements until connected. Review the proposal and answer only what is still unknown.';
     proposal.steps.forEach(function(step){
       var row=document.createElement('div');row.className='talosProposalRow';
       var title=document.createElement('strong');title.textContent=step.businessStepName;row.appendChild(title);
@@ -71,6 +72,7 @@ export const GUIDED_TRANSLATION_EXTENSION = String.raw`
       window.talosTranslationWorkspace.preview(snapshot.processRevision);
       proposal=body;busy=false;
       if(snapshot.automationApproval){approved=true;state('Automation design already approved','Restoring the approved Temporal design…');window.talosBusinessAutomation.restoreApprovedDesign(snapshot.automationApproval);await window.talosTranslationWorkspace.recover(detail.revisionId);if(token!==epoch)return;if(!snapshot.temporalMapping)await window.talosBusinessAutomation.prepareTemporal();el('talosUseProposal').hidden=true;return}
+      if(snapshot.executionPlanReview){var recoveredResponse=await priorFetch('/api/automation/execution-plan/recover?reviewId='+encodeURIComponent(snapshot.executionPlanReview.id)+'&processRevisionId='+encodeURIComponent(detail.canonicalProcessRevisionId));var recovered=await recoveredResponse.json();if(token!==epoch)return;if(!recoveredResponse.ok)throw new Error(recovered.userMessage||'Talos could not recover the accepted design.');proposal.steps=recovered.acceptedSteps;renderProposal();window.talosBusinessAutomation.restoreReviewedDesign(recovered);plan=recovered.executionReview;renderPlanState();return}
       renderProposal();state(ready()?'Automation proposal ready':'A business answer is needed',ready()?'Review the proposed directions. Talos will build the technical plan for you.':'Choose who or what performs the pending activities. You can leave uncertain items pending.');updateReady();
       window.dispatchEvent(new CustomEvent('talos:workspace-refreshed'));
     }catch(error){if(token!==epoch)return;busy=false;state('Preparation needs a retry',error instanceof Error?error.message:String(error),true)}
@@ -79,14 +81,33 @@ export const GUIDED_TRANSLATION_EXTENSION = String.raw`
     if(busy||!ready()||!active)return;var token=epoch;busy=true;state('Preparing your design','Talos is building the plan from the proposal you accepted…');
     try{
       var design=await window.talosAutomationDesign.open();if(token!==epoch)return;
-      if(!design)throw new Error('This process still needs a business clarification. Return to Review and answer the highlighted question.');
+      if(!design||design.blocked){busy=false;var blockers=design&&design.details&&design.details.freezeBlockers&&design.details.freezeBlockers.blockers||[];state('A business detail needs your answer',blockers.length?blockers[0].question||blockers[0].description:'Review the named pending business questions before preparing this design.');el('talosReviewProcessDetails').hidden=false;el('talosUseProposal').hidden=true;return}
       plan=await window.talosBusinessAutomation.applyProposal(proposal);if(token!==epoch)return;
-      busy=false;if(!plan||plan.review.state!=='READY_FOR_AUTOMATION_APPROVAL')throw new Error('The plan needs a business clarification before approval.');
-      el('talosUseProposal').hidden=true;el('talosApproveProposal').hidden=false;el('talosProposalRows').querySelectorAll('select,input').forEach(function(node){node.disabled=true});
-      el('talosProposalRows').querySelectorAll('select,input,button').forEach(function(node){node.hidden=true});
-      Array.from(el('talosProposalRows').children).forEach(function(row,index){var step=proposal.steps[index];row.querySelector('small').textContent=step.direction+(step.participantLabel?' · '+step.participantLabel:'')});
-      state('Your automation design is ready','Review the activities above. Approve the design to generate its Temporal artifacts. Connections, deployment and starting a process remain separate.');
+      busy=false;if(!plan)throw new Error('Talos could not load the prepared plan. Retry preparation.');renderPlanState();
     }catch(error){if(token!==epoch)return;busy=false;state('Design needs attention',error instanceof Error?error.message:String(error),true)}
+  }
+  function renderPlanState(){
+    el('talosUseProposal').hidden=true;el('talosApproveProposal').hidden=plan.review.state!=='READY_FOR_AUTOMATION_APPROVAL';
+    el('talosProposalRows').querySelectorAll('select,input,button').forEach(function(node){node.disabled=true;node.hidden=true});
+    Array.from(el('talosProposalRows').children).forEach(function(row,index){var step=proposal.steps[index];row.querySelector('small').textContent=step.direction+(step.participantLabel?' · '+step.participantLabel:'')});
+    var host=el('talosExecutionQuestions');host.replaceChildren();var questions=plan.clarifications||[];
+    el('talosApplyExecutionAnswers').hidden=!questions.some(function(q){return q.route==='EXECUTION_DESIGN'});el('talosReviewProcessDetails').hidden=plan.review.state==='READY_FOR_AUTOMATION_APPROVAL';
+    questions.forEach(function(question){var row=document.createElement('div');row.className='talosProposalRow';var title=document.createElement('strong');title.textContent=question.title;row.appendChild(title);var prompt=document.createElement('small');prompt.textContent=question.question;row.appendChild(prompt);if(question.route==='EXECUTION_DESIGN'){var select=document.createElement('select');select.className='talosExecutionAnswer';select.dataset.question=question.id;select.setAttribute('aria-label',question.title);var empty=document.createElement('option');empty.value='';empty.textContent='Choose how this continues';select.appendChild(empty);question.choices.forEach(function(choice){var option=document.createElement('option');option.value=choice.value;option.textContent=choice.label;select.appendChild(option)});row.appendChild(select)}host.appendChild(row)});
+    if(plan.review.state==='READY_FOR_AUTOMATION_APPROVAL')state('Your automation design is ready','Review the activities above. Approve the design to generate its Temporal artifacts. Connections, deployment and starting a process remain separate.');
+    else state('One execution detail needs your answer',questions.length?'Answer the named questions below. Your confirmed activities and accepted choices are preserved.':'Talos needs a process detail before approval. Review the business process to continue.');
+    if(!questions.length&&plan.review.state!=='READY_FOR_AUTOMATION_APPROVAL')el('talosReviewProcessDetails').hidden=false;
+  }
+  async function applyExecutionAnswers(){
+    if(busy||!plan||plan.review.state==='READY_FOR_AUTOMATION_APPROVAL')return;
+    var answers=Array.from(document.querySelectorAll('.talosExecutionAnswer')).map(function(node){return{questionId:node.dataset.question,choice:node.value}});
+    if(!answers.length||answers.some(function(answer){return !answer.choice})){state('An answer is still needed','Choose an option for each pending execution question.');return}
+    var token=epoch;busy=true;el('talosApplyExecutionAnswers').disabled=true;state('Updating your design','Talos is applying your coordination choices and checking the plan…');
+    try{var resolved=await window.talosBusinessAutomation.resolveQuestions(answers);if(token!==epoch)return;plan=resolved;busy=false;renderPlanState()}
+    catch(error){if(token!==epoch)return;busy=false;state('Could not apply these answers',error instanceof Error?error.message:String(error),true)}
+    finally{if(token===epoch)el('talosApplyExecutionAnswers').disabled=false}
+  }
+  async function reviewProcessDetails(){
+    if(!active)return;try{var response=await window.fetch('/api/process-review?revisionId='+encodeURIComponent(active.revisionId));var body=await response.json();if(!response.ok)throw new Error(body.userMessage||'Talos could not load the pending business questions.');window.talosGuidedProcessReview.show(body)}catch(error){state('Could not load business details',error instanceof Error?error.message:String(error),true)}
   }
   async function approve(){
     if(busy||!plan)return;var token=epoch;busy=true;state('Preparing Temporal artifacts','Recording your design approval and generating the Temporal representation…');
@@ -94,6 +115,7 @@ export const GUIDED_TRANSLATION_EXTENSION = String.raw`
     catch(error){if(token!==epoch)return;busy=false;state('Temporal preparation needs a retry',error instanceof Error?error.message:String(error),true)}
   }
   window.addEventListener('talos:r1-04-business-process-confirmed',function(event){prepare(event.detail)});
+  window.addEventListener('talos:r1-11c-semantic-resolution-applied',reset);
   window.addEventListener('talos:r1-06-automation-approved',function(){approved=true});
   window.addEventListener('talos:r1-11d-temporal-ready',function(){busy=false;state('Temporal design prepared','Your workflow is prepared. Talos is loading its export and implementation requirements.');el('talosApproveProposal').hidden=true;el('talosUseProposal').hidden=true});
   window.addEventListener('talos:temporal-preparation-failed',function(event){busy=false;state('Temporal preparation needs attention',event.detail.message,true)});

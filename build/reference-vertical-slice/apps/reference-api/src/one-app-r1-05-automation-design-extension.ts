@@ -88,7 +88,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
       if(!response.ok)throw new Error(body.error||body.code||('HTTP '+response.status));
       if(confirmation!==requestedConfirmation)return;
-      if(!body.automationDesignOpened||!body.automationDesign){setState(body.userMessage||'Talos needs a few process details before it can prepare the automation.','blocked');window.dispatchEvent(new CustomEvent('talos:r1-11c-freeze-blocked',{detail:body}));return;}
+      if(!body.automationDesignOpened||!body.automationDesign){setState(body.userMessage||'Talos needs a few process details before it can prepare the automation.','blocked');window.dispatchEvent(new CustomEvent('talos:r1-11c-freeze-blocked',{detail:body}));return {blocked:true,details:body};}
       if(body.capabilitySelectionCreated!==false||body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('R1-05 authority boundary violation.');
       renderWorkspace(body.automationDesign);
       return body.automationDesign;
@@ -119,6 +119,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
 
   install();
   window.talosAutomationDesign={open:openDesign};
+  window.addEventListener('talos:r1-11c-semantic-resolution-applied',function(){reset('Process details updated. Review and confirm this revision before preparing its design.')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(event){
     var detail=event&&event.detail;if(!detail||!detail.revisionId||!detail.confirmationId)return;
     confirmation={revisionId:detail.revisionId,canonicalProcessRevisionId:detail.canonicalProcessRevisionId,confirmationId:detail.confirmationId};

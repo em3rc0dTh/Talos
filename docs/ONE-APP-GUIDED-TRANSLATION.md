@@ -70,6 +70,15 @@ integration discovery or live connector implementation is outside this change.
   Repeated design handoffs and identical capability selection requests reuse the
   existing in-memory result. Changed accepted selections are rejected.
 - Plan-review events and durable snapshots update both history and stage status.
+- A blocked plan names the exact connection or subprocess that needs a design
+  answer. The main view offers business-language coordination choices and applies
+  them through the existing execution-review API. Missing business meaning routes
+  back to guided process review and requires confirmation of the corrected process.
+- Accepted capability directions are locked after selection and recover with the
+  pending plan after reload/restart. Recovery restores reviewed design facts only;
+  it does not restore approval or runtime authority. Identical answer submissions
+  reuse the response, and new answers append a parent-linked plan revision while
+  reusing its immutable definition.
 - Temporal export does not require a configured runtime target. Infrastructure
   configuration is deferred to optional implementation.
 
