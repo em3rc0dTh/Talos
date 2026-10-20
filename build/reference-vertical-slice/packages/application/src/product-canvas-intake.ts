@@ -37,6 +37,8 @@ export interface ProductCanvasInput{
   connections?:ProductCanvasConnectionInput[];
   presentation?:unknown;
   createdAt?:string;
+  /** Opt-in to an unconfirmed review draft; unresolved conditional guards must be clarified before approval. */
+  allowUnresolvedDecisionOutcomes?:boolean;
 }
 
 function required(value:string,field:string):string{
@@ -151,7 +153,7 @@ export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,inpu
       if(effectiveKind!=='CONDITION'){
         throw new TypeError(`Decision "${decision.label}" needs an outcome on every outgoing branch (for example Yes / No)`);
       }
-      if(!condition)throw new TypeError(`Decision "${decision.label}" has a branch without a business outcome`);
+      if(!condition){if(input.allowUnresolvedDecisionOutcomes===true)continue;throw new TypeError(`Decision "${decision.label}" has a branch without a business outcome`);}
       const key=condition.toLocaleLowerCase();
       if(outcomeLabels.has(key))throw new TypeError(`Decision "${decision.label}" repeats the outcome "${condition}"`);
       outcomeLabels.add(key);

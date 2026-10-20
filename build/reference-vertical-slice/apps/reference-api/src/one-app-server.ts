@@ -872,6 +872,7 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           initiatedBy: typeof input.initiatedBy === 'string' && input.initiatedBy.trim() ? input.initiatedBy : 'one-app-user',
           elements: array(input.elements, 'elements') as any,
           connections: Array.isArray(input.connections) ? input.connections as any : [],
+          ...(input.allowUnresolvedDecisionOutcomes === true ? { allowUnresolvedDecisionOutcomes: true } : {}),
           ...(input.presentation && typeof input.presentation === 'object' ? { presentation: input.presentation } : {}),
         });
         if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {

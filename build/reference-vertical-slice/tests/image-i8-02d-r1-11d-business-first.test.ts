@@ -92,6 +92,8 @@ test('R1-11D guided clarification survives product restart and Apply is idempote
     const intake=await post(app.baseUrl,'/api/input/canvas',{
       title:'Decision and wait process',
       initiatedBy:'field-trial-user',
+      // Explicitly preserve incomplete business meaning for guided review only.
+      allowUnresolvedDecisionOutcomes:true,
       elements:[
         {id:'start',kind:'START',label:'Start'},
         {id:'decision',kind:'DECISION',label:'Needs treatment?'},
