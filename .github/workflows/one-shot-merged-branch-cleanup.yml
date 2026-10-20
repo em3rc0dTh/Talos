@@ -76,19 +76,12 @@ jobs:
             echo "REMOVED: $branch"
             removed=$((removed+1))
           done < "$tmp/branches"
-          # Historical local-release aliases share an identical tip. Keep one exact
-          # surviving ref and remove only byte-for-byte duplicate heads.
+          # Historical local-release aliases share the same exact SHA.
+          # Keep one surviving release ref and prune only identical heads.
           canonical_release="release/talos-1.0-local-test"
           canonical_sha="$(gh api "repos/$repo/git/ref/heads/$canonical_release" --jq '.object.sha')"
           duplicates=0
-          while IFS=
-            echo "- Removed branches: $removed"
-            echo "- Removed exact duplicate local-release aliases: $duplicates"
-            echo "- Archived divergent merged tips (tags): $archived"
-            echo "- Skipped branches: $skipped"
-            echo "- Unmerged divergent branches preserved for integration review"
-          } >> "$GITHUB_STEP_SUMMARY"
-\t' read -r branch snapshot_sha; do
+          while IFS=$'\t' read -r branch snapshot_sha; do
             [[ "$branch" == release/talos* ]] || continue
             [[ "$branch" != "$canonical_release" ]] || continue
             [[ "$snapshot_sha" == "$canonical_sha" ]] || continue
@@ -102,6 +95,7 @@ jobs:
           {
             echo "### Talos one-shot merged-branch cleanup"
             echo "- Removed branches: $removed"
+            echo "- Removed identical local-release aliases: $duplicates"
             echo "- Archived divergent merged tips (tags): $archived"
             echo "- Skipped branches: $skipped"
             echo "- Unmerged divergent branches preserved for integration review"
