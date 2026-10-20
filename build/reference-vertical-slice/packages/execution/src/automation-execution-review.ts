@@ -81,6 +81,7 @@ export function openAutomationExecutionPlanReview(
   selection: AutomationCapabilitySelectionResult,
   decisions: AutomationExecutionDesignDecisions,
   createdAt: string,
+  parentExecutionPlanRevisionRef?: GenericResolvedExecutionBundle['revision']['id'],
 ): AutomationExecutionPlanReviewBundle {
   validateSelectionLineage(process, selection);
   const execution = designGenericResolvedExecutionPlan(
@@ -92,7 +93,7 @@ export function openAutomationExecutionPlanReview(
     selection.resolution,
     decisions.subprocessResolutions ?? [],
     createdAt,
-    undefined,
+    parentExecutionPlanRevisionRef,
     decisions.relationResolutions ?? [],
   );
   const materialExecutionRequirementRefs = execution.requirements

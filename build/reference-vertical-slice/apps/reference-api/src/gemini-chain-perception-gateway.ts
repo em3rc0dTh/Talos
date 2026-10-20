@@ -377,11 +377,18 @@ function compactPrompt(envelope: AsyncImagePerceptionTransportEnvelope): string 
   return `You are Talos visual perception. Analyze only visible process-diagram evidence in the supplied PNG. Do not invent hidden steps, business truth, automation approval, deployment authority, or execution authority. Return only JSON.\n\nImage: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}.\n\nRequired JSON shape:\n{\n  "status": "SUCCEEDED|PARTIAL|NO_RESULT",\n  "nodes": [{"id":"n1","label":"visible text if any","kind":"EVENT|ACTION|DECISION|WAIT|HUMAN_INTERACTION|SUBPROCESS|END|PARTICIPANT|DATA_OBJECT|UNKNOWN","confidence":0.0}],\n  "edges": [{"id":"e1","source":"n1","target":"n2","kind":"FLOW|CONDITIONAL_FLOW|MESSAGE|ASSOCIATION|UNKNOWN","label":"visible branch/guard text if any","confidence":0.0,"directed":true}],\n  "diagnostics": ["brief uncertainty note"]\n}\n\nRules: ids must be unique; edge endpoints must reference node ids; use EVENT for a visible start/intermediate event and END for a visible end event; use PARTIAL whenever meaning or direction is uncertain; use NO_RESULT with empty arrays when there is no usable process graph. Prefer literal visible labels. For connector labels or decision branch guards (for example Yes/No, Sí/No), copy the visible text exactly into edge.label; never invent a missing guard. Keep diagnostics short.`;
 }
 
-async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<{response:Response;rawText:string}> {
   const controller = new AbortController();
+  let phase = 'RESPONSE_HEADERS';
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    const response = await fetchImpl(url, { ...init, signal: controller.signal });
+    phase = 'RESPONSE_BODY';
+    const rawText = await response.text();
+    return { response, rawText };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`GEMINI_TIMEOUT_${phase}:Exceeded ${timeoutMs}ms while waiting for the complete model response`);
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -405,7 +412,7 @@ async function callGemini(
   fetchImpl: typeof fetch,
 ) {
   const url = `${geminiBaseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const response = await fetchWithTimeout(fetchImpl, url, {
+  const {response, rawText} = await fetchWithTimeout(fetchImpl, url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -425,7 +432,6 @@ async function callGemini(
       },
     }),
   }, timeoutMs);
-  const rawText = await response.text();
   if (!response.ok) throw new Error(`GEMINI_HTTP_${response.status}:${errorDetail(rawText)}`);
   const raw = JSON.parse(rawText) as any;
   const parts = raw?.candidates?.[0]?.content?.parts;
@@ -514,7 +520,7 @@ export async function startGeminiChainPerceptionGateway(options: GeminiChainGate
           } catch (error) {
             const durationMs = Date.now() - startedAt;
             const detail = error instanceof Error ? error.message : String(error);
-            const status = /^GEMINI_HTTP_(\d+)/.test(detail) ? Number(detail.match(/^GEMINI_HTTP_(\d+)/)?.[1] ?? 503) : 503;
+            const status = detail.startsWith('GEMINI_TIMEOUT_') ? 504 : /^GEMINI_HTTP_(\d+)/.test(detail) ? Number(detail.match(/^GEMINI_HTTP_(\d+)/)?.[1] ?? 503) : 503;
             failures.push({ model, status, durationMs, error: detail.slice(0, 500) });
             console.warn(`[gemini-chain] attempt=${index + 1} model=${model} failed durationMs=${durationMs} error=${detail.slice(0, 500)}`);
           }

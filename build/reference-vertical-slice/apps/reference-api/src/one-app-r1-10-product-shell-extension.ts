@@ -61,12 +61,17 @@ export const R1_10_PRODUCT_SHELL_EXTENSION=String.raw`
       var history=byId('r110History');history.innerHTML='';var items=(body.timeline||[]).slice(-16).reverse();if(!items.length){var empty=document.createElement('div');empty.className='r110HistoryItem';empty.innerHTML='<strong>No durable work yet</strong><span>Start with a real source.</span><time>—</time>';history.appendChild(empty)}
       items.forEach(function(item){var row=document.createElement('div');row.className='r110HistoryItem';var kind=document.createElement('strong');kind.textContent=humanKind(item.aggregateKind);var detail=document.createElement('span');var bits=[item.id,item.state,item.readiness,item.result,item.executionStatus,item.workflowIdRef].filter(Boolean);detail.textContent=bits.join(' · ');var time=document.createElement('time');time.textContent=item.createdAt?new Date(item.createdAt).toLocaleString():'—';row.append(kind,detail,time);history.appendChild(row)});
       if(body.durableDocumentCount>0)setTruth('truthEvidence','pass','Durable evidence recovered');
+      var currentRevision=window.talosTranslationWorkspace&&window.talosTranslationWorkspace.currentRevision();var snapshotResponse=await fetch('/api/product/workspace-snapshot'+(currentRevision?'?revisionId='+encodeURIComponent(currentRevision):''));if(snapshotResponse.ok){var snapshot=await snapshotResponse.json();setTruth('truthConfirmation',snapshot.confirmation?'pass':'',snapshot.confirmation?'Exact process confirmed':'Review the active process');setTruth('truthDesign',snapshot.executionPlanReview||snapshot.automationApproval?'pass':'',snapshot.executionPlanReview||snapshot.automationApproval?'Automation design prepared':'Not reached');setTruth('truthPlan',snapshot.automationApproval||snapshot.executionPlanReview?'pass':'',snapshot.automationApproval?'Exact plan approved':snapshot.executionPlanReview?'Automation plan prepared for review':'Not reached')}
     }catch(error){byId('r110Notice').textContent='Recovery status unavailable: '+(error instanceof Error?error.message:String(error))}
   }
 
   function live(message){var n=byId('r110Live');if(!n)return;n.textContent=message;n.style.display='block'}
 
   expandTruth();installNav();installRecovery();loadRecovery();
+  var recoveryRefreshTimer=null;
+  function refreshDurableState(){clearTimeout(recoveryRefreshTimer);recoveryRefreshTimer=setTimeout(loadRecovery,80)}
+  ['talos:r1-04-business-process-confirmed','talos:r1-05-automation-design-updated','talos:execution-plan-reviewed','talos:r1-06-automation-approved','talos:r1-11d-temporal-ready','talos:workspace-refreshed'].forEach(function(name){window.addEventListener(name,refreshDurableState)});
+  window.addEventListener('talos:execution-plan-reviewed',function(){setTruth('truthPlan','pass','Automation plan prepared for review')});
   window.addEventListener('talos:r1-04-business-process-confirmed',function(){setTruth('truthConfirmation','pass','Exact process confirmed')});
   window.addEventListener('talos:r1-05-automation-design-updated',function(){setTruth('truthDesign','pass','Design workspace active')});
   window.addEventListener('talos:r1-06-automation-approved',function(){setTruth('truthPlan','pass','Exact plan approved');setTruth('truthRuntime','active','Runtime authority pending')});

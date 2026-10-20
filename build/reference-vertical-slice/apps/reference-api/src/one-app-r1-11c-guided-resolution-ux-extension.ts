@@ -134,6 +134,7 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
   }
 
   install();
+  window.talosGuidedProcessReview={show:function(body){capture(body);if(window.talosProductJourney)window.talosProductJourney.setStage('review');var panel=byId('r111cClarify');if(panel&&panel.classList.contains('open'))panel.scrollIntoView({behavior:'smooth',block:'center'})}};
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'';var method=String((init&&init.method)||'GET').toUpperCase();
     return nativeFetch(input,init).then(function(response){

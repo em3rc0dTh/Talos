@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import http from 'node:http';
 import { startGeminiChainPerceptionGateway } from '../apps/reference-api/src/gemini-chain-perception-gateway.ts';
 import { renderR111ProcessingUxPage } from '../apps/reference-api/src/one-app-r1-11-processing-ux-extension.ts';
 
@@ -35,6 +36,46 @@ function geminiResponse(graph = compactGraph()) {
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
 }
+
+for (const phase of ['RESPONSE_HEADERS', 'RESPONSE_BODY']) {
+  test(`Gemini deadline covers ${phase} and fails over after a stalled upstream`, async () => {
+    const calls:string[]=[];
+    const upstream=http.createServer((req,res)=>{
+      const model=req.url!.includes('stalled')?'stalled':'healthy';calls.push(model);
+      if(model==='stalled'){
+        if(phase==='RESPONSE_BODY'){res.writeHead(200,{'content-type':'application/json'});res.flushHeaders()}
+        return;
+      }
+      res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(geminiResponse()));
+    });
+    await new Promise<void>(resolve=>upstream.listen(0,'127.0.0.1',resolve));
+    const address=upstream.address() as {port:number};
+    const gateway=await startGeminiChainPerceptionGateway({port:0,env:{GEMINI_API_KEY:'test-only-secret',GEMINI_MODEL_CHAIN:'stalled,healthy',GEMINI_BASE_URL:`http://127.0.0.1:${address.port}`,GEMINI_TIMEOUT_MS:'1000',GEMINI_CHAIN_BUDGET_MS:'5000'}});
+    try {
+      const started=Date.now();
+      const response=await fetch(`${gateway.baseUrl}/perceive`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(envelope)});
+      assert.equal(response.status,200);assert.equal(response.headers.get('x-talos-gemini-model'),'healthy');
+      assert.deepEqual(calls,['stalled','healthy']);
+      assert.ok(Date.now()-started<4500,'Stalled response must not consume the entire chain budget');
+      assert.equal((await response.json() as any).status,'SUCCEEDED');
+    }finally{await gateway.close();upstream.closeAllConnections();await new Promise<void>(resolve=>upstream.close(()=>resolve()))}
+  });
+}
+
+test('Gemini stalled body reports an explicit 504 attempt and creates no process authority',async()=>{
+  const upstream=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'application/json'});res.flushHeaders()});
+  await new Promise<void>(resolve=>upstream.listen(0,'127.0.0.1',resolve));
+  const address=upstream.address() as {port:number};
+  const gateway=await startGeminiChainPerceptionGateway({port:0,env:{GEMINI_API_KEY:'test-only-secret',GEMINI_MODEL_CHAIN:'stalled',GEMINI_BASE_URL:`http://127.0.0.1:${address.port}`,GEMINI_TIMEOUT_MS:'1000',GEMINI_CHAIN_BUDGET_MS:'5000'}});
+  try{
+    const response=await fetch(`${gateway.baseUrl}/perceive`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(envelope)});
+    const body=await response.json() as any;
+    assert.equal(response.status,503);assert.equal(body.attempts[0].status,504);
+    assert.match(body.attempts[0].error,/GEMINI_TIMEOUT_RESPONSE_BODY:Exceeded 1000ms/);
+    assert.equal(body.automaticConfirmationAuthorized,false);assert.equal(body.automaticExecutionAuthorized,false);
+    assert.equal('anchors' in body,false);
+  }finally{await gateway.close();upstream.closeAllConnections();await new Promise<void>(resolve=>upstream.close(()=>resolve()))}
+});
 
 test('R1-11 Gemini chain advances to the next model, uses compact JSON, expands Talos evidence and preserves correlation', async () => {
   const geminiModels: string[] = [];
