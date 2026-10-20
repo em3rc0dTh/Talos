@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startTalosOneAppProduct } from '../apps/reference-api/src/one-app-product-server.ts';
@@ -235,8 +235,8 @@ test('R1-13D fresh product session keeps durable history behind an explicit Resu
 
 
 test('R1-13D image safe-stop contract exposes provider decision details instead of a generic dead end', async () => {
-  const serverSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-server.ts'), 'utf8');
-  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  const serverSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-server.ts'), 'utf8');
+  const pageSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-product-page.ts'), 'utf8');
   for (const marker of [
     'providerStatus',
     'reasonCodes',
@@ -275,30 +275,30 @@ test('R1-13D image intake route errors retain exact technical diagnostics behind
 
 
 test('R1-13D image branch labels survive perception contract into canonical edge labels', async () => {
-  const gatewaySource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/gemini-chain-perception-gateway.ts'), 'utf8');
-  const adapterSource = readFileSync(path.resolve(process.cwd(), '../packages/image-perception/src/perception-adapter.ts'), 'utf8');
-  const normalizationSource = readFileSync(path.resolve(process.cwd(), '../packages/application/src/common-normalization.ts'), 'utf8');
+  const gatewaySource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/gemini-chain-perception-gateway.ts'), 'utf8');
+  const adapterSource = readFileSync(path.resolve(process.cwd(), 'packages/image-perception/src/perception-adapter.ts'), 'utf8');
+  const normalizationSource = readFileSync(path.resolve(process.cwd(), 'packages/application/src/common-normalization.ts'), 'utf8');
   for (const marker of ['label?: string', 'guardTextObservationKeys: [guardKey]', 'edge.label', 'never invent a missing guard']) assert.ok(gatewaySource.includes(marker), marker);
   for (const marker of ['guardTexts', 'conditionEvidence', 'guardObservationRefs']) assert.ok(adapterSource.includes(marker), marker);
   for (const marker of ["makeClaim(relationshipId, 'label'", 'label: conditionLabel']) assert.ok(normalizationSource.includes(marker), marker);
 });
 
 test('R1-13D product question UI uses ClarificationQuestion.questionText', async () => {
-  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  const pageSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-product-page.ts'), 'utf8');
   assert.ok(pageSource.includes('q.questionText||q.question||q.prompt||q.description'));
 });
 
 test('R1-13D successful source translation clears pending-source presentation state', async () => {
-  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
   assert.ok(workspaceSource.includes('function updateProcess(body){\n    sourceRequestPending=false;'));
   assert.ok(workspaceSource.includes('Current translation is based on the active process source.'));
 });
 
 
 test('R1-13D confirmed review refresh and BPMN label placement stay product-visible', async () => {
-  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
-  const confirmationSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-04-confirmation-extension.ts'), 'utf8');
-  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  const pageSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  const confirmationSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-r1-04-confirmation-extension.ts'), 'utf8');
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), 'apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
   assert.ok(pageSource.includes('window.talosProductRenderCandidate=renderCandidate'));
   assert.ok(pageSource.includes("mode==='CONFIRMED'"));
   assert.ok(pageSource.includes('reviewQuestionText(q,validation,process)'));

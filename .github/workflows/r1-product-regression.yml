@@ -1,0 +1,60 @@
+name: R1 Product + Security Required Gate
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r1-product-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  product-and-security:
+    name: R1 Complete Product, Image and Dependency Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Install locked dependencies without mutation
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+      - name: Enforce high-or-critical production advisory gate
+        working-directory: build/reference-vertical-slice
+        run: npm audit --omit=dev --audit-level=high
+      - name: Verify architecture and frozen artifacts
+        working-directory: build/reference-vertical-slice
+        run: |
+          npm run architecture:verify
+          npm run b7:lock:verify
+      - name: Complete R1 product suite (no external effects)
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: '0'
+          R0_04_LIVE_REQUIRED: '0'
+        run: node --experimental-strip-types --test ./tests/r1-*.test.ts
+      - name: Complete image authority and UX regressions
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: '0'
+          R0_04_LIVE_REQUIRED: '0'
+        run: npm run image:edge:test
+      - name: Verify B9 native Temporal reference execution
+        working-directory: build/reference-vertical-slice
+        run: npm run b9:verify
+      - name: Recheck production advisories after verification
+        working-directory: build/reference-vertical-slice
+        run: npm audit --omit=dev --audit-level=high

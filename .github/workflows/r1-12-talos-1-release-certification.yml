@@ -68,7 +68,10 @@ jobs:
         working-directory: build/reference-vertical-slice
         run: |
           npm run architecture:verify
-          npm run b0:verify
+          npm run b7:lock:verify
+          # B0 is the immutable pre-implementation baseline, not the current R1 gate.
+          # Never run b0:verify on the implemented product: it explicitly forbids
+          # dependencies and TypeScript implementation files.
 
       - name: Run full B1-B9 semantic/runtime verification
         working-directory: build/reference-vertical-slice

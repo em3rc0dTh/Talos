@@ -1,22 +1,19 @@
-name: R1-11 real Ollama qwen2.5vl
+name: R1-11 Real Qwen Hardware Qualification (manual)
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/r1-11-real-ollama-qwen2-5vl.yml'
-      - 'build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts'
-      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
-      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
-      - 'build/reference-vertical-slice/packages/image-perception/**'
+  workflow_dispatch:
+
+# Real qwen2.5vl:7b is hardware-dependent. Standard GitHub CPU runners
+# failed after the 300s upstream deadline; do not present that run as PASS.
+# Set repository variable TALOS_OLLAMA_RUNNER to a qualified faster runner
+# (typically GPU-backed), then manually certify the exact candidate ref.
 
 permissions:
   contents: read
 
 jobs:
   real-ollama-image-e2e:
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.TALOS_OLLAMA_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - name: Checkout exact candidate
@@ -143,7 +140,7 @@ jobs:
             PORT=8790 \
             OLLAMA_BASE_URL=http://127.0.0.1:11434 \
             OLLAMA_MODEL=qwen2.5vl:7b \
-            OLLAMA_TIMEOUT_MS=300000 \
+            OLLAMA_TIMEOUT_MS=900000 \
             OLLAMA_MAX_ATTEMPTS=1 \
             GEMINI_API_KEY='' \
             node --experimental-strip-types ./apps/reference-api/src/ollama-gemini-perception-gateway.ts \
@@ -182,7 +179,7 @@ jobs:
             TALOS_IMAGE_PERCEPTION_MODEL_REF=router:ollama-primary-gemini-fallback \
             TALOS_IMAGE_PERCEPTION_MODEL_VERSION=r1-11-v1 \
             TALOS_IMAGE_PERCEPTION_PIPELINE_VERSION=talos-r1-11-local-vision-v0.1 \
-            TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=330000 \
+            TALOS_IMAGE_PERCEPTION_TIMEOUT_MS=930000 \
             TALOS_IMAGE_PERCEPTION_PROVIDER_CLASS=MODEL_PROVIDER \
             TALOS_IMAGE_PERCEPTION_EVIDENCE_MODE=MODEL_INFERENCE \
             node --experimental-strip-types ./apps/reference-api/src/one-app-product-server.ts \

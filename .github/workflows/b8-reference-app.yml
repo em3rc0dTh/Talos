@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   reference-app:
@@ -31,12 +31,6 @@ jobs:
           node-version: '22.16.0'
           cache: 'npm'
           cache-dependency-path: build/reference-vertical-slice/package-lock.json
-
-      - name: Synchronize workspace lock metadata
-        id: sync
-        continue-on-error: true
-        working-directory: build/reference-vertical-slice
-        run: npm install --package-lock-only --ignore-scripts 2>&1 | tee /tmp/talos-b8-sync.log
 
       - name: Install exact lock
         id: install
@@ -70,13 +64,12 @@ jobs:
 
       - name: Persist B8 result
         env:
-          SYNC: ${{ steps.sync.outcome }}
           INSTALL: ${{ steps.install.outcome }}
           LOCK: ${{ steps.lock.outcome }}
           ARCH: ${{ steps.arch.outcome }}
           B8: ${{ steps.b8.outcome }}
         run: |
-          if [ "$SYNC" = success ] && [ "$INSTALL" = success ] && [ "$LOCK" = success ] && [ "$ARCH" = success ] && [ "$B8" = success ]; then
+          if [ "$INSTALL" = success ] && [ "$LOCK" = success ] && [ "$ARCH" = success ] && [ "$B8" = success ]; then
             OVERALL=PASS
           else
             OVERALL=FAIL
@@ -87,7 +80,6 @@ jobs:
             echo "Status: **$OVERALL**"
             echo
             echo '```text'
-            printf '%-27s %s\n' 'workspace lock sync' "$SYNC"
             printf '%-27s %s\n' 'npm ci' "$INSTALL"
             printf '%-27s %s\n' 'Temporal lock gate' "$LOCK"
             printf '%-27s %s\n' 'architecture guard' "$ARCH"
@@ -95,7 +87,7 @@ jobs:
             echo '```'
             echo
             echo 'The smoke test boots the full native Canvas → validation → Manager correction → semantic freeze → capability → execution design pipeline, launches a real local Temporal server and Worker, starts HTTP/browser app state, then executes APPROVED and REJECTED requests through Workflow Updates.'
-            for pair in "SYNC:/tmp/talos-b8-sync.log" "INSTALL:/tmp/talos-b8-install.log" "LOCK:/tmp/talos-b8-lock.log" "ARCH:/tmp/talos-b8-arch.log" "B8:/tmp/talos-b8-test.log"; do
+            for pair in "INSTALL:/tmp/talos-b8-install.log" "LOCK:/tmp/talos-b8-lock.log" "ARCH:/tmp/talos-b8-arch.log" "B8:/tmp/talos-b8-test.log"; do
               key="${pair%%:*}"; file="${pair#*:}"; eval value="\$$key";
               if [ "$value" != success ]; then
                 echo; echo "## $key failure tail"; echo '```text'; tail -n 180 "$file" 2>/dev/null || true; echo '```'
@@ -103,21 +95,15 @@ jobs:
             done
           } > test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
 
-          # Feature branches are evidence-tested but must remain immutable under CI.
-          # Only main is allowed to persist the generated B8 receipt back to Git.
-          if [ "$GITHUB_REF" = 'refs/heads/main' ]; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add build/reference-vertical-slice/package-lock.json test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
-            if ! git diff --cached --quiet; then
-              git commit -m "test(b8): record tryable reference app CI $OVERALL"
-              git pull --rebase
-              git push
-            fi
-          else
-            echo "B8 receipt generated for $GITHUB_REF; feature-branch mutation intentionally skipped."
-          fi
           echo "OVERALL=$OVERALL" >> "$GITHUB_ENV"
+
+      - name: Upload read-only app receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-b8-receipt-${{ github.sha }}
+          path: test/104-B8-TRYABLE-REFERENCE-APP-CI-RESULT-v0.1.md
+          if-no-files-found: error
 
       - name: Enforce B8 gate
         if: always()
