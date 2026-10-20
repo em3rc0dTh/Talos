@@ -32,7 +32,8 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
     window.dispatchEvent(new CustomEvent('talos:r1-04-business-process-confirmed',{detail:{
       revisionId:body.revision.id,
       canonicalProcessRevisionId:body.confirmation.canonicalProcessRevisionId,
-      confirmationId:body.confirmation.id
+      confirmationId:body.confirmation.id,
+      confirmedProcess:body
     }}));
   }
   function install(){
@@ -47,12 +48,14 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
   }
   async function confirmProcess(){
     if(!candidate||confirmed)return;
+    var requestedCandidate=candidate;
     var button=byId('r104ConfirmProcess');if(button)button.disabled=true;
     state('Recording explicit human authority for the exact review revision…','');
     try{
       var response=await nativeFetch('/api/bpmn/confirm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:candidate.revisionId,canonicalProcessRevisionId:candidate.canonicalProcessRevisionId,confirmedBy:'one-app-product-user',authorityRef:authority(),rationale:byId('r104ConfirmationRationale').value})});
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
       if(!response.ok)throw new Error(body.error||body.code||('HTTP '+response.status));
+      if(candidate!==requestedCandidate)return;
       confirmed=true;
       candidate={revisionId:body.revision.id,canonicalProcessRevisionId:body.confirmation.canonicalProcessRevisionId};
       setLocked(true);
@@ -64,7 +67,7 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
       var evidence=byId('json');if(evidence)evidence.textContent=JSON.stringify({businessProcessConfirmation:body},null,2);
       publishConfirmation(body);
     }catch(error){
-      confirmed=false;state(error instanceof Error?error.message:String(error),'bad');refresh();
+      if(candidate!==requestedCandidate)return;confirmed=false;state(error instanceof Error?error.message:String(error),'bad');refresh();
     }
   }
 
@@ -73,6 +76,7 @@ export const R1_04_BUSINESS_CONFIRMATION_EXTENSION = String.raw`
     var path=typeof input==='string'?input:(input&&input.url)||'';
     var method=String((init&&init.method)||'GET').toUpperCase();
     var semanticResolution=path.indexOf('/api/semantic-resolution/decide')!==-1&&method==='POST';var reviewResult=(path.indexOf('/api/input/image')!==-1&&method==='POST')||(path.indexOf('/api/input/bpmn')!==-1&&method==='POST')||(path.indexOf('/api/input/canvas')!==-1&&method==='POST')||(path.indexOf('/api/bpmn/edit')!==-1&&method==='POST')||semanticResolution||(path.indexOf('/api/process-review')!==-1&&method==='GET');
+    if(reviewResult&&method==='POST'){candidate=null;confirmed=false;refresh()}
     return nativeFetch(input,init).then(function(response){
       if(reviewResult&&response.ok){response.clone().json().then(function(body){
         var normalized=body;

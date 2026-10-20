@@ -161,6 +161,14 @@ R1-12 refuses to certify unless the checked-out SHA is exactly the current merge
 
 # Product path now implemented
 
+One-App now refreshes Canvas/BPMN and prepares a read-only automation proposal
+after confirmation. It asks for unknown business responsibilities, preserves
+confirmed actors, and keeps unconnected services as implementation requirements.
+Accepting the proposal builds the technical plan; design approval prepares Temporal
+automatically. Export needs no configured runtime target. See
+[the guided translation flow](docs/ONE-APP-GUIDED-TRANSLATION.md) for behavior,
+authority boundaries, recovery and verification.
+
 The One-App product path now reaches the complete governed execution chain:
 
 ```text

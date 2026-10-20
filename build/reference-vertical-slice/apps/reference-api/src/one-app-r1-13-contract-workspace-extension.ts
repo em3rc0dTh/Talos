@@ -23,6 +23,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   var priorFetch=window.fetch.bind(window);
   var latestRevision=null,latestProcess=null,latestMapping=null,latestApprovalId=null,latestTemporalExport=null,latestCanvasRevision=null,latestSourceKind=null,sourceRequestPending=false,recoveredWorkspaceCandidate=null;
   var sourcePositions={},sourceSelected=null,sourceConnectFrom=null,dragOffset=null;
+  var workspaceEpoch=0;
 
   function byId(id){return document.getElementById(id)}
   function esc(value){return String(value==null?'':value).replace(/[&<>"]/g,function(ch){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[ch]})}
@@ -54,7 +55,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
       if(!latestApprovalId||!latestMapping)return;
       var a=document.createElement('a');a.href='/api/automation/temporal-export/package?approvalId='+encodeURIComponent(latestApprovalId)+'&temporalMappingRevisionId='+encodeURIComponent(latestMapping.revision.id);a.download='talos-temporal-workflow.tar.gz';document.body.appendChild(a);a.click();a.remove();
     };
-    byId('r113Implement').onclick=function(){document.body.classList.add('r113ImplementationChosen');var state=byId('r113TemporalState');if(state)state.textContent='Implementation selected. Export remains available and no deployment or process start happens until you explicitly authorize those steps.';var runPanel=byId('r111dRun');if(runPanel){runPanel.classList.add('open');runPanel.scrollIntoView({behavior:'smooth',block:'start'})}};
+    byId('r113Implement').onclick=function(){document.body.classList.add('r113ImplementationChosen');if(window.talosProductJourney)window.talosProductJourney.setStage('run');var state=byId('r113TemporalState');if(state)state.textContent='Implementation selected. Export remains available and no deployment or process start happens until you explicitly authorize those steps.';var runPanel=byId('r111dRun');if(runPanel){runPanel.classList.add('open');runPanel.scrollIntoView({behavior:'smooth',block:'start'})}};
     var steps=Array.from(document.querySelectorAll('.r111dStep'));if(steps[3])steps[3].innerHTML='<strong>4 · Translate</strong>Prepare outputs';if(steps[4])steps[4].innerHTML='<strong>5 · Implement</strong>Optional';
   }
 
@@ -64,6 +65,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
 
   function offerRecoveredWorkspace(body){
     recoveredWorkspaceCandidate=body;
+    var workspace=byId('r113Workspace');if(workspace)workspace.classList.add('open');
     var status=byId('r113Status');if(status)status.textContent='Previous process available';
     var button=byId('r113ResumePrevious');if(button)button.classList.add('show');
     var state=byId('r113CanvasState');if(state)state.textContent='A previous process exists in durable history. It is not loaded into this new session unless you choose Resume previous process.';
@@ -82,6 +84,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     var state=byId('r113CanvasState');if(state)state.textContent='Resumed from durable Talos history. No deployment or execution authority was restored.';
     if(latestApprovalId){var prepare=byId('r113PrepareTemporal');if(prepare)prepare.disabled=false}
     if(latestApprovalId&&latestMapping)await loadTemporalExport();
+    window.dispatchEvent(new CustomEvent('talos:workspace-resumed',{detail:body}));
   }
 
   function sourceLabel(path){
@@ -130,7 +133,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   function layoutGraph(process){
     var nodes=(process&&process.nodes)||[],edges=(process&&process.edges)||[],incoming={};nodes.forEach(function(n){incoming[n.id]=0});edges.forEach(function(e){incoming[e.targetNodeId]=(incoming[e.targetNodeId]||0)+1});
     var starts=nodes.filter(function(n){return !incoming[n.id]||n.kind==='START'}),level={},queue=starts.map(function(n){level[n.id]=0;return n.id});
-    while(queue.length){var id=queue.shift(),base=level[id]||0;edges.filter(function(e){return e.sourceNodeId===id}).forEach(function(e){var next=base+1;if(level[e.targetNodeId]===undefined||level[e.targetNodeId]<next){level[e.targetNodeId]=next;queue.push(e.targetNodeId)}})}
+    while(queue.length){var id=queue.shift(),base=level[id]||0;edges.filter(function(e){return e.sourceNodeId===id}).forEach(function(e){var next=base+1;if(level[e.targetNodeId]===undefined){level[e.targetNodeId]=next;queue.push(e.targetNodeId)}})}
     var groups={};nodes.forEach(function(n){var l=level[n.id]===undefined?0:Math.min(level[n.id],8);(groups[l]||(groups[l]=[])).push(n)});
     var positions={};Object.keys(groups).forEach(function(key){var l=Number(key);groups[key].forEach(function(n,index){positions[n.id]={x:35+l*185,y:30+index*105}})});
     return{nodes:nodes,edges:edges,positions:positions,width:Math.max(880,80+(Math.max(0,...Object.values(level).map(Number))+1)*185),height:Math.max(280,80+Math.max(1,...Object.values(groups).map(function(g){return g.length}))*105)};
@@ -252,17 +255,19 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
 
   async function loadTemporalExport(){
     if(!latestApprovalId||!latestMapping)return;var state=byId('r113TemporalState');if(state)state.textContent='Preparing portable Temporal artifacts…';
+    var epoch=workspaceEpoch,approvalId=latestApprovalId,mappingId=latestMapping.revision.id;
     try{
       var response=await priorFetch('/api/automation/temporal-export',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({approvalId:latestApprovalId,temporalMappingRevisionId:latestMapping.revision.id,allowDurableRecovery:true})});
-      var body=await response.json();if(!response.ok)throw new Error(body.error||('HTTP '+response.status));latestTemporalExport=body;renderTemporalExport(body);if(state)state.textContent=body.readiness.temporalExportReady?'Temporal design and export are ready. Nothing has been deployed or started.':'Temporal draft needs business routing clarification before it can be exported or implemented.';
-    }catch(error){if(state)state.textContent=error instanceof Error?error.message:String(error)}
+      var body=await response.json();if(epoch!==workspaceEpoch||approvalId!==latestApprovalId||!latestMapping||mappingId!==latestMapping.revision.id)return;if(!response.ok)throw new Error(body.error||('HTTP '+response.status));latestTemporalExport=body;renderTemporalExport(body);if(state)state.textContent=body.readiness.temporalExportReady?'Temporal design and export are ready. Nothing has been deployed or started.':'Temporal draft needs business routing clarification before it can be exported or implemented.';window.dispatchEvent(new CustomEvent('talos:temporal-export-ready',{detail:body}));
+    }catch(error){if(epoch!==workspaceEpoch)return;if(state)state.textContent=error instanceof Error?error.message:String(error);window.dispatchEvent(new CustomEvent('talos:temporal-export-failed',{detail:{message:state&&state.textContent||'Talos could not load the Temporal export. Retry preparation.'}}))}
   }
 
-  async function recoverDurableWorkspace(){
+  async function recoverDurableWorkspace(revisionId){
     if(sourceRequestPending)return;
+    var epoch=workspaceEpoch;
     try{
-      var response=await priorFetch('/api/product/workspace-snapshot'),snapshot=await response.json();
-      if(!response.ok||!snapshot||snapshot.status!=='RECOVERED'||!snapshot.processRevision||!snapshot.bpmnRevision)return;
+      var response=await priorFetch('/api/product/workspace-snapshot'+(revisionId?'?revisionId='+encodeURIComponent(revisionId):'')),snapshot=await response.json();
+      if(epoch!==workspaceEpoch||sourceRequestPending||!response.ok||!snapshot||snapshot.status!=='RECOVERED'||!snapshot.processRevision||!snapshot.bpmnRevision)return;
       latestApprovalId=snapshot.automationApproval&&snapshot.automationApproval.id||null;
       latestMapping=snapshot.temporalMapping?{revision:{id:snapshot.temporalMapping.revisionId,mappingDigest:snapshot.temporalMapping.mappingDigest,executionPlanRevisionRef:snapshot.temporalMapping.executionPlanRevisionRef}}:null;
       updateProcess({
@@ -291,7 +296,7 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
     var readiness=byId('r113TemporalReadiness');if(readiness)readiness.innerHTML='<div class="r113Ready '+(designReady?'yes':'no')+'"><strong>Design '+(designReady?'ready':'needs clarification')+'</strong>'+(designReady?'Temporal mapping is structurally coherent.':'Business routing is still ambiguous.')+'</div><div class="r113Ready '+(exportReady?'yes':'no')+'"><strong>Export '+(exportReady?'ready':'blocked')+'</strong>'+(exportReady?'Portable package can be copied or downloaded.':'Resolve the routing blockers before export.')+'</div><div class="r113Ready '+(executionReady?'yes':'no')+'"><strong>Execution '+(executionReady?'ready':'not ready')+'</strong>'+(executionReady?'No execution blockers detected.':'Resolve implementation requirements before running it.')+'</div>';
     var entryRef=manifest.workflow&&manifest.workflow.entryElementRef;
     var graphProcess={nodes:manifest.graph.elements.map(function(e){var kind=e.id===entryRef?'START':e.kind==='HUMAN_COORDINATION'?'HUMAN_INTERACTION':e.kind==='DECISION_COORDINATION'?'DECISION':e.kind==='WAIT_COORDINATION'?'WAIT':e.kind==='COMPLETION_COORDINATION'?'END':e.kind==='CAPABILITY_INVOCATION'?'ACTION':'ACTION';return{id:e.id,kind:kind,name:e.businessName}}),edges:manifest.graph.relations.map(function(r){return{sourceNodeId:r.sourceElementRef,targetNodeId:r.targetElementRef,label:r.conditionLabel||((r.relationKind==='DEFAULT')?'Otherwise':'')}})};renderGraph('r113TemporalGraph',graphProcess,'temporal');
-    var blockers=bundle.readiness.blockers||[];var host=byId('r113TemporalGraph');if(host&&blockers.length){var box=document.createElement('div');box.className='r113Blockers';box.textContent=(exportReady?'Implementation requirements: ':'Translation blockers: ')+blockers.join(' · ');host.appendChild(box)}
+    var blockers=bundle.readiness.blockers||[];var host=byId('r113TemporalGraph');if(host&&blockers.length){var box=document.createElement('div');box.className='r113Blockers';var pendingNames=blockers.filter(function(item){return item.indexOf('ACTIVITY_ADAPTER_REQUIRED:')===0}).map(function(item){var ref=item.slice('ACTIVITY_ADAPTER_REQUIRED:'.length),element=manifest.graph.elements.find(function(candidate){return candidate.id===ref});return element?element.businessName:'Proposed service'});box.textContent=exportReady?'Connect or implement these activities before execution: '+pendingNames.join(', '):'Business routing needs clarification before this workflow can be exported.';var technical=document.createElement('details'),summary=document.createElement('summary'),evidence=document.createElement('pre');summary.textContent='Translation details';evidence.textContent=blockers.join('\n');technical.appendChild(summary);technical.appendChild(evidence);box.appendChild(technical);host.appendChild(box)}
     var workflow=temporalFile('workflow.ts');var source=byId('r113WorkflowSource');if(source&&workflow)source.textContent=workflow.content;byId('r113CopyWorkflow').disabled=!workflow||!exportReady;byId('r113DownloadTemporal').disabled=!exportReady;var implement=byId('r113Implement');if(implement){implement.disabled=!exportReady;implement.textContent=executionReady?'Implement with Temporal':'Implement & resolve requirements'};
   }
 
@@ -403,8 +408,9 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   };
   async function recoverTranslationWorkspace(){
     if(sourceRequestPending)return;
+    var epoch=workspaceEpoch;
     try{
-      var response=await priorFetch('/api/product/workspace-state');if(!response.ok)return;var body=await response.json();if(!body.available)return;
+      var response=await priorFetch('/api/product/workspace-state');if(!response.ok)return;var body=await response.json();if(epoch!==workspaceEpoch||sourceRequestPending||!body.available)return;
       offerRecoveredWorkspace(body);
     }catch(error){
       var state=byId('r113CanvasState');if(state)state.textContent='Talos could not check previous durable history. Start a new process normally.';
@@ -412,17 +418,22 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
   }
 
   installWorkspace();setTimeout(function(){installVisualSourceCanvas();recoverTranslationWorkspace()},0);
-  window.addEventListener('talos:r1-04-business-process-confirmed',function(){var ws=byId('r113Workspace');if(ws)ws.classList.add('open');var status=byId('r113Status');if(status)status.textContent='CONFIRMED PROCESS'});
+  window.addEventListener('talos:r1-04-business-process-confirmed',function(event){var detail=event&&event.detail;if(detail&&detail.confirmedProcess)updateProcess(detail.confirmedProcess);var ws=byId('r113Workspace');if(ws)ws.classList.add('open');var status=byId('r113Status');if(status)status.textContent='CONFIRMED PROCESS';var state=byId('r113TemporalState');if(state)state.textContent='Process confirmed. Talos is preparing the automation proposal…';if(latestProcess)renderGraph('r113TemporalGraph',latestProcess,'temporal')});
   window.addEventListener('talos:r1-06-automation-approved',function(event){latestApprovalId=event&&event.detail&&event.detail.approvalId||latestApprovalId;var button=byId('r113PrepareTemporal');if(button)button.disabled=!latestApprovalId;var ws=byId('r113Workspace');if(ws){ws.classList.add('open');ws.scrollIntoView({behavior:'smooth',block:'start'})}selectTab('temporal')});
   window.addEventListener('talos:r1-11d-temporal-ready',function(event){latestMapping=event&&event.detail&&event.detail.mapping||null;if(latestMapping)loadTemporalExport()});
+  window.talosTranslationWorkspace={updateProcess:updateProcess,selectTab:selectTab,recover:recoverDurableWorkspace,loadTemporalExport:loadTemporalExport,currentRevision:function(){return latestRevision&&latestRevision.id},preview:function(process){renderGraph('r113TemporalGraph',process,'temporal')}};
 
   window.fetch=function(input,init){
     var path=typeof input==='string'?input:(input&&input.url)||'',method=String((init&&init.method)||'GET').toUpperCase();
     var isSource=method==='POST'&&(path.indexOf('/api/input/image')!==-1||path.indexOf('/api/input/bpmn')!==-1||path.indexOf('/api/input/canvas')!==-1);
+    var invalidates=method==='POST'&&(isSource||path.indexOf('/api/bpmn/edit')!==-1||path.indexOf('/api/semantic-resolution/decide')!==-1);
+    if(invalidates){workspaceEpoch+=1;latestMapping=null;latestApprovalId=null;latestTemporalExport=null;['r113CopyWorkflow','r113DownloadTemporal','r113Implement','r113PrepareTemporal'].forEach(function(id){var button=byId(id);if(button)button.disabled=true});var readiness=byId('r113TemporalReadiness');if(readiness)readiness.innerHTML='';document.body.classList.remove('r113ImplementationChosen')}
+    var requestEpoch=workspaceEpoch;
     if(isSource)resetTranslationWorkspaceForSource(path);
     return priorFetch(input,init).then(function(response){
       if(isSource){
         response.clone().json().then(function(body){
+          if(requestEpoch!==workspaceEpoch)return;
           if(response.ok&&body&&body.revision&&body.reconciliation&&body.reconciliation.processRevision){
             sourceRequestPending=false;updateProcess(body);
           }else if(response.ok){
@@ -431,8 +442,8 @@ export const R1_13_CONTRACT_WORKSPACE_EXTENSION=String.raw`
             failSourceRequest(path,body);
           }
         }).catch(function(){if(!response.ok)failSourceRequest(path,null)});
-      }else if(response.ok&&method==='POST'&&(path.indexOf('/api/semantic-resolution/decide')!==-1||path.indexOf('/api/bpmn/confirm')!==-1)){
-        response.clone().json().then(updateProcess).catch(function(){});
+      }else if(response.ok&&method==='POST'&&(path.indexOf('/api/semantic-resolution/decide')!==-1||path.indexOf('/api/bpmn/confirm')!==-1||path.indexOf('/api/bpmn/edit')!==-1)){
+        response.clone().json().then(function(body){if(requestEpoch===workspaceEpoch)updateProcess(body)}).catch(function(){});
       }
       return response;
     }).catch(function(error){if(isSource)failSourceRequest(path,{userMessage:error instanceof Error?error.message:String(error)});throw error});

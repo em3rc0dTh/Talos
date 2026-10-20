@@ -79,16 +79,20 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   }
 
   async function openDesign(){
+    if(bundle)return bundle;
     if(!confirmation||opening)return;opening=true;var button=byId('r105Open');if(button)button.disabled=true;
+    var requestedConfirmation=confirmation;
     setState('Freezing the exact confirmed semantic baseline for Automation Design only…','');
     try{
       var response=await nativeFetch('/api/bpmn/automation-design-approval',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revisionId:confirmation.revisionId,confirmationId:confirmation.confirmationId,approvedBy:'one-app-product-user',authorityRef:authority('automation-design-handoff')})});
       var raw=await response.text();var body=raw?JSON.parse(raw):{};
       if(!response.ok)throw new Error(body.error||body.code||('HTTP '+response.status));
+      if(confirmation!==requestedConfirmation)return;
       if(!body.automationDesignOpened||!body.automationDesign){setState(body.userMessage||'Talos needs a few process details before it can prepare the automation.','blocked');window.dispatchEvent(new CustomEvent('talos:r1-11c-freeze-blocked',{detail:body}));return;}
       if(body.capabilitySelectionCreated!==false||body.deploymentAuthorized!==false||body.executionAuthorized!==false)throw new Error('R1-05 authority boundary violation.');
       renderWorkspace(body.automationDesign);
-    }catch(error){setState(error instanceof Error?error.message:String(error),'bad');if(button)button.disabled=false}
+      return body.automationDesign;
+    }catch(error){if(confirmation!==requestedConfirmation)return;setState(error instanceof Error?error.message:String(error),'bad');if(button)button.disabled=false}
     finally{opening=false}
   }
 
@@ -114,6 +118,7 @@ export const R1_05_AUTOMATION_DESIGN_EXTENSION = String.raw`
   }
 
   install();
+  window.talosAutomationDesign={open:openDesign};
   window.addEventListener('talos:r1-04-business-process-confirmed',function(event){
     var detail=event&&event.detail;if(!detail||!detail.revisionId||!detail.confirmationId)return;
     confirmation={revisionId:detail.revisionId,canonicalProcessRevisionId:detail.canonicalProcessRevisionId,confirmationId:detail.confirmationId};

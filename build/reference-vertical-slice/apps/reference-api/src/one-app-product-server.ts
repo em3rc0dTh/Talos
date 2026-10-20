@@ -16,12 +16,13 @@ import { renderR107RuntimeAuthorityPage } from './one-app-r1-07-runtime-authorit
 import { renderR110ProductShellPage } from './one-app-r1-10-product-shell-extension.ts';
 import { renderR111DBusinessFirstPage } from './one-app-r1-11d-business-first-extension.ts';
 import { renderR113ContractWorkspacePage } from './one-app-r1-13-contract-workspace-extension.ts';
-import { buildTalosProductJourneyState } from './product-journey.ts';
 import {
   buildTalosProductRecoverySnapshot,
   ensureTalosProductRuntimeCompatibility,
 } from './product-runtime-recovery.ts';
 import { buildTalosDurableWorkspaceSnapshot } from './contract-workspace-recovery.ts';
+import { proposeConfirmedBusinessAutomation } from '../../../packages/application/src/business-automation-proposal.ts';
+import { renderGuidedTranslationPage } from './one-app-guided-translation-extension.ts';
 
 export interface TalosSimpleRuntimeTarget {
   environmentKey:string;
@@ -208,7 +209,7 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         const withRuntimeAuthorityCapture = renderR107RuntimeAuthorityPage(withAutomationDesign);
         const withExecutionPlan = renderR106ExecutionPlanPage(withRuntimeAuthorityCapture);
         const withProductShell = renderR110ProductShellPage(withExecutionPlan);
-        const productPage = renderR113ContractWorkspacePage(renderR111DBusinessFirstPage(withProductShell));
+        const productPage = renderGuidedTranslationPage(renderR113ContractWorkspacePage(renderR111DBusinessFirstPage(withProductShell)));
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'content-length': Buffer.byteLength(productPage),
@@ -223,11 +224,23 @@ export async function startTalosOneAppProduct(options: TalosOneAppProductOptions
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/journey') {
-        json(res, 200, buildTalosProductJourneyState(buildTalosProductRecoverySnapshot(inner.runtimeDir)));
+        json(res, 200, buildTalosDurableWorkspaceSnapshot(inner.runtimeDir, url.searchParams.get('revisionId') ?? undefined).journey);
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/workspace-snapshot') {
-        json(res, 200, buildTalosDurableWorkspaceSnapshot(inner.runtimeDir));
+        json(res, 200, buildTalosDurableWorkspaceSnapshot(inner.runtimeDir, url.searchParams.get('revisionId') ?? undefined));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/product/automation-proposal') {
+        const revisionId = url.searchParams.get('revisionId');
+        const processId = url.searchParams.get('processRevisionId');
+        if (!revisionId || !processId) throw new TypeError('An exact BPMN and Canonical revision are required');
+        const snapshot = buildTalosDurableWorkspaceSnapshot(inner.runtimeDir, revisionId);
+        if (!snapshot.confirmation || !snapshot.processRevision || snapshot.processRevision.id !== processId) {
+          json(res, 409, { userMessage: 'Review and confirm this exact process before preparing its automation proposal.' });
+          return;
+        }
+        json(res, 200, { ...proposeConfirmedBusinessAutomation(snapshot.processRevision), revisionId, snapshot });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/product/runtime-target') {

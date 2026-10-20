@@ -145,6 +145,7 @@ interface OneAppSession {
   revisionId: string;
   binding: ReconciledBinding;
   automation: OneAppAutomationContext;
+  capabilitySelectionInput?: string;
 }
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -1234,6 +1235,15 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         if (!confirmationDocument || confirmationDocument.aggregateKind !== 'BusinessProcessConfirmationRecord') {
           throw new TypeError('one-app business-process confirmation record not found');
         }
+        const exactConfirmation = confirmationDocument.payload as any;
+        if (exactConfirmation.bpmnRevisionId !== revisionId || exactConfirmation.canonicalProcessRevisionId !== binding.processRevision.id || exactConfirmation.status !== 'CONFIRMED') {
+          throw new TypeError('automation design requires the exact confirmed process lineage');
+        }
+        const existingDesign = [...automationSessions.values()].find(session => session.revisionId === revisionId && session.automation.process.id === binding.processRevision.id);
+        if (existingDesign) {
+          json(res, 200, { automationDesignOpened: true, automationDesign: publicAutomationWorkspace(existingDesign.automation), capabilitySelectionCreated: false, deploymentAuthorized: false, executionAuthorized: false, idempotentReplay: true });
+          return;
+        }
         const at = new Date().toISOString();
         const reviewContext = binding.review.context;
         const assessment = binding.validation.assessment;
@@ -1345,12 +1355,20 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         const workspaceId = text(input.workspaceId, 'workspaceId');
         const session = automationSessions.get(workspaceId);
         if (!session) throw new TypeError('one-app explicit capability selection requires an existing Automation Design Workspace');
+        const selections = array(input.selections, 'selections') as any[];
+        const selectionInput = JSON.stringify(selections.map(({authorityRef, decidedBy, rationale, ...semantics}) => semantics).sort((a,b) => String(a.requirementRef).localeCompare(String(b.requirementRef))));
+        if (session.automation.selection) {
+          if (session.capabilitySelectionInput !== selectionInput) throw new TypeError('An accepted proposal is immutable. Review a new design to change it.');
+          json(res, 200, { ...session.automation.selection, idempotentReplay: true });
+          return;
+        }
         session.automation = selectOneAppAutomationCapabilities(
           repo,
           session.automation,
-          array(input.selections, 'selections') as any,
+          selections as any,
           new Date().toISOString(),
         );
+        session.capabilitySelectionInput = selectionInput;
         json(res, 201, session.automation.selection);
         return;
       }
