@@ -9,13 +9,26 @@ on:
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
       - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
       - 'build/reference-vertical-slice/packages/image-perception/**'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/r1-11-real-ollama-qwen2-5vl.yml'
+      - 'build/reference-vertical-slice/apps/reference-api/src/ollama-gemini-perception-gateway.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-server.ts'
+      - 'build/reference-vertical-slice/apps/reference-api/src/one-app-product-server.ts'
+      - 'build/reference-vertical-slice/packages/image-perception/**'
+      - 'build/reference-vertical-slice/package.json'
+      - 'build/reference-vertical-slice/package-lock.json'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   real-ollama-image-e2e:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
