@@ -1,0 +1,107 @@
+name: Talos gap audit - no external effects
+
+on:
+  push:
+    branches:
+      - audit/talos-actions-gap-2026-10-19
+    paths:
+      - .github/workflows/talos-gap-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: talos-gap-audit-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  architecture-and-product:
+    name: Architecture + R1 product regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+      - name: Architecture boundaries and frozen invariants
+        working-directory: build/reference-vertical-slice
+        run: |
+          TALOS_SKIP_CONTRACT_HASH=1 npm run architecture:verify
+          npm run b0:verify
+      - name: Full R1 product regressions without live external side effects
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: '0'
+          R0_04_LIVE_REQUIRED: '0'
+        run: node --experimental-strip-types --test ./tests/r1-*.test.ts
+
+  image-edge:
+    name: Image I8-I9 regression chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+      - name: Execute image and governed-automation regressions
+        working-directory: build/reference-vertical-slice
+        env:
+          R1_08_LIVE_REQUIRED: '0'
+          R0_04_LIVE_REQUIRED: '0'
+        run: npm run image:edge:test
+
+  restart-safety:
+    name: Restart under Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.16.0', '24.11.1']
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: build/reference-vertical-slice/package-lock.json
+      - name: Install exact lock
+        working-directory: build/reference-vertical-slice
+        run: npm ci
+      - name: Replay and restart durable runtime
+        working-directory: build/reference-vertical-slice
+        run: npm run b10:restart:test
+
+  field-trial-evidence:
+    name: R1-11 field-trial evidence status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Evaluate release-evidence gate (report blocker, do not manufacture PASS)
+        working-directory: build/reference-vertical-slice
+        shell: bash
+        run: |
+          set -uo pipefail
+          if node --experimental-strip-types ./scripts/r1-11-field-trial-gate.ts ../../evidence/field-trials; then
+            echo 'R1-11 field-trial evidence: PASS' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'R1-11 field-trial evidence: NOT CERTIFIED (release blocker)' >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=R1-11 release blocker::Two independently observed real field trials are required before R1-12."
+          fi
