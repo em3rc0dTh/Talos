@@ -30,7 +30,7 @@ export function normalizeAdapterResult(repo:ImmutableDocumentRepository,resultId
   const elements=repo.listByKind<SourceOccurrenceDescriptor>('SourceOccurrenceDescriptor').map(d=>d.payload).filter(o=>scope.includedOccurrenceRefs.includes(o.sourceOccurrenceId));
   const relationships=repo.listByKind<SourceRelationshipDescriptor>('SourceRelationshipDescriptor').map(d=>d.payload).filter(o=>scope.includedOccurrenceRefs.includes(o.sourceOccurrenceId));
   const properties=repo.listByKind<SourcePropertyEvidenceDescriptor>('SourcePropertyEvidenceDescriptor').map(d=>d.payload).filter(p=>p.sourceRepresentationId===representation.id);
-  const propsByNative=new Map<string,Record<string,unknown>>();for(const p of properties){const x=propsByNative.get(p.nativeSourceId)??{};x[p.propertyPath]=p.literalValue;propsByNative.set(p.nativeSourceId,x);}
+  const propsByNative=new Map<string,Record<string,unknown>>();for(const p of properties){const x=propsByNative.get(p.nativeSourceId)??{};if(p.literalValue!==undefined)x[p.propertyPath]=p.literalValue;propsByNative.set(p.nativeSourceId,x);}
 
   const fragments:EvidenceFragment[]=[];const occurrences:SourceOccurrence[]=[];const claims:SemanticClaim[]=[];const links:ProvenanceLink[]=[];const transforms:TransformationRecord[]=[];
   const canonicalByDescriptor=new Map<string,CanonicalId>();const canonicalByNative=new Map<string,CanonicalId>();const actors:Actor[]=[];const dataObjects:DataObject[]=[];const rules:BusinessRule[]=[];const nodes:ProcessNode[]=[];const edges:ProcessEdge[]=[];const extensions:SourceSemanticExtension[]=[];

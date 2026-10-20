@@ -1,0 +1,308 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { startTalosOneAppProduct } from '../apps/reference-api/src/one-app-product-server.ts';
+
+function canvasInput(){
+  return {
+    title:'R1-13D portable process',
+    initiatedBy:'r1-13d-user',
+    elements:[
+      {id:'start',kind:'START',label:'Start'},
+      {id:'human',kind:'APPROVAL',label:'Review request'},
+      {id:'wait',kind:'WAIT',label:'Wait 30 seconds',waitKind:'DURATION',expression:'30 seconds'},
+      {id:'end',kind:'END',label:'End'},
+    ],
+    connections:[
+      {id:'c1',from:'start',to:'human',kind:'FLOW'},
+      {id:'c2',from:'human',to:'wait',kind:'FLOW'},
+      {id:'c3',from:'wait',to:'end',kind:'FLOW'},
+    ],
+    presentation:{
+      nodeLayouts:[
+        {clientElementId:'start',x:20,y:30},
+        {clientElementId:'human',x:210,y:30},
+        {clientElementId:'wait',x:400,y:30},
+        {clientElementId:'end',x:590,y:30},
+      ],
+      viewport:{mode:'BUSINESS_CANVAS'},
+      zoom:1,
+    },
+  };
+}
+
+test('R1-13D portable Canvas export can be verified and re-imported as a fresh review candidate',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-roundtrip-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const created=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasInput())});
+    assert.equal(created.status,201);
+    const first=await created.json() as any;
+    const exported=await fetch(app.baseUrl+'/api/process/canvas/export?revisionId='+encodeURIComponent(first.canvasRevision.id));
+    assert.equal(exported.status,200);
+    const nativeSource=await exported.json() as any;
+    assert.equal(nativeSource.schemaVersion,'talos-canvas-native-v0.2');
+
+    const imported=await fetch(app.baseUrl+'/api/input/canvas-native',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({nativeSource,initiatedBy:'roundtrip-user'})});
+    assert.equal(imported.status,201);
+    const second=await imported.json() as any;
+    assert.equal(second.status,'BPMN_READY_FOR_PROCESS_REVIEW');
+    assert.equal(second.sourceKind,'TALOS_CANVAS');
+    assert.equal(second.importedPortableCanvas,true);
+    assert.notEqual(second.canvasRevision.id,first.canvasRevision.id);
+    assert.equal(second.canvasRevision.elementSnapshots.length,4);
+    assert.equal(second.canvasRevision.relationshipSnapshots.length,3);
+    assert.equal(second.canvasRevision.elementSnapshots.find((item:any)=>item.kind==='WAIT')?.propertyValues.duration.literalText,'30 seconds');
+    const layouts=second.canvasRevision.presentationSnapshot?.nodeLayouts??[];
+    assert.deepEqual(layouts.map((item:any)=>[item.x,item.y]),[[20,30],[210,30],[400,30],[590,30]]);
+    assert.equal(second.automaticConfirmationAuthorized,false);
+    assert.equal(second.automaticExecutionAuthorized,false);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+test('R1-13D rejects a tampered portable Canvas without changing authority',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-tamper-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const created=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasInput())});
+    const first=await created.json() as any;
+    const nativeSource=await fetch(app.baseUrl+'/api/process/canvas/export?revisionId='+encodeURIComponent(first.canvasRevision.id)).then((response)=>response.json()) as any;
+    nativeSource.elements[1].label='Tampered label';
+    const imported=await fetch(app.baseUrl+'/api/input/canvas-native',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({nativeSource,initiatedBy:'tamper-user'})});
+    assert.ok(imported.status>=400);
+    const body=await imported.json() as any;
+    assert.match(body.userMessage,/could not safely prepare this process for review/i);
+    assert.equal(body.safeState.deploymentAutomaticallyAuthorized,false);
+    assert.equal(body.safeState.workflowAutomaticallyStarted,false);
+    assert.match(body.error,/snapshots do not match|digest verification failed/i);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+test('R1-13D reconstructs the translation workspace after restart without rehydrating authority',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-recovery-'));
+  let app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  let original:any;
+  try{
+    const created=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasInput())});
+    assert.equal(created.status,201);original=await created.json();
+  }finally{await app.close()}
+  app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const recovered=await fetch(app.baseUrl+'/api/product/workspace-state').then((response)=>response.json()) as any;
+    assert.equal(recovered.available,true);
+    assert.equal(recovered.sourceKind,'TALOS_CANVAS');
+    assert.equal(recovered.process.id,original.reconciliation.processRevision.id);
+    assert.equal(recovered.bpmnRevision.id,original.revision.id);
+    assert.equal(recovered.canvasRevision.id,original.canvasRevision.id);
+    assert.equal(recovered.confirmation.status,'REVIEW');
+    assert.equal(recovered.automaticAuthorityGranted,false);
+    assert.equal(recovered.authorityRehydrated,false);
+    const page=await fetch(app.baseUrl).then((response)=>response.text());
+    assert.match(page,/recoverTranslationWorkspace/);
+    assert.match(page,/No deployment or execution authority was restored/);
+    assert.match(page,/Import saved Canvas/);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+
+test('R1-13D blocks ambiguous Canvas decisions and exact duplicate connections before BPMN review',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-decision-guard-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const ambiguous={...canvasInput(),elements:[
+      {id:'start',kind:'START',label:'Start'},
+      {id:'decision',kind:'DECISION',label:'Customer answer?'},
+      {id:'yes',kind:'STEP',label:'Register booking'},
+      {id:'no',kind:'STEP',label:'Say goodbye'},
+      {id:'end',kind:'END',label:'End'},
+    ],connections:[
+      {id:'c1',from:'start',to:'decision',kind:'FLOW'},
+      {id:'c2',from:'decision',to:'yes',kind:'FLOW'},
+      {id:'c3',from:'decision',to:'no',kind:'FLOW'},
+      {id:'c4',from:'yes',to:'end',kind:'FLOW'},
+      {id:'c5',from:'no',to:'end',kind:'FLOW'},
+    ]};
+    const rejected=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(ambiguous)});
+    assert.ok(rejected.status>=400);
+    const rejectedBody=await rejected.json() as any;
+    assert.match(rejectedBody.error,/needs an outcome on every outgoing branch/i);
+
+    const duplicate={...canvasInput(),connections:[
+      {id:'c1',from:'start',to:'human',kind:'FLOW'},
+      {id:'c2',from:'human',to:'wait',kind:'FLOW'},
+      {id:'c2b',from:'human',to:'wait',kind:'FLOW'},
+      {id:'c3',from:'wait',to:'end',kind:'FLOW'},
+    ]};
+    const duplicateResponse=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(duplicate)});
+    assert.ok(duplicateResponse.status>=400);
+    const duplicateBody=await duplicateResponse.json() as any;
+    assert.match(duplicateBody.error,/same connection more than once/i);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+test('R1-13D valid decision outcomes project to a BPMN exclusive gateway with named branches',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-bpmn-decision-'));
+  const app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const input={title:'Decision process',initiatedBy:'r1-13d-user',elements:[
+      {id:'start',kind:'START',label:'Start'},
+      {id:'decision',kind:'DECISION',label:'Customer answer?'},
+      {id:'yes',kind:'STEP',label:'Register booking'},
+      {id:'no',kind:'STEP',label:'Say goodbye'},
+      {id:'wait',kind:'WAIT',label:'Wait',waitKind:'DURATION',expression:'30 seconds'},
+      {id:'end',kind:'END',label:'End'},
+    ],connections:[
+      {id:'c1',from:'start',to:'decision',kind:'FLOW'},
+      {id:'c2',from:'decision',to:'yes',kind:'CONDITION',condition:'Yes'},
+      {id:'c3',from:'decision',to:'no',kind:'CONDITION',condition:'No'},
+      {id:'c4',from:'yes',to:'wait',kind:'FLOW'},
+      {id:'c5',from:'wait',to:'end',kind:'FLOW'},
+      {id:'c6',from:'no',to:'end',kind:'FLOW'},
+    ]};
+    const response=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+    assert.equal(response.status,201);
+    const body=await response.json() as any;
+    assert.equal(body.projectionDiagnostics.filter((item:any)=>item.severity==='ERROR').length,0);
+    assert.equal(body.unprojectableCanonicalRefs.length,0);
+    assert.match(body.revision.bpmnXml,/<bpmn:exclusiveGateway[^>]+name="Customer answer\?"/);
+    assert.match(body.revision.bpmnXml,/name="Yes"/);
+    assert.match(body.revision.bpmnXml,/name="No"/);
+    assert.match(body.revision.bpmnXml,/<bpmn:timerEventDefinition><bpmn:timeDuration[^>]*>PT30S<\/bpmn:timeDuration><\/bpmn:timerEventDefinition>/);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+
+test('R1-13D optional SourcePropertyEvidence literalValue is omitted instead of breaking deterministic persistence', async () => {
+  const { SqliteDocumentStore } = await import('../packages/persistence-sqlite/src/sqlite-document-store.ts');
+  const { appendRecord } = await import('../packages/source-intake/src/store.ts');
+  const { createOpaqueId } = await import('../packages/foundation/src/ids.ts');
+  const repo = new SqliteDocumentStore(':memory:');
+  try {
+    const id = createOpaqueId('source', 'r1-13d-optional-literal');
+    assert.doesNotThrow(() => appendRecord(repo, 'SourcePropertyEvidenceDescriptor', {
+      id,
+      sourceRepresentationId: createOpaqueId('source', 'r1-13d-representation'),
+      nativeSourceId: 'node-1',
+      propertyPath: 'propertyValues.optional',
+      sourceState: 'UNKNOWN',
+      literalValue: undefined,
+    }, '2026-09-23T15:00:00.000Z', id));
+    const stored = repo.get<any>(id)?.payload;
+    assert.equal(Object.prototype.hasOwnProperty.call(stored, 'literalValue'), false);
+    assert.equal(stored.sourceState, 'UNKNOWN');
+  } finally {
+    repo.close();
+  }
+});
+
+test('R1-13D product workspace does not render durable history as the output of a new failed source', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-source-switch-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const html = await fetch(app.baseUrl).then((response) => response.text());
+    for (const marker of [
+      'resetTranslationWorkspaceForSource',
+      'Previous durable process preserved · new source pending.',
+      'The previous process remains in history and is intentionally not rendered as this source.',
+      'The previous durable process was not changed and is not being shown as the output of this source.',
+      'body.userMessage||body.error',
+    ]) assert.ok(html.includes(marker), marker);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+
+test('R1-13D fresh product session keeps durable history behind an explicit Resume previous process action',async()=>{
+  const runtimeDir=mkdtempSync(path.join(os.tmpdir(),'talos-r1-13d-explicit-resume-'));
+  let app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const created=await fetch(app.baseUrl+'/api/input/canvas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(canvasInput())});
+    assert.equal(created.status,201);
+  }finally{await app.close()}
+  app=await startTalosOneAppProduct({port:0,oneApp:{runtimeDir,imagePerceptionEnv:{}}});
+  try{
+    const html=await fetch(app.baseUrl).then((response)=>response.text());
+    assert.match(html,/Resume previous process/);
+    assert.match(html,/A previous process exists in durable history\. It is not loaded into this new session unless you choose Resume previous process\./);
+    assert.match(html,/offerRecoveredWorkspace\(body\)/);
+    assert.doesNotMatch(html,/setTimeout\(recoverDurableWorkspace,0\)/);
+  }finally{await app.close();rmSync(runtimeDir,{recursive:true,force:true})}
+});
+
+
+test('R1-13D image safe-stop contract exposes provider decision details instead of a generic dead end', async () => {
+  const serverSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-server.ts'), 'utf8');
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  for (const marker of [
+    'providerStatus',
+    'reasonCodes',
+    'providerDiagnostics',
+    'SAFE_STOP_PROVIDER_FAILURE',
+    'vision model returned no reviewable business-process evidence',
+  ]) assert.ok(serverSource.includes(marker), marker);
+  for (const marker of [
+    "metric('Provider status',data.providerStatus)",
+    "metric('Reason',data.reasonCodes.join(', '))",
+    'data.userMessage||',
+  ]) assert.ok(pageSource.includes(marker), marker);
+});
+
+
+test('R1-13D image intake route errors retain exact technical diagnostics behind the safe product message', async () => {
+  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'talos-r1-13d-route-diagnostic-'));
+  const app = await startTalosOneAppProduct({ port: 0, oneApp: { runtimeDir, imagePerceptionEnv: {} } });
+  try {
+    const response = await fetch(app.baseUrl + '/api/input/image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ imageBase64: 'definitely-not-a-valid-png', fileName: 'broken.png', initiatedBy: 'r1-13d-test' }),
+    });
+    assert.ok(response.status >= 400);
+    const body = await response.json() as any;
+    assert.equal(typeof body.error, 'string');
+    assert.equal(typeof body.technicalError, 'string');
+    assert.equal(typeof body.diagnosticId, 'string');
+    assert.ok(body.diagnosticId.length > 0);
+  } finally {
+    await app.close();
+    rmSync(runtimeDir, { recursive: true, force: true });
+  }
+});
+
+
+test('R1-13D image branch labels survive perception contract into canonical edge labels', async () => {
+  const gatewaySource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/gemini-chain-perception-gateway.ts'), 'utf8');
+  const adapterSource = readFileSync(path.resolve(process.cwd(), '../packages/image-perception/src/perception-adapter.ts'), 'utf8');
+  const normalizationSource = readFileSync(path.resolve(process.cwd(), '../packages/application/src/common-normalization.ts'), 'utf8');
+  for (const marker of ['label?: string', 'guardTextObservationKeys: [guardKey]', 'edge.label', 'never invent a missing guard']) assert.ok(gatewaySource.includes(marker), marker);
+  for (const marker of ['guardTexts', 'conditionEvidence', 'guardObservationRefs']) assert.ok(adapterSource.includes(marker), marker);
+  for (const marker of ["makeClaim(relationshipId, 'label'", 'label: conditionLabel']) assert.ok(normalizationSource.includes(marker), marker);
+});
+
+test('R1-13D product question UI uses ClarificationQuestion.questionText', async () => {
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  assert.ok(pageSource.includes('q.questionText||q.question||q.prompt||q.description'));
+});
+
+test('R1-13D successful source translation clears pending-source presentation state', async () => {
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  assert.ok(workspaceSource.includes('function updateProcess(body){\n    sourceRequestPending=false;'));
+  assert.ok(workspaceSource.includes('Current translation is based on the active process source.'));
+});
+
+
+test('R1-13D confirmed review refresh and BPMN label placement stay product-visible', async () => {
+  const pageSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-product-page.ts'), 'utf8');
+  const confirmationSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-04-confirmation-extension.ts'), 'utf8');
+  const workspaceSource = readFileSync(path.resolve(process.cwd(), '../apps/reference-api/src/one-app-r1-13-contract-workspace-extension.ts'), 'utf8');
+  assert.ok(pageSource.includes('window.talosProductRenderCandidate=renderCandidate'));
+  assert.ok(pageSource.includes("mode==='CONFIRMED'"));
+  assert.ok(pageSource.includes('reviewQuestionText(q,validation,process)'));
+  assert.ok(confirmationSource.includes("window.talosProductRenderCandidate(body.revision,body.reconciliation,'CONFIRMED')"));
+  assert.ok(workspaceSource.includes('function polylineMidpoint(points)'));
+  assert.ok(workspaceSource.includes('var mid=polylineMidpoint(edge.points)'));
+});

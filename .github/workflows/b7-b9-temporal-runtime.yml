@@ -2,6 +2,7 @@ name: B7-B9 Temporal reference runtime
 
 on:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/b7-b9-temporal-runtime.yml'
       - 'build/reference-vertical-slice/workers/reference-temporal-worker/**'

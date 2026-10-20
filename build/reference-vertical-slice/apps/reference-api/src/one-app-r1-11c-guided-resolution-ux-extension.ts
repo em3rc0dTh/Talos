@@ -38,7 +38,7 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
   function findingFor(question){var v=validation();return v&&(v.findings||[]).find(function(f){return (question.findingRefs||[]).indexOf(f.id)>=0})}
   function node(ref){var p=process();return p&&(p.nodes||[]).find(function(n){return n.id===ref})}
   function edge(ref){var p=process();return p&&(p.edges||[]).find(function(e){return e.id===ref})}
-  function supported(f){return f&&['SV-CFL-001','SV-SUB-002','SV-EVT-001','SV-EVT-002','SV-EVT-003'].indexOf(f.code)>=0}
+  function supported(f){return f&&['SV-ACT-001','SV-CFL-001','SV-SUB-002','SV-EVT-001','SV-EVT-002','SV-EVT-003'].indexOf(f.code)>=0}
   function setState(text,kind){var n=byId('r111cState');if(!n)return;n.textContent=text;n.className='r111cState'+(kind?' '+kind:'')}
   function targetText(q,f){
     if(f.code==='SV-CFL-001'){var e=edge(q.targetRef),a=e&&node(e.sourceNodeId),b=e&&node(e.targetNodeId);return 'Path: '+((a&&a.name)||'decision')+' → '+((b&&b.name)||'next step')}
@@ -82,11 +82,13 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
       var q=item.q,f=item.f,card=document.createElement('div');card.className='r111cCard';card.dataset.question=q.id;card.dataset.finding=f.id;card.dataset.target=q.targetRef;card.dataset.code=f.code;
       var title=document.createElement('strong');title.textContent=(index+1)+'. '+targetText(q,f);card.appendChild(title);
       var prompt=document.createElement('p');
-      if(f.code==='SV-CFL-001')prompt.textContent='When should Talos follow this path?';
+      if(f.code==='SV-ACT-001')prompt.textContent='Who is responsible for this work?';
+      else if(f.code==='SV-CFL-001')prompt.textContent='When should Talos follow this path?';
       else if(f.code.indexOf('SV-EVT-')===0)prompt.textContent='What should Talos wait for before continuing?';
       else prompt.textContent='How should this part of the process behave?';
       card.appendChild(prompt);
-      if(f.code==='SV-CFL-001'){var input=document.createElement('input');input.className='r111cCondition';input.placeholder='Example: only when the customer says yes';card.appendChild(input)}
+      if(f.code==='SV-ACT-001'){var actorName=document.createElement('input');actorName.className='r111cActorName';actorName.placeholder='Responsible role, person, team, or system';card.appendChild(actorName);var actorKind=document.createElement('select');actorKind.className='r111cActorKind';[['HUMAN_ROLE','Human role'],['HUMAN_PERSON','Specific person'],['SYSTEM','System'],['ORGANIZATION','Organization'],['EXTERNAL_PARTY','External party'],['AI','AI'],['MIXED','Mixed responsibility']].forEach(function(pair){var option=document.createElement('option');option.value=pair[0];option.textContent=pair[1];actorKind.appendChild(option)});actorKind.style.marginTop='8px';card.appendChild(actorKind)}
+      else if(f.code==='SV-CFL-001'){var input=document.createElement('input');input.className='r111cCondition';input.placeholder='Example: only when the customer says yes';card.appendChild(input)}
       else if(f.code.indexOf('SV-EVT-')===0){var select=document.createElement('select');select.className='r111cWaitKind';[['','Choose what the process waits for'],['DURATION','A fixed amount of time'],['SCHEDULE','A scheduled time'],['DEADLINE','A deadline'],['MESSAGE','A message'],['EXTERNAL_EVENT','An external event'],['HUMAN_RESPONSE','A person to respond'],['CONDITION','A condition to become true']].forEach(function(pair){var o=document.createElement('option');o.value=pair[0];o.textContent=pair[1];select.appendChild(o)});card.appendChild(select);var extra=document.createElement('div');extra.className='r111cWaitExtra';extra.style.marginTop='8px';card.appendChild(extra);select.addEventListener('change',function(){waitFields(card)})}
       else{var select2=document.createElement('select');select2.className='r111cBoundary';[['EMBEDDED','Part of this same process'],['CALL_ACTIVITY','A reusable process'],['EXTERNAL_ORCHESTRATION','Handled by another system'],['HUMAN_MANAGED','Managed by a person']].forEach(function(pair){var o2=document.createElement('option');o2.value=pair[0];o2.textContent=pair[1];select2.appendChild(o2)});card.appendChild(select2);var completion=document.createElement('input');completion.className='r111cCompletion';completion.placeholder='When is this part considered complete?';completion.style.marginTop='8px';card.appendChild(completion)}
       host.appendChild(card);
@@ -96,6 +98,7 @@ export const R1_11C_GUIDED_RESOLUTION_UX_EXTENSION = String.raw`
   function collect(){
     return Array.from(document.querySelectorAll('.r111cCard')).map(function(card){
       var code=card.dataset.code;
+      if(code==='SV-ACT-001')return{kind:'ACTOR_RESPONSIBILITY',questionRef:card.dataset.question,findingRef:card.dataset.finding,targetRef:card.dataset.target,actorName:card.querySelector('.r111cActorName').value,actorKind:card.querySelector('.r111cActorKind').value};
       if(code==='SV-CFL-001')return{kind:'BRANCH_CONDITION',questionRef:card.dataset.question,findingRef:card.dataset.finding,targetRef:card.dataset.target,condition:card.querySelector('.r111cCondition').value};
       if(code.indexOf('SV-EVT-')===0){var k=card.querySelector('.r111cWaitKind').value;return{kind:'WAIT_SEMANTICS',questionRef:card.dataset.question,findingRef:card.dataset.finding,targetRef:card.dataset.target,waitKind:k,expression:(card.querySelector('.r111cExpression')||{}).value,timezone:(card.querySelector('.r111cTimezone')||{}).value,resumeSemantics:(card.querySelector('.r111cResume')||{}).value}}
       return{kind:'SUBPROCESS_BOUNDARY',questionRef:card.dataset.question,findingRef:card.dataset.finding,targetRef:card.dataset.target,boundaryMeaning:card.querySelector('.r111cBoundary').value,completionMeaning:card.querySelector('.r111cCompletion').value};

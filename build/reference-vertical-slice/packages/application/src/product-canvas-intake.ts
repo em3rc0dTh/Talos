@@ -116,6 +116,49 @@ export function prepareProductCanvasSource(repo:ImmutableDocumentRepository,inpu
     kind:'FLOW',
   }));
 
+  const elementInputById=new Map<string,ProductCanvasElementInput>();
+  for(let index=0;index<input.elements.length;index+=1){
+    const item=input.elements[index]!;
+    const clientId=required(item.id??`step-${index+1}`,`elements[${index}].id`);
+    if(elementInputById.has(clientId))throw new TypeError(`Canvas contains duplicate step id: ${clientId}`);
+    elementInputById.set(clientId,item);
+  }
+  const exactConnections=new Set<string>();
+  for(let index=0;index<connections.length;index+=1){
+    const item=connections[index]!;
+    const from=required(item.from,`connections[${index}].from`);
+    const to=required(item.to,`connections[${index}].to`);
+    if(from===to)throw new TypeError(`Canvas step ${from} cannot connect to itself`);
+    if(!elementInputById.has(from)||!elementInputById.has(to))throw new TypeError('Canvas connection references an unknown step');
+    const condition=item.condition?.trim();
+    const requestedKind=(item.kind??(condition?'CONDITION':'FLOW')).toUpperCase();
+    const effectiveKind=requestedKind==='FLOW'&&condition?'CONDITION':requestedKind;
+    const exactKey=JSON.stringify([from,to,effectiveKind,condition??null]);
+    if(exactConnections.has(exactKey))throw new TypeError(`Canvas contains the same connection more than once: ${from} → ${to}`);
+    exactConnections.add(exactKey);
+  }
+  for(const [decisionId,decision] of elementInputById){
+    if(required(decision.kind,`element ${decisionId} kind`).toUpperCase()!=='DECISION')continue;
+    const outgoing=connections.filter((item)=>item.from===decisionId);
+    if(outgoing.length<2)throw new TypeError(`Decision "${decision.label}" needs at least two business outcomes before review`);
+    let defaults=0;
+    const outcomeLabels=new Set<string>();
+    for(const item of outgoing){
+      const condition=item.condition?.trim();
+      const requestedKind=(item.kind??(condition?'CONDITION':'FLOW')).toUpperCase();
+      const effectiveKind=requestedKind==='FLOW'&&condition?'CONDITION':requestedKind;
+      if(effectiveKind==='DEFAULT'){defaults+=1;continue;}
+      if(effectiveKind!=='CONDITION'){
+        throw new TypeError(`Decision "${decision.label}" needs an outcome on every outgoing branch (for example Yes / No)`);
+      }
+      if(!condition)throw new TypeError(`Decision "${decision.label}" has a branch without a business outcome`);
+      const key=condition.toLocaleLowerCase();
+      if(outcomeLabels.has(key))throw new TypeError(`Decision "${decision.label}" repeats the outcome "${condition}"`);
+      outcomeLabels.add(key);
+    }
+    if(defaults>1)throw new TypeError(`Decision "${decision.label}" can have only one Otherwise branch`);
+  }
+
   const relationships:CanvasRelationshipDraft[]=connections.map((item,index)=>{
     const from=required(item.from,`connections[${index}].from`);
     const to=required(item.to,`connections[${index}].to`);

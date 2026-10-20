@@ -1,6 +1,7 @@
 import { createOpaqueId } from '../../foundation/src/ids.ts';
 import { validateProcessRevision } from '../../semantic-core/src/validation.ts';
 import type {
+  Actor,
   BusinessRule,
   CanonicalId,
   ClarificationQuestion,
@@ -28,6 +29,14 @@ export type GuidedWaitKind =
   | 'CONDITION';
 
 export type GuidedResolutionAnswer =
+  | {
+      kind: 'ACTOR_RESPONSIBILITY';
+      questionRef: string;
+      findingRef: string;
+      targetRef: string;
+      actorName: string;
+      actorKind: Actor['kind'];
+    }
   | {
       kind: 'BRANCH_CONDITION';
       questionRef: string;
@@ -133,6 +142,14 @@ function validateAnswer(
   }
   if (finding.assessmentId !== validation.assessment.id || question.assessmentId !== validation.assessment.id) {
     throw new TypeError('GUIDED_RESOLUTION_ASSESSMENT_MISMATCH');
+  }
+  if (answer.kind === 'ACTOR_RESPONSIBILITY') {
+    if (finding.code !== 'SV-ACT-001') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
+    required(answer.actorName, 'actorName');
+    if (!['HUMAN_ROLE','HUMAN_PERSON','SYSTEM','ORGANIZATION','EXTERNAL_PARTY','AI','MIXED','UNKNOWN'].includes(answer.actorKind)) {
+      throw new TypeError('GUIDED_RESOLUTION_ACTOR_KIND_INVALID');
+    }
+    return;
   }
   if (answer.kind === 'BRANCH_CONDITION') {
     if (finding.code !== 'SV-CFL-001') throw new TypeError('GUIDED_RESOLUTION_KIND_MISMATCH');
@@ -276,10 +293,49 @@ export function decideGuidedSemanticResolution(input: {
     unresolvedTerms: [...rule.unresolvedTerms],
     provenanceRefs: [...rule.provenanceRefs],
   }));
+  const actors: Actor[] = input.processRevision.actors.map((actor) => ({
+    ...actor,
+    sourceReferences: [...actor.sourceReferences],
+    provenanceRefs: [...actor.provenanceRefs],
+  }));
   const claims: SemanticClaim[] = [...input.processRevision.semanticClaims];
 
   for (const answer of input.proposal.answers) {
-    if (answer.kind === 'BRANCH_CONDITION') {
+    if (answer.kind === 'ACTOR_RESPONSIBILITY') {
+      const node = nodes.find((candidate) => candidate.id === answer.targetRef);
+      if (!node || !['HUMAN_INTERACTION','ACTION'].includes(node.kind)) {
+        throw new TypeError('GUIDED_RESOLUTION_ACTOR_TARGET_NOT_FOUND');
+      }
+      const actorName = required(answer.actorName, 'actorName');
+      const existingActor = actors.find((candidate) => candidate.kind === answer.actorKind && candidate.name.trim().toLowerCase() === actorName.toLowerCase());
+      const actor = existingActor ?? {
+        id: createOpaqueId('canonical', `guided-resolution-actor:${nextId}:${node.id}:${answer.actorKind}:${actorName}`),
+        kind: answer.actorKind,
+        name: actorName,
+        sourceReferences: [],
+        provenanceRefs: [],
+      };
+      if (!existingActor) actors.push(actor);
+      node.actorRefs = [...new Set([...node.actorRefs, actor.id])];
+      const priorSourceProperties = node.details?.sourceProperties && typeof node.details.sourceProperties === 'object' && !Array.isArray(node.details.sourceProperties)
+        ? node.details.sourceProperties as Record<string, unknown>
+        : {};
+      node.details = {
+        ...(node.details ?? {}),
+        responsibilityState: 'CONFIRMED',
+        sourceProperties: {
+          ...priorSourceProperties,
+          'propertyValues.actor': { state: 'SET', value: actorName },
+        },
+      };
+      claims.push(confirmedClaim({
+        revisionId: nextId,
+        answer,
+        authority: input.proposal.authority,
+        propertyPath: 'details.actor',
+        value: { actorRef: actor.id, actorName, actorKind: actor.kind },
+      }));
+    } else if (answer.kind === 'BRANCH_CONDITION') {
       const edge = edges.find((candidate) => candidate.id === answer.targetRef);
       if (!edge || edge.kind !== 'CONDITIONAL') throw new TypeError('GUIDED_RESOLUTION_BRANCH_TARGET_NOT_FOUND');
       const condition = required(answer.condition, 'condition');
@@ -353,6 +409,7 @@ export function decideGuidedSemanticResolution(input: {
     derivationKind: 'HUMAN_CONFIRMATION',
     nodes,
     edges,
+    actors,
     rules,
     semanticClaims: claims,
     semanticStatus: 'NORMALIZED',

@@ -2,6 +2,7 @@ name: B7 Temporal SDK lock
 
 on:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/b7-temporal-lock.yml'
       - 'build/reference-vertical-slice/package.json'

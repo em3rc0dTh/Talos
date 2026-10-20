@@ -26,6 +26,8 @@ test('R1-11D simple product shell exposes five business stages and three source 
   assert.match(page,/Who is responsible\?/);
   assert.match(page,/Talos has a low-risk draft/);
   assert.match(page,/Use Talos proposal/);
+  assert.match(page,/r\.family==='SOURCE_DEFINED'\|\|r\.family==='HUMAN_INTERACTION'/);
+  assert.match(page,/requirement\.businessActorLabel\|\|'Process operator'/);
   assert.match(page,/Review exceptions/);
   assert.match(page,/Set one default/);
   assert.match(page,/Apply to similar unresolved steps/);

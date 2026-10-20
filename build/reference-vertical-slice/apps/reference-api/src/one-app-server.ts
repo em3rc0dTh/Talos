@@ -20,6 +20,7 @@ import {
   mapOneAppApprovedTemporalDesign,
   openOneAppAutomationDesign,
   prepareProductCanvasSource,
+  productCanvasInputFromNativeSource,
   persistOneAppWorkflowExecutionObservation,
   proposeGuidedSemanticResolution,
   realizeOneAppDeploymentEnvironment,
@@ -233,7 +234,7 @@ function publicFreezeBlockers(binding: ReconciledBinding) {
       blockerClass: finding.blockerClass,
       resolutionRoute: finding.resolutionRoute,
       question: questionsByFinding.get(finding.id) ?? null,
-      guidedResolutionSupported: ['SV-CFL-001', 'SV-SUB-002', 'SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code),
+      guidedResolutionSupported: ['SV-ACT-001', 'SV-CFL-001', 'SV-SUB-002', 'SV-EVT-001', 'SV-EVT-002', 'SV-EVT-003'].includes(finding.code),
     }));
   return {
     readiness: binding.validation.assessment.executionReadiness,
@@ -254,10 +255,13 @@ function publicAutomationWorkspace(context: OneAppAutomationContext) {
       ...bundle.workspace,
       requirements: bundle.workspace.requirements.map((requirement) => {
         const subject = context.process.nodes.find((node) => requirement.semanticSubjectRefs.includes(node.id));
+        const actor = context.process.actors.find((candidate) => subject?.actorRefs.includes(candidate.id));
         return {
           ...requirement,
           businessStepName: subject?.name ?? null,
           businessStepKind: subject?.kind ?? null,
+          businessActorLabel: actor?.name ?? null,
+          businessActorKind: actor?.kind ?? null,
         };
       }),
     },
@@ -391,6 +395,64 @@ function exactBpmnXmlForSession(repo:SqliteDocumentStore,session:OneAppSession):
     .sort((a,b)=>Number(b.revisionNumber??0)-Number(a.revisionNumber??0));
   if(!candidates[0])throw new TypeError('Temporal export requires exact BPMN lineage for the approved process');
   return candidates[0].bpmnXml;
+}
+
+function latestPayloadByKind<T>(
+  repo: SqliteDocumentStore,
+  aggregateKind: string,
+  predicate: (payload: T) => boolean = () => true,
+): T | undefined {
+  const documents = repo.listByKind<T>(aggregateKind);
+  for (let index = documents.length - 1; index >= 0; index -= 1) {
+    if (predicate(documents[index]!.payload)) return documents[index]!.payload;
+  }
+  return undefined;
+}
+
+function buildTranslationWorkspaceState(repo: SqliteDocumentStore) {
+  const bpmnRevision = latestPayloadByKind<any>(repo, 'BpmnProcessRevision',
+    (revision) => Boolean(revision?.canonicalProcessRevisionId && revision?.bpmnXml));
+  if (!bpmnRevision) {
+    return {
+      version: 'talos.translation-workspace-state.v1',
+      available: false,
+      automaticAuthorityGranted: false,
+      authorityRehydrated: false,
+    };
+  }
+  const processDocument = repo.get<any>(bpmnRevision.canonicalProcessRevisionId as OpaqueId);
+  const process = processDocument?.aggregateKind === 'ProcessRevision' ? processDocument.payload : undefined;
+  if (!process) throw new TypeError('Translation workspace lost the Canonical ProcessRevision pinned by BPMN');
+  const confirmation = latestPayloadByKind<any>(repo, 'BusinessProcessConfirmationRecord',
+    (candidate) => candidate?.bpmnRevisionId === bpmnRevision.id && candidate?.status === 'CONFIRMED');
+  const automationApproval = latestPayloadByKind<any>(repo, 'AutomationDesignApprovalRecord',
+    (candidate) => candidate?.processRevisionRef === process.id);
+  const temporalMapping = automationApproval
+    ? latestPayloadByKind<any>(repo, 'TemporalMappingRevision',
+        (candidate) => candidate?.executionPlanRevisionRef === automationApproval.executionPlanRevisionRef)
+    : undefined;
+  const canvasRevision = bpmnRevision.sourceRoute === 'TALOS_CANVAS'
+    ? latestPayloadByKind<any>(repo, 'CanvasRevision',
+        (candidate) => typeof candidate?.createdAt === 'string' && candidate.createdAt <= bpmnRevision.createdAt)
+    : undefined;
+  return {
+    version: 'talos.translation-workspace-state.v1',
+    available: true,
+    sourceKind: bpmnRevision.sourceRoute,
+    process,
+    bpmnRevision,
+    ...(canvasRevision ? { canvasRevision } : {}),
+    confirmation: {
+      status: confirmation ? 'CONFIRMED' : 'REVIEW',
+      confirmationId: confirmation?.id ?? null,
+    },
+    automation: {
+      approvalId: automationApproval?.id ?? null,
+      temporalMappingRevisionId: temporalMapping?.id ?? null,
+    },
+    automaticAuthorityGranted: false,
+    authorityRehydrated: false,
+  };
 }
 
 const PRODUCT_TEMPORAL_RECOMMENDATION_VERSION = 'talos-product-temporal-recommendation-v0.1';
@@ -608,6 +670,11 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/product/workspace-state') {
+        json(res, 200, buildTranslationWorkspaceState(repo));
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/api/process/bpmn/export') {
         const revisionId = text(url.searchParams.get('revisionId'), 'revisionId');
         const revision = workspace.getRevision(revisionId);
@@ -679,6 +746,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
         );
 
         if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          const perceptionDecision = result.perception.admission.decision;
+          const reasonCodes = result.perception.admission.reasonCodes;
+          const providerStatus = result.perception.admission.providerStatus;
+          const userMessage = perceptionDecision === 'SAFE_STOP_PROVIDER_FAILURE'
+            ? 'Talos preserved the image, but the vision provider failed before it could produce process evidence. Check the configured provider/authentication and retry.'
+            : 'Talos preserved and analyzed the image, but the vision model returned no reviewable business-process evidence. Try a clearer crop containing the process diagram, or use BPMN/Canvas.';
           json(res, 200, {
             status: result.status,
             sourceArtifactId: result.intake.artifact.id,
@@ -687,8 +760,12 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
             width: result.intake.coordinateSpace.width,
             height: result.intake.coordinateSpace.height,
             mediaType: 'image/png',
-            perceptionDecision: result.perception.admission.decision,
+            perceptionDecision,
+            providerStatus,
+            reasonCodes,
+            providerDiagnostics: result.perception.providerResult.diagnostics,
             diagnostics: result.perception.attempt.diagnostics,
+            userMessage,
             automaticConfirmationAuthorized: false,
             automaticFreezeAuthorized: false,
             automaticExecutionAuthorized: false,
@@ -729,6 +806,60 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
           automaticConfirmationAuthorized: false,
           automaticFreezeAuthorized: false,
+          automaticExecutionAuthorized: false,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/input/canvas-native') {
+        const input = await jsonBody(req);
+        const initiatedBy = typeof input.initiatedBy === 'string' && input.initiatedBy.trim() ? input.initiatedBy : 'one-app-user';
+        const converted = productCanvasInputFromNativeSource(input.nativeSource, initiatedBy);
+        const result = prepareProductCanvasSource(repo, converted);
+        if (result.status !== 'BPMN_READY_FOR_PROCESS_REVIEW') {
+          json(res, 200, {
+            status: result.status,
+            sourceKind: 'TALOS_CANVAS',
+            sourceArtifactId: result.preserved.artifact.id,
+            sourceRepresentationId: result.preserved.nativeRepresentation.id,
+            userMessage: 'Talos verified and imported the saved Canvas, but it could not prepare the review yet.',
+            automaticConfirmationAuthorized: false,
+            automaticAutomationDesignAuthorized: false,
+            automaticExecutionAuthorized: false,
+          });
+          return;
+        }
+        const review = initializeReview(repo, result.normalized.processRevision, result.validation, {
+          createdBy: initiatedBy,
+          sourceRepresentationRefs: [result.preserved.nativeRepresentation.id],
+          adapterResultContextRefs: [result.attempt.result!.id],
+        });
+        const binding: ReconciledBinding = {
+          status: 'RECONCILED',
+          sourceBpmnRevision: result.projection.bpmnRevision,
+          alignedBpmnRevision: result.projection.bpmnRevision,
+          processDefinition: result.normalized.processDefinition,
+          processRevision: result.normalized.processRevision,
+          validation: result.validation,
+          review,
+          diagnostics: [],
+        };
+        bindings.set(result.projection.bpmnRevision.id, binding);
+        json(res, 201, {
+          status: 'BPMN_READY_FOR_PROCESS_REVIEW',
+          sourceKind: 'TALOS_CANVAS',
+          importedPortableCanvas: true,
+          canvasDefinition: result.definition,
+          canvasRevision: result.revision,
+          sourceArtifactId: result.preserved.artifact.id,
+          sourceRepresentationId: result.preserved.nativeRepresentation.id,
+          revision: result.projection.bpmnRevision,
+          reconciliation: publicReconciliation(binding),
+          projectionDiagnostics: result.projection.diagnostics,
+          unprojectableCanonicalRefs: result.projection.unprojectableCanonicalRefs,
+          automaticConfirmationAuthorized: false,
+          automaticFreezeAuthorized: false,
+          automaticAutomationDesignAuthorized: false,
           automaticExecutionAuthorized: false,
         });
         return;
@@ -1371,6 +1502,9 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
           throw new TypeError('Temporal package export must pin the exact approved TemporalMappingRevision');
         }
         const bundle = buildTemporalWorkflowExport(session.automation, exactBpmnXmlForSession(repo, session));
+        if (!bundle.readiness.temporalExportReady) {
+          throw new TypeError(`Temporal package export is blocked until the workflow graph is unambiguous: ${bundle.readiness.blockers.join(', ')}`);
+        }
         bytes(
           res,
           200,
@@ -1796,8 +1930,13 @@ export async function startTalosOneApp(options: TalosOneAppOptions = {}) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const conflict = /not found|requires|must pin|must use|cannot|approval|confirmation|reconciliation|freeze|blocked|already exists|executor|workflow start|execution input/i.test(message);
+      const diagnosticId = createOpaqueId('source', `one-app-route-error:${req.method ?? 'UNKNOWN'}:${req.url ?? '/'}:${message}`);
+      console.error(`[talos-one-app] diagnostic=${diagnosticId} method=${req.method ?? 'UNKNOWN'} path=${req.url ?? '/'} error=${message}`);
+      if (error instanceof Error && error.stack) console.error(error.stack);
       json(res, conflict ? 409 : 400, {
         error: message,
+        technicalError: message,
+        diagnosticId,
         code: conflict ? 'ONE_APP_AUTHORITY_ORDER_VIOLATION' : 'ONE_APP_REQUEST_REJECTED',
       });
     }

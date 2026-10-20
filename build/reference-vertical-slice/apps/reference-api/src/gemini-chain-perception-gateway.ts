@@ -47,6 +47,7 @@ type CompactEdge = {
   source: string;
   target: string;
   kind: string;
+  label?: string;
   confidence: number;
   directed: boolean;
 };
@@ -179,8 +180,10 @@ function validateCompactGraph(raw: unknown): CompactGraph {
     const kind = stringValue(edge.kind, `edges[${index}].kind`).toUpperCase();
     if (!COMPACT_EDGE_KINDS.has(kind)) throw new TypeError(`unsupported edge kind ${kind}`);
     if (typeof edge.directed !== 'boolean') throw new TypeError(`edges[${index}].directed must be boolean`);
+    const label = typeof edge.label === 'string' && edge.label.trim() ? edge.label.trim().slice(0, 500) : undefined;
     return {
       id, source, target, kind,
+      ...(label ? { label } : {}),
       confidence: confidence(edge.confidence, `edges[${index}].confidence`),
       directed: edge.directed,
     };
@@ -282,9 +285,21 @@ function expandCompactGraph(envelope: AsyncImagePerceptionTransportEnvelope, gra
       providerObservationKey: strokeKey,
       anchorKey,
       observationKind: 'CONNECTOR_STROKE',
-      observedValue: { source: edge.source, target: edge.target, kind: edge.kind, directed: edge.directed },
+      observedValue: { source: edge.source, target: edge.target, kind: edge.kind, directed: edge.directed, ...(edge.label ? { label: edge.label } : {}) },
       confidence: edge.confidence,
     });
+    const guardKey = edge.label ? `guard:${edge.id}` : undefined;
+    if (guardKey) {
+      observations.push({
+        providerObservationKey: guardKey,
+        anchorKey,
+        observationKind: 'TEXT_LITERAL_CANDIDATE',
+        observedValue: edge.label,
+        confidence: edge.confidence,
+        parentObservationKeys: [strokeKey],
+        notes: 'Visible branch or guard text associated with this connector.',
+      });
+    }
     const alternatives = [{
       providerAlternativeKey: preferredKey,
       value: preferredRole,
@@ -328,6 +343,7 @@ function expandCompactGraph(envelope: AsyncImagePerceptionTransportEnvelope, gra
       }],
       directionCandidates: [{ value: edge.directed ? 'SOURCE_TO_TARGET' : 'UNKNOWN', confidence: edge.confidence }],
       roleAlternativeSetKey: roleSetKey,
+      ...(guardKey ? { guardTextObservationKeys: [guardKey] } : {}),
     });
   }
 
@@ -358,7 +374,7 @@ function expandCompactGraph(envelope: AsyncImagePerceptionTransportEnvelope, gra
 }
 
 function compactPrompt(envelope: AsyncImagePerceptionTransportEnvelope): string {
-  return `You are Talos visual perception. Analyze only visible process-diagram evidence in the supplied PNG. Do not invent hidden steps, business truth, automation approval, deployment authority, or execution authority. Return only JSON.\n\nImage: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}.\n\nRequired JSON shape:\n{\n  "status": "SUCCEEDED|PARTIAL|NO_RESULT",\n  "nodes": [{"id":"n1","label":"visible text if any","kind":"EVENT|ACTION|DECISION|WAIT|HUMAN_INTERACTION|SUBPROCESS|END|PARTICIPANT|DATA_OBJECT|UNKNOWN","confidence":0.0}],\n  "edges": [{"id":"e1","source":"n1","target":"n2","kind":"FLOW|CONDITIONAL_FLOW|MESSAGE|ASSOCIATION|UNKNOWN","confidence":0.0,"directed":true}],\n  "diagnostics": ["brief uncertainty note"]\n}\n\nRules: ids must be unique; edge endpoints must reference node ids; use EVENT for a visible start/intermediate event and END for a visible end event; use PARTIAL whenever meaning or direction is uncertain; use NO_RESULT with empty arrays when there is no usable process graph. Prefer literal visible labels. Keep diagnostics short.`;
+  return `You are Talos visual perception. Analyze only visible process-diagram evidence in the supplied PNG. Do not invent hidden steps, business truth, automation approval, deployment authority, or execution authority. Return only JSON.\n\nImage: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}.\n\nRequired JSON shape:\n{\n  "status": "SUCCEEDED|PARTIAL|NO_RESULT",\n  "nodes": [{"id":"n1","label":"visible text if any","kind":"EVENT|ACTION|DECISION|WAIT|HUMAN_INTERACTION|SUBPROCESS|END|PARTICIPANT|DATA_OBJECT|UNKNOWN","confidence":0.0}],\n  "edges": [{"id":"e1","source":"n1","target":"n2","kind":"FLOW|CONDITIONAL_FLOW|MESSAGE|ASSOCIATION|UNKNOWN","label":"visible branch/guard text if any","confidence":0.0,"directed":true}],\n  "diagnostics": ["brief uncertainty note"]\n}\n\nRules: ids must be unique; edge endpoints must reference node ids; use EVENT for a visible start/intermediate event and END for a visible end event; use PARTIAL whenever meaning or direction is uncertain; use NO_RESULT with empty arrays when there is no usable process graph. Prefer literal visible labels. For connector labels or decision branch guards (for example Yes/No, Sí/No), copy the visible text exactly into edge.label; never invent a missing guard. Keep diagnostics short.`;
 }
 
 async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
