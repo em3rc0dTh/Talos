@@ -102,8 +102,8 @@ function timeoutMs(env: Environment): number {
     throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be an integer number of milliseconds');
   }
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < 1_000 || value > 120_000) {
-    throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be between 1000 and 120000 milliseconds');
+  if (!Number.isSafeInteger(value) || value < 1_000 || value > 600_000) {
+    throw new TypeError('IMAGE_PERCEPTION_RUNTIME_CONFIG_INVALID: timeout must be between 1000 and 600000 milliseconds');
   }
   return value;
 }

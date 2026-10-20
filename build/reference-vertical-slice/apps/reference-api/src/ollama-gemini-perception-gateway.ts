@@ -208,7 +208,7 @@ function gatewayConfig(env: Environment) {
   return {
     ollamaBaseUrl: baseUrl(optional(env, 'OLLAMA_BASE_URL') ?? 'http://ollama:11434', 'OLLAMA_BASE_URL'),
     ollamaModel,
-    ollamaTimeoutMs: intEnv(env, 'OLLAMA_TIMEOUT_MS', 45_000, 1_000, 90_000),
+    ollamaTimeoutMs: intEnv(env, 'OLLAMA_TIMEOUT_MS', 45_000, 1_000, 600_000),
     ollamaMaxAttempts: intEnv(env, 'OLLAMA_MAX_ATTEMPTS', 2, 1, 3),
     geminiApiKey: optional(env, 'GEMINI_API_KEY'),
     geminiModel: optional(env, 'GEMINI_MODEL') ?? 'gemini-2.5-flash',
@@ -303,7 +303,7 @@ function correlatedPayload(
 }
 
 function prompt(envelope: AsyncImagePerceptionTransportEnvelope): string {
-  return `${SYSTEM_PROMPT}\n\nImage dimensions: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}.\nJSON schema:\n${JSON.stringify(MODEL_OUTPUT_SCHEMA)}`;
+  return `${SYSTEM_PROMPT}\n\nImage dimensions: ${envelope.coordinateSpace.width} x ${envelope.coordinateSpace.height}. The response format schema is enforced by the Ollama structured-output request; do not restate it.`;
 }
 
 async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
